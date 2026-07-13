@@ -634,6 +634,7 @@ func sanitizeLabel(value, role string, observer bool) string {
 	if len(runes) > 18 {
 		value = string(runes[:18])
 	}
+	value = strings.TrimSpace(value)
 	if value != "" {
 		return value
 	}
