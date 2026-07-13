@@ -324,6 +324,8 @@ async function inspectRoute(page: Page, from: ViewportPoint, to: ViewportPoint, 
   const y = (from.y + to.y) / 2;
   if (mobile) {
     await page.touchscreen.tap(x, y);
+    // Prove the tap stays pinned after Chromium's delayed synthetic mouseleave.
+    await page.waitForTimeout(550);
     return;
   }
   await page.mouse.move(x, y, { steps: 4 });

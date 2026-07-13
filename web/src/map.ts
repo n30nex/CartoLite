@@ -69,6 +69,7 @@ export class LiveMap {
   private selectedNodeLabel = '';
   private neighborNodeIDs: string[] = [];
   private hoveredRouteID: string | null = null;
+  private routeInspectionPinned = false;
   private highlightedClusterID: number | null = null;
   private clusterFlashTimer?: number;
   private tooltipSignature = '';
@@ -459,10 +460,12 @@ export class LiveMap {
       // late node leave hide the route tooltip that has just replaced it.
       if (this.tooltip.dataset.kind === 'node') this.hideTooltip();
     });
-    this.map.on('mousemove', ROUTE_HIT_LAYER_ID, (event) => this.showRouteTooltip(event));
+    this.map.on('mousemove', ROUTE_HIT_LAYER_ID, (event) => {
+      if (!this.routeInspectionPinned) this.showRouteTooltip(event);
+    });
     this.map.on('mouseleave', ROUTE_HIT_LAYER_ID, () => {
       this.map.getCanvas().style.cursor = '';
-      this.clearRouteInspection();
+      if (!this.routeInspectionPinned) this.clearRouteInspection();
     });
     this.map.on('mousemove', 'clusters', (event) => this.highlightCluster(event));
     this.map.on('mouseleave', 'clusters', () => {
@@ -518,7 +521,7 @@ export class LiveMap {
       void this.expandCluster(event);
       return;
     }
-    if (this.showRouteTooltip(event)) return;
+    if (this.showRouteTooltip(event, true)) return;
     this.clearNodeSelection();
   }
 
@@ -527,6 +530,7 @@ export class LiveMap {
     if (!feature) return;
     const nodeID = String(feature.properties?.id ?? feature.id ?? '');
     if (!nodeID) return;
+    this.clearRouteInspection();
     this.setSelectedNode(nodeID, String(feature.properties?.label ?? 'MeshCore node'));
     this.showNodeTooltip(event);
   }
@@ -592,7 +596,7 @@ export class LiveMap {
     );
   }
 
-  private showRouteTooltip(event: MapMouseEvent): boolean {
+  private showRouteTooltip(event: MapMouseEvent, pin = false): boolean {
     if (!this.routesVisible || !this.selectedNodeID) return false;
     if (this.map.queryRenderedFeatures(event.point, { layers: [NODE_HIT_LAYER_ID] }).length > 0) return false;
     const feature = this.map.queryRenderedFeatures(event.point, { layers: [ROUTE_HIT_LAYER_ID] })[0];
@@ -600,6 +604,7 @@ export class LiveMap {
     const properties = feature.properties ?? {};
     const route = this.routesByID.get(String(properties.id ?? feature.id ?? ''));
     if (!route) return false;
+    this.routeInspectionPinned = pin;
     this.setHoveredRoute(route.id);
     const packetCount = Math.max(0, route.packetCount);
     this.presentTooltip(
@@ -619,6 +624,7 @@ export class LiveMap {
   }
 
   private clearRouteInspection(): void {
+    this.routeInspectionPinned = false;
     this.setHoveredRoute(null);
     if (this.tooltip.dataset.kind === 'route') this.hideTooltip();
   }
