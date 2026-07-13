@@ -4,7 +4,9 @@ export default defineConfig({
   testDir: './e2e',
   outputDir: './test-results',
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  // Renderer timing is meaningful only when one Chromium instance owns the
+  // shared Actions CPU; concurrent software-rendered maps distort the gate.
+  workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: process.env.CARTOLITE_BASE_URL ?? 'http://127.0.0.1:39476',

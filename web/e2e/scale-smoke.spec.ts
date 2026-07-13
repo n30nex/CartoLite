@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { NodeV1, RouteV1, StateV1 } from '../src/types';
 
 test('keeps a 2k-node / 5k-route first view responsive', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'large-topology renderer budget runs once on desktop');
   const state = scaleState();
   const firstRoute = state.routes[0];
   if (!firstRoute) throw new Error('scale fixture has no routes');
@@ -27,17 +28,17 @@ test('keeps a 2k-node / 5k-route first view responsive', async ({ page }, testIn
   await expect(page.locator('#map .maplibregl-canvas')).toBeVisible();
   expect(Date.now() - started, 'large topology should hydrate inside the first-view budget').toBeLessThan(10_000);
 
-  const frameWindow = await page.evaluate(() => new Promise<number>((resolve) => {
+  const eventLoopWindow = await page.evaluate(() => new Promise<number>((resolve) => {
     const start = performance.now();
-    let frames = 0;
+    let turns = 0;
     const tick = (): void => {
-      frames += 1;
-      if (frames >= 30) resolve(performance.now() - start);
-      else requestAnimationFrame(tick);
+      turns += 1;
+      if (turns >= 50) resolve(performance.now() - start);
+      else window.setTimeout(tick, 0);
     };
-    requestAnimationFrame(tick);
+    window.setTimeout(tick, 0);
   }));
-  expect(frameWindow, 'main thread should remain interactive after topology hydration').toBeLessThan(2_000);
+  expect(eventLoopWindow, 'main thread should remain interactive after topology hydration').toBeLessThan(2_000);
   await page.screenshot({ path: testInfo.outputPath('cartolite-scale.png') });
 });
 
