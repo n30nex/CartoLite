@@ -41,6 +41,10 @@ export function payloadColor(payloadType: string): string {
   return '#7dbfff';
 }
 
+export function observerRadius(age: number): number {
+  return 10 + (Math.max(0, age) / 4200) * 40;
+}
+
 export class PacketAnimator {
   private readonly context: CanvasRenderingContext2D;
   private activeRoutes: ActiveRoute[] = [];
@@ -190,14 +194,14 @@ export class PacketAnimator {
   }
 
   private drawObserver(item: ActiveObserver, now: number): void {
-    const age = now - item.started;
+    const age = Math.max(0, now - item.started);
     const life = Math.max(0, 1 - age / (this.reducedMotion ? AFTERGLOW_MS : 4200));
     const point = this.point(item.packet.observer);
     if (this.reducedMotion) {
       this.flash(point, item.color, life);
       return;
     }
-    const radius = 10 + (age / 4200) * 40;
+    const radius = observerRadius(age);
     const gradient = this.context.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius);
     gradient.addColorStop(0, withAlpha(item.color, 0.28 * life));
     gradient.addColorStop(1, withAlpha(item.color, 0));
