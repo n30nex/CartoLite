@@ -29,6 +29,12 @@ test('keeps a 2k-node / 5k-route first view responsive', async ({ page }, testIn
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(Date.now() - started, 'large topology should hydrate inside the first-view budget').toBeLessThan(10_000);
 
+  const heatmapButton = page.locator('#heatmap-button');
+  await heatmapButton.click();
+  await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
+  await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+
   const eventLoopWindow = await page.evaluate(() => new Promise<number>((resolve) => {
     const start = performance.now();
     let turns = 0;

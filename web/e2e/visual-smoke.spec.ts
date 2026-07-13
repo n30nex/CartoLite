@@ -5,6 +5,10 @@ import type { StateV1 } from '../src/types';
 
 test('renders the live route map and privacy-safe state', async ({ page }, testInfo) => {
   const mapStyleErrors = captureMapStyleErrors(page);
+  const regionAssetRequests: string[] = [];
+  page.on('request', (request) => {
+    if (isRegionAssetURL(request.url())) regionAssetRequests.push(request.url());
+  });
   const stateResponse = page.waitForResponse((response) => response.url().endsWith('/api/state') && response.ok());
   await page.goto('/');
   const response = await stateResponse;
@@ -36,14 +40,65 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(routesButton).toHaveAttribute('title', 'Hide routes');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
+  const heatmapButton = page.locator('#heatmap-button');
+  await expect(heatmapButton).toBeVisible();
+  await expect(heatmapButton).toHaveAttribute('aria-label', 'Heatmap');
+  await expect(heatmapButton).toHaveAttribute('aria-pressed', 'false');
+  await expect(heatmapButton).toHaveAttribute('title', 'Show heatmap');
+  await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'false');
+  const regionsButton = page.locator('#regions-button');
+  await expect(regionsButton).toBeVisible();
+  await expect(regionsButton).toHaveAttribute('aria-label', 'Regions');
+  await expect(regionsButton).toHaveAttribute('aria-pressed', 'false');
+  await expect(regionsButton).toHaveAttribute('title', 'Show regions');
+  await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'false');
+  await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'false');
+  expect(regionAssetRequests, 'regional GeoJSON should stay lazy while the layer is off').toEqual([]);
+
+  await heatmapButton.click();
+  await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(heatmapButton).toHaveAttribute('title', 'Hide heatmap');
+  await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
+  await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'false');
   await expect(routesButton).toHaveAttribute('title', 'Show routes');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
+  await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
   await expect.poll(() => canvasHasPixels(page.locator('#packet-canvas')), { message: 'packet animation canvas should receive a live frame while routes are hidden', timeout: 15_000 }).toBe(true);
+  await heatmapButton.click();
+  await expect(heatmapButton).toHaveAttribute('aria-pressed', 'false');
+  await expect(heatmapButton).toHaveAttribute('title', 'Show heatmap');
+  await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'false');
+  await expect(routesButton).toHaveAttribute('aria-pressed', 'false');
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
+
+  const regionResponsePromise = page.waitForResponse((assetResponse) => isRegionAssetURL(assetResponse.url()));
+  await regionsButton.click();
+  const regionResponse = await regionResponsePromise;
+  expect(regionResponse.ok(), `regional GeoJSON should load successfully from ${regionResponse.url()}`).toBe(true);
+  await expect(regionsButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(regionsButton).toHaveAttribute('title', 'Hide regions');
+  await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true');
+  await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'true');
+  await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
+  expect(regionAssetRequests).toHaveLength(1);
+  await heatmapButton.click();
+  await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
+  await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
+  await page.screenshot({ path: testInfo.outputPath('cartolite-overlays.png'), fullPage: true });
+  await regionsButton.click();
+  await expect(regionsButton).toHaveAttribute('aria-pressed', 'false');
+  await expect(regionsButton).toHaveAttribute('title', 'Show regions');
+  await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'false');
+  await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true');
+  await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
+  await heatmapButton.click();
+  await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'false');
   expect(state.schemaVersion).toBe(1);
 
   const serialized = JSON.stringify(state).toLowerCase();
@@ -289,6 +344,10 @@ function captureMapStyleErrors(page: Page): string[] {
     if (message.type() === 'error' && text.includes('layers.') && text.includes('.paint.')) errors.push(text);
   });
   return errors;
+}
+
+function isRegionAssetURL(url: string): boolean {
+  return url.includes('meshmapper-canada-regions') && url.includes('.geojson');
 }
 
 interface ViewportBox {

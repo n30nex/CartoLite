@@ -12,6 +12,8 @@ const topbar = required<HTMLElement>('topbar');
 const fatal = required<HTMLElement>('fatal');
 const followButton = required<HTMLButtonElement>('follow-button');
 const routesButton = required<HTMLButtonElement>('routes-button');
+const heatmapButton = required<HTMLButtonElement>('heatmap-button');
+const regionsButton = required<HTMLButtonElement>('regions-button');
 const resetButton = required<HTMLButtonElement>('reset-button');
 const legend = required<HTMLElement>('legend');
 const legendToggle = required<HTMLButtonElement>('legend-toggle');
@@ -44,18 +46,9 @@ async function start(): Promise<void> {
     mapView = liveMap;
     const liveAnimator = new PacketAnimator(liveMap.map, required<HTMLCanvasElement>('packet-canvas'));
     animator = liveAnimator;
-    let routesVisible = true;
-    const updateRoutesButton = (): void => {
-      routesButton.setAttribute('aria-pressed', String(routesVisible));
-      routesButton.classList.toggle('selected', routesVisible);
-      routesButton.title = routesVisible ? 'Hide routes' : 'Show routes';
-    };
-    routesButton.addEventListener('click', () => {
-      routesVisible = !routesVisible;
-      liveMap.setRoutesVisible(routesVisible);
-      updateRoutesButton();
-    });
-    updateRoutesButton();
+    wireLayerToggle(routesButton, true, 'routes', (visible) => liveMap.setRoutesVisible(visible));
+    wireLayerToggle(heatmapButton, false, 'heatmap', (visible) => liveMap.setHeatmapVisible(visible));
+    wireLayerToggle(regionsButton, false, 'regions', (visible) => liveMap.setRegionsVisible(visible));
     document.addEventListener('visibilitychange', () => animator?.setPaused(document.hidden));
     window.addEventListener('beforeunload', () => {
       feed?.stop();
@@ -172,4 +165,25 @@ function required<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
   if (!element) throw new Error(`missing #${id}`);
   return element as T;
+}
+
+function wireLayerToggle(
+  button: HTMLButtonElement,
+  initiallyVisible: boolean,
+  layerName: string,
+  setVisible: (visible: boolean) => void
+): void {
+  let visible = initiallyVisible;
+  const update = (): void => {
+    button.setAttribute('aria-pressed', String(visible));
+    button.classList.toggle('selected', visible);
+    button.title = `${visible ? 'Hide' : 'Show'} ${layerName}`;
+  };
+  setVisible(visible);
+  update();
+  button.addEventListener('click', () => {
+    visible = !visible;
+    setVisible(visible);
+    update();
+  });
 }
