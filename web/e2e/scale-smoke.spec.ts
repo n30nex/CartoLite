@@ -16,7 +16,7 @@ test('keeps a 2k-node / 5k-route first view responsive', async ({ page }, testIn
   };
 
   await page.route('**/api/state', (route) => route.fulfill({ json: state }));
-  await page.route('**/api/events', (route) => route.fulfill({
+  await page.route('**/api/events**', (route) => route.fulfill({
     status: 200,
     contentType: 'text/event-stream',
     body: `retry: 60000\n\nevent: hello\ndata: ${JSON.stringify({ seq: 0, bootId: state.bootId })}\n\nid: 1\nevent: packet\ndata: ${JSON.stringify(packet)}\n\n`

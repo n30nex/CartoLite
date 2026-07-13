@@ -10,6 +10,7 @@ const statusElement = required<HTMLElement>('status');
 const statusText = required<HTMLElement>('status-text');
 const fatal = required<HTMLElement>('fatal');
 const followButton = required<HTMLButtonElement>('follow-button');
+const routesButton = required<HTMLButtonElement>('routes-button');
 const resetButton = required<HTMLButtonElement>('reset-button');
 
 void start();
@@ -24,6 +25,18 @@ async function start(): Promise<void> {
     // the initial snapshot is in flight.
     const liveMap = new LiveMap(required<HTMLElement>('map'), required<HTMLElement>('tooltip'));
     const liveAnimator = new PacketAnimator(liveMap.map, required<HTMLCanvasElement>('packet-canvas'));
+    let routesVisible = true;
+    const updateRoutesButton = (): void => {
+      routesButton.setAttribute('aria-pressed', String(routesVisible));
+      routesButton.classList.toggle('selected', routesVisible);
+      routesButton.title = routesVisible ? 'Hide routes' : 'Show routes';
+    };
+    routesButton.addEventListener('click', () => {
+      routesVisible = !routesVisible;
+      liveMap.setRoutesVisible(routesVisible);
+      updateRoutesButton();
+    });
+    updateRoutesButton();
     mapView = liveMap;
     animator = liveAnimator;
     document.addEventListener('visibilitychange', () => animator?.setPaused(document.hidden));

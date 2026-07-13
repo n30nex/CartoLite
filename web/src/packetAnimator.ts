@@ -4,8 +4,8 @@ import type { EndpointV1, ObserverPacketV1, PacketV1, RoutePacketV1, RouteSegmen
 export const SINGLE_HOP_MS = 2100;
 export const MAX_ROUTE_MS = 3200;
 export const AFTERGLOW_MS = 1200;
-export const RESIDUE_MS = 15 * 60_000;
-export const RESIDUE_REDRAW_MS = 5_000;
+export const RESIDUE_MS = 15_000;
+export const RESIDUE_REDRAW_MS = 250;
 const MAX_ACTIVE = 32;
 const MAX_RESIDUE = 240;
 
@@ -43,6 +43,10 @@ export function payloadColor(payloadType: string): string {
 
 export function observerRadius(age: number): number {
   return 10 + (Math.max(0, age) / 4200) * 40;
+}
+
+export function residueLife(age: number): number {
+  return Math.max(0, 1 - Math.max(0, age) / RESIDUE_MS);
 }
 
 export class PacketAnimator {
@@ -121,12 +125,14 @@ export class PacketAnimator {
     this.frameId = window.requestAnimationFrame(this.draw);
   };
 
-  private requestResidueFrame(): void {
+  private requestResidueFrame(now: number): void {
     if (this.paused || this.residueTimer !== undefined || this.frameId !== 0) return;
+    let delay = RESIDUE_REDRAW_MS;
+    for (const item of this.residue) delay = Math.min(delay, Math.max(0, item.addedAt + RESIDUE_MS - now));
     this.residueTimer = window.setTimeout(() => {
       this.residueTimer = undefined;
       this.requestFrame();
-    }, RESIDUE_REDRAW_MS);
+    }, delay);
   }
 
   private draw(now: number): void {
@@ -136,24 +142,28 @@ export class PacketAnimator {
     const height = this.canvas.height / this.dpr;
     this.context.clearRect(0, 0, width, height);
     this.residue = this.residue.filter((item) => now - item.addedAt < RESIDUE_MS);
+    this.context.save();
+    this.context.globalCompositeOperation = 'lighter';
+    this.context.lineCap = 'round';
     for (const item of this.residue) this.drawResidue(item, now);
+    this.context.restore();
     this.activeRoutes = this.activeRoutes.filter((item) => now - item.started <= item.duration + AFTERGLOW_MS);
     this.activeObservers = this.activeObservers.filter((item) => now - item.started <= (this.reducedMotion ? AFTERGLOW_MS : 4200));
     for (const route of this.activeRoutes) this.drawRoute(route, now);
     for (const observer of this.activeObservers) this.drawObserver(observer, now);
     if (this.activeRoutes.length || this.activeObservers.length) this.requestFrame();
-    else if (this.residue.length) this.requestResidueFrame();
+    else if (this.residue.length) this.requestResidueFrame(now);
   }
 
   private drawResidue(item: Residue, now: number): void {
     const from = this.point(item.segment.from);
     const to = this.point(item.segment.to);
-    const life = 1 - (now - item.addedAt) / RESIDUE_MS;
+    const life = residueLife(now - item.addedAt);
     this.context.beginPath();
     this.context.moveTo(from.x, from.y);
     this.context.lineTo(to.x, to.y);
-    this.context.strokeStyle = withAlpha(item.color, Math.max(0, life) * 0.11);
-    this.context.lineWidth = 2;
+    this.context.strokeStyle = withAlpha(item.color, life * 0.5);
+    this.context.lineWidth = 2.6;
     this.context.stroke();
   }
 
