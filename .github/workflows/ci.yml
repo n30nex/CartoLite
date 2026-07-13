@@ -1,0 +1,236 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/n30nex/cartolite
+
+jobs:
+  backend:
+    name: Go test, vet, and race
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Verify modules
+        working-directory: backend
+        run: go mod verify
+      - name: Unit and contract tests
+        working-directory: backend
+        run: go test ./...
+      - name: Vet
+        working-directory: backend
+        run: go vet ./...
+      - name: Race detector
+        working-directory: backend
+        run: go test -race ./...
+
+  frontend:
+    name: Frontend test, build, and budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install from lockfile
+        working-directory: web
+        run: npm ci
+      - name: Unit tests
+        working-directory: web
+        run: npm test -- --run
+      - name: Production build
+        working-directory: web
+        run: npm run build
+      - name: First-view bundle budget
+        run: node scripts/check-frontend-budget.mjs web/dist
+
+  container:
+    name: Container integration, browser, privacy, and scan
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install browser test dependencies
+        working-directory: web
+        run: |
+          npm ci
+          npm exec playwright install --with-deps chromium
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Read build identity
+        id: meta
+        shell: bash
+        run: |
+          echo "version=$(tr -d '\r\n' < VERSION)" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Build linux/amd64 image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: cartolite:ci
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_TIME=${{ steps.meta.outputs.built_at }}
+      - name: Enforce image budget and runtime identity
+        run: |
+          bash scripts/check-image-size.sh cartolite:ci
+          test "$(docker image inspect cartolite:ci --format '{{.Config.User}}')" = "65532:65532"
+          test "$(docker image inspect cartolite:ci --format '{{.Architecture}}')" = "amd64"
+      - name: Start synthetic broker and CartoLite
+        shell: bash
+        run: |
+          docker network create cartolite-ci
+          docker volume create cartolite-ci-data
+          docker run --detach --name cartolite-mqtt --network cartolite-ci \
+            --mount type=bind,source="$PWD/testdata/mosquitto.conf",target=/mosquitto/config/mosquitto.conf,readonly \
+            eclipse-mosquitto:2.0.22
+          docker run --detach --name cartolite --network cartolite-ci \
+            --publish 127.0.0.1:39476:8080 --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true --memory 256m \
+            --mount source=cartolite-ci-data,target=/data \
+            --env HTTP_ADDR=:8080 --env MQTT_ENABLED=true \
+            --env MQTT_BROKER_URL=tcp://cartolite-mqtt:1883 \
+            --env MQTT_TOPIC=meshcore/# --env MQTT_CLIENT_ID=cartolite-ci \
+            --env REGION_ALLOWLIST=YYZ,YKF --env STATE_PATH=/data/state-v1.json \
+            cartolite:ci
+          for _ in $(seq 1 90); do
+            curl --fail --silent http://127.0.0.1:39476/readyz >/dev/null && exit 0
+            sleep 1
+          done
+          docker logs cartolite
+          exit 1
+      - name: Publish synthetic traffic and verify public boundary
+        run: |
+          bash scripts/publish-fixture.sh cartolite-mqtt testdata/synthetic-live.ndjson
+          bash scripts/integration-smoke.sh http://127.0.0.1:39476 artifacts/integration cartolite-mqtt
+      - name: Bounded load smoke
+        run: bash scripts/performance-smoke.sh http://127.0.0.1:39476 cartolite-mqtt
+      - name: Desktop and mobile Playwright smoke
+        working-directory: web
+        env:
+          CARTOLITE_BASE_URL: http://127.0.0.1:39476
+        shell: bash
+        run: |
+          publisher_pid=""
+          cleanup() {
+            if [[ -n "$publisher_pid" ]]; then
+              kill "$publisher_pid" >/dev/null 2>&1 || true
+              wait "$publisher_pid" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+          (
+            sleep 1
+            while true; do
+              FIXTURE_DELAY_SECONDS=0.04 bash ../scripts/publish-fixture.sh cartolite-mqtt ../testdata/synthetic-live.ndjson
+              sleep 0.25
+            done
+          ) &
+          publisher_pid="$!"
+          npm run test:e2e
+      - name: Trivy HIGH/CRITICAL gate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: cartolite:ci
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Upload browser and integration evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cartolite-ci-evidence
+          path: |
+            artifacts/integration/
+            web/test-results/
+            web/playwright-report/
+          if-no-files-found: ignore
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish exact-SHA candidate
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: publish
+        shell: bash
+        run: |
+          candidate="${IMAGE_NAME}:sha-${GITHUB_SHA}"
+          docker tag cartolite:ci "$candidate"
+          docker push "$candidate"
+          digest="$(docker buildx imagetools inspect "$candidate" | awk '$1 == "Digest:" {print $2; exit}')"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Attest exact-SHA candidate
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+      - name: Container logs
+        if: failure()
+        run: docker logs cartolite || true
+      - name: Clean up containers
+        if: always()
+        run: |
+          docker rm --force cartolite cartolite-mqtt >/dev/null 2>&1 || true
+          docker network rm cartolite-ci >/dev/null 2>&1 || true
+
+  required:
+    name: CI / Required
+    if: always()
+    needs: [backend, frontend, container]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every gate
+        env:
+          BACKEND: ${{ needs.backend.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+          CONTAINER: ${{ needs.container.result }}
+        run: test "$BACKEND" = success -a "$FRONTEND" = success -a "$CONTAINER" = success

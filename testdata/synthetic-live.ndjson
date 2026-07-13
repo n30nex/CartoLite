@@ -1,0 +1,9 @@
+{"topic":"meshcore/YYZ/AA00000000000000000000000000000000000000000000000000000000000000/status","payload":{"name":"Synthetic Toronto Repeater","role":"repeater","latitude":43.6532,"longitude":-79.3832}}
+{"topic":"meshcore/YYZ/BB00000000000000000000000000000000000000000000000000000000000000/status","payload":{"name":"Synthetic Lakeshore Repeater","role":"repeater","latitude":43.589,"longitude":-79.6441}}
+{"topic":"meshcore/YYZ/CC00000000000000000000000000000000000000000000000000000000000000/status","payload":{"name":"Synthetic Toronto Observer","role":"observer","latitude":43.641,"longitude":-79.389}}
+{"topic":"meshcore/YKF/DD00000000000000000000000000000000000000000000000000000000000000/status","payload":{"name":"Synthetic Kitchener Repeater","role":"repeater","latitude":43.4516,"longitude":-80.4925}}
+{"topic":"meshcore/YKF/EE00000000000000000000000000000000000000000000000000000000000000/status","payload":{"name":"Synthetic Waterloo Room","role":"room_server","latitude":43.4723,"longitude":-80.5449}}
+{"topic":"meshcore/YYZ/CC00000000000000000000000000000000000000000000000000000000000000/packets","payload":{"origin":"Synthetic Toronto Observer","raw":"0901AA00AA48656C6C6F","rssi":-72,"snr":7.4}}
+{"topic":"meshcore/YYZ/CC00000000000000000000000000000000000000000000000000000000000000/packets","payload":{"origin":"Synthetic Toronto Observer","raw":"0901BB00BB48656C6C6F","rssi":-76,"snr":5.9}}
+{"topic":"meshcore/YKF/EE00000000000000000000000000000000000000000000000000000000000000/packets","payload":{"origin":"Synthetic Waterloo Room","raw":"0901DD00DD48656C6C6F","rssi":-69,"snr":8.2}}
+{"topic":"meshcore/YKF/EE00000000000000000000000000000000000000000000000000000000000000/packets","payload":{"origin":"Synthetic Waterloo Room","raw":"0901EE00EE48656C6C6F","rssi":-71,"snr":6.8}}

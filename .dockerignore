@@ -1,0 +1,15 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+**/node_modules
+web/dist
+web/playwright-report
+web/test-results
+artifacts
+data
+*.db
+*.db-shm
+*.db-wal
+state-v1.json*
