@@ -9,6 +9,7 @@ export const DETAIL_ZOOM = 7;
 const EMPTY_POINTS: FeatureCollection<Point> = { type: 'FeatureCollection', features: [] };
 const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', features: [] };
 const ROUTE_PALETTE = ['#1d8c86', '#26a69a', '#1687a0', '#d58fb0', '#dbc22c'] as const;
+const LOCAL_FONTS = ['Noto Sans', 'Segoe UI', 'Arial', 'Noto Color Emoji', 'Segoe UI Emoji', 'Apple Color Emoji'];
 
 export class LiveMap {
   readonly map: maplibregl.Map;
@@ -148,7 +149,7 @@ export class LiveMap {
       filter: ['has', 'point_count'],
       layout: {
         'text-field': ['get', 'point_count_abbreviated'],
-        'text-font': ['Noto Sans Regular'],
+        'text-font': LOCAL_FONTS,
         'text-size': 10
       },
       paint: { 'text-color': '#d9fffb' }
@@ -189,7 +190,7 @@ export class LiveMap {
       filter: ['!', ['has', 'point_count']],
       layout: {
         'text-field': ['get', 'label'],
-        'text-font': ['Noto Sans Regular'],
+        'text-font': LOCAL_FONTS,
         'text-size': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 9, 11, 11.5],
         'text-offset': [0, 1.05],
         'text-anchor': 'top',
@@ -266,7 +267,6 @@ export function darkStyle(): StyleSpecification {
   return {
     version: 8,
     name: 'CartoLite Dark',
-    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
     sources: {
       carto: {
         type: 'raster',

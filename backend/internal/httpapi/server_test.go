@@ -44,15 +44,17 @@ func TestPublicRoutesAndPrivateBoundaries(t *testing.T) {
 	}
 }
 
-func TestSecurityHeadersAllowOnlyRequiredMapOrigins(t *testing.T) {
+func TestSecurityHeadersExcludeExternalGlyphOrigins(t *testing.T) {
 	response := httptest.NewRecorder()
 	testHandler(t, true).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	csp := response.Header().Get("Content-Security-Policy")
-	if !strings.Contains(csp, "https://demotiles.maplibre.org") {
-		t.Fatalf("CSP does not allow the configured glyph origin: %q", csp)
+	if !strings.Contains(csp, "https://*.basemaps.cartocdn.com") {
+		t.Fatalf("CSP does not allow the configured raster map origin: %q", csp)
 	}
-	if strings.Contains(csp, "https://fonts.openmaptiles.org") {
-		t.Fatalf("CSP still allows the retired glyph origin: %q", csp)
+	for _, origin := range []string{"https://demotiles.maplibre.org", "https://fonts.openmaptiles.org"} {
+		if strings.Contains(csp, origin) {
+			t.Fatalf("CSP still allows external glyph origin %q: %q", origin, csp)
+		}
 	}
 }
 
