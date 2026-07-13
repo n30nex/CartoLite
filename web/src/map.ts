@@ -8,6 +8,7 @@ export const DETAIL_ZOOM = 7;
 
 const EMPTY_POINTS: FeatureCollection<Point> = { type: 'FeatureCollection', features: [] };
 const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', features: [] };
+export const ROUTE_LAYER_IDS = ['route-glow', 'routes'] as const;
 const ROUTE_PALETTE = ['#1d8c86', '#26a69a', '#1687a0', '#d58fb0', '#dbc22c'] as const;
 const LOCAL_FONTS = ['Noto Sans', 'Segoe UI', 'Arial', 'Noto Color Emoji', 'Segoe UI Emoji', 'Apple Color Emoji'];
 
@@ -18,11 +19,13 @@ export class LiveMap {
   private lastNodes?: readonly NodeV1[];
   private lastRoutes?: readonly RouteV1[];
   private lastState?: Readonly<StateV1>;
+  private routesVisible = true;
   private freshnessTimer: number;
   private renderEpoch = 0;
 
   constructor(private readonly container: HTMLElement, private readonly tooltip: HTMLElement) {
     this.container.dataset.renderState = 'loading';
+    this.container.dataset.routesVisible = 'true';
     this.map = new maplibregl.Map({
       container: this.container,
       style: darkStyle(),
@@ -77,6 +80,12 @@ export class LiveMap {
     this.map.easeTo({ center: [endpoint.lng, endpoint.lat], duration: 700, essential: true });
   }
 
+  setRoutesVisible(visible: boolean): void {
+    this.routesVisible = visible;
+    this.container.dataset.routesVisible = String(visible);
+    if (applyRouteLayerVisibility(this.map, visible)) this.markRendering();
+  }
+
   destroy(): void {
     window.clearInterval(this.freshnessTimer);
     this.map.remove();
@@ -106,6 +115,7 @@ export class LiveMap {
         'line-opacity': ['get', 'opacity']
       }
     });
+    applyRouteLayerVisibility(this.map, this.routesVisible);
 
     this.map.addSource('nodes', {
       type: 'geojson',
@@ -261,6 +271,18 @@ export class LiveMap {
     this.tooltip.hidden = true;
     delete this.tooltip.dataset.pinned;
   }
+}
+
+type RouteLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setLayoutProperty'>;
+
+export function applyRouteLayerVisibility(map: RouteLayerMap, visible: boolean): boolean {
+  let applied = false;
+  for (const layerID of ROUTE_LAYER_IDS) {
+    if (!map.getLayer(layerID)) continue;
+    map.setLayoutProperty(layerID, 'visibility', visible ? 'visible' : 'none');
+    applied = true;
+  }
+  return applied;
 }
 
 export function darkStyle(): StyleSpecification {

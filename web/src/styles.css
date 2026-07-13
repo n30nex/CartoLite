@@ -85,6 +85,8 @@ button { font: inherit; }
 }
 .control-button:last-child { border-right: 0; }
 .control-button:hover, .control-button:focus-visible, .control-button.selected { color: #efffff; background: rgba(41, 184, 169, 0.14); outline: none; }
+.control-button:focus-visible { outline: 2px solid #63d9cc; outline-offset: -3px; }
+.control-icon { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .icon-button { width: 38px; justify-content: center; padding: 0; font-size: 17px; }
 
 .legend {
