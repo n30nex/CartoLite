@@ -21,7 +21,14 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   expect(mapStyleErrors, 'MapLibre should accept every installed layer expression').toEqual([]);
   await expect(page.locator('#packet-canvas')).toBeVisible();
   await expect(page.locator('#status-text')).not.toHaveText('Starting…');
-  await expect(page.locator('.legend')).toContainText('RF route');
+  const nodeLegend = page.locator('#legend-items');
+  await expect(nodeLegend).toContainText('Repeater');
+  await expect(nodeLegend).toContainText('Companion');
+  await expect(nodeLegend).toContainText('Room');
+  await expect(nodeLegend).not.toContainText('RF route');
+  const routeLegend = page.locator('#route-legend');
+  await expect(routeLegend).toBeVisible();
+  await expect(routeLegend.locator('.route-legend-item')).toHaveCount(5);
   if (testInfo.project.name === 'mobile') {
     await expect(page.locator('#legend-toggle')).toBeVisible();
     await expect(page.locator('#legend')).toHaveAttribute('data-collapsed', 'true');
@@ -65,6 +72,8 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(routesButton).toHaveAttribute('aria-pressed', 'false');
   await expect(routesButton).toHaveAttribute('title', 'Show routes');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
+  await expect(routeLegend).toBeVisible();
+  await expect(routeLegend.locator('.route-legend-item')).toHaveCount(5);
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
   await expect.poll(() => canvasHasPixels(page.locator('#packet-canvas')), { message: 'packet animation canvas should receive a live frame while routes are hidden', timeout: 15_000 }).toBe(true);
@@ -99,6 +108,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await heatmapButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'false');
+  expect(mapStyleErrors, 'route styling should remain MapLibre-valid after data and layer visibility changes').toEqual([]);
   expect(state.schemaVersion).toBe(1);
 
   const serialized = JSON.stringify(state).toLowerCase();
@@ -163,7 +173,7 @@ test('keeps a recent packet trail after stable routes are hidden', async ({ page
       { ...from, role: 'repeater', observer: false, lastSeen: now },
       { ...to, role: 'companion', observer: false, lastSeen: now }
     ],
-    routes: [{ id: 'route-a-b', from, to, packetCount: 1, lastHeard: now, intensity: 1 }]
+    routes: [{ id: 'route-a-b', from, to, packetCount: 1, lastHeard: now, intensity: 1, lastKind: 'Text', traffic: 1 }]
   };
   const packet = {
     seq: 1,
@@ -221,10 +231,10 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
       { ...delta, role: 'sensor', observer: false, lastSeen: now }
     ],
     routes: [
-      { id: 'a-b', from: alpha, to: bravo, packetCount: 12, lastHeard: now, intensity: 3 },
-      { id: 'a-c', from: alpha, to: charlie, packetCount: 7, lastHeard: now - NEIGHBOR_ROUTE_RECENT_MS + 60 * 60_000, intensity: 2 },
-      { id: 'a-d', from: alpha, to: delta, packetCount: 3, lastHeard: now - NEIGHBOR_ROUTE_RECENT_MS - 60 * 60_000, intensity: 1 },
-      { id: 'b-c', from: bravo, to: charlie, packetCount: 5, lastHeard: now, intensity: 2 }
+      { id: 'a-b', from: alpha, to: bravo, packetCount: 12, lastHeard: now, intensity: 3, lastKind: 'Text', traffic: 12 },
+      { id: 'a-c', from: alpha, to: charlie, packetCount: 7, lastHeard: now - NEIGHBOR_ROUTE_RECENT_MS + 60 * 60_000, intensity: 2, lastKind: 'Trace', traffic: 7 },
+      { id: 'a-d', from: alpha, to: delta, packetCount: 3, lastHeard: now - NEIGHBOR_ROUTE_RECENT_MS - 60 * 60_000, intensity: 1, lastKind: 'Advert', traffic: 3 },
+      { id: 'b-c', from: bravo, to: charlie, packetCount: 5, lastHeard: now, intensity: 2, lastKind: 'ACK', traffic: 5 }
     ]
   };
 

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,6 +50,79 @@ func TestHighConfidenceRouteAndPublicPrivacy(t *testing.T) {
 	}
 	if len(public.Routes) != 2 || len(public.Nodes) != 3 {
 		t.Fatalf("unexpected public topology: %#v", public)
+	}
+	for _, route := range public.Routes {
+		if route.LastKind != "Control" || route.Traffic != 1 {
+			t.Fatalf("route activity = %#v, want sanitized Control with baseline traffic", route)
+		}
+	}
+}
+
+func TestRouteActivityDecaysAndDoesNotRegressOnOutOfOrderPackets(t *testing.T) {
+	state := newTestEngine(t)
+	base := time.Date(2026, time.July, 13, 12, 0, 0, 0, time.UTC).UnixMilli()
+	hop, _ := state.upsertNode("YKF", "AA112233", "Relay", "repeater", false, 43.4, -80.4, true, base)
+	observer, _ := state.upsertNode("YKF", "CC112233", "Observer", "unknown", true, 43.5, -80.5, true, base)
+	rssi := -80.0
+	message := mqtt.Message{
+		Topic:       mqtt.Topic{Region: "YKF", PublisherKey: "CC112233", Kind: "packets"},
+		ObserverKey: "CC112233",
+		RSSI:        &rssi,
+		HeardAt:     base,
+		RawHex:      packetHex(meshcore.PayloadControl, 1, 0xaa),
+	}
+	state.process(message)
+	route := state.routes[routePublicID(nodePublicID(hop), nodePublicID(observer))]
+	if route == nil || route.LastKind != "Control" || route.LastHeard != base || route.Traffic != 1 {
+		t.Fatalf("initial route activity = %#v", route)
+	}
+
+	message.HeardAt = base + routeTrafficHalfLife.Milliseconds()
+	message.RawHex = packetHex(meshcore.PayloadPlainText, 1, 0xaa)
+	state.process(message)
+	if route.LastKind != "Text" || route.LastHeard != message.HeardAt || math.Abs(route.Traffic-1.5) > 1e-9 {
+		t.Fatalf("half-life route activity = %#v, want Text at 1.5", route)
+	}
+
+	latestHeard := route.LastHeard
+	message.HeardAt = base + 5*time.Minute.Milliseconds()
+	message.RawHex = packetHex(meshcore.PayloadAdvert, 1, 0xaa)
+	state.process(message)
+	wantTraffic := 1.5 + math.Exp2(-10.0/15.0)
+	if route.LastKind != "Text" || route.LastHeard != latestHeard || math.Abs(route.Traffic-wantTraffic) > 1e-9 {
+		t.Fatalf("out-of-order route activity = %#v, want latest kind/time preserved and traffic %.9f", route, wantTraffic)
+	}
+	if route.PacketCount != 3 {
+		t.Fatalf("packet count = %d, want 3", route.PacketCount)
+	}
+}
+
+func TestPublicSnapshotHidesOnlyRoutesOlderThan24Hours(t *testing.T) {
+	state := newTestEngine(t)
+	now := time.Date(2026, time.July, 13, 12, 0, 0, 0, time.UTC)
+	nowMillis := now.UnixMilli()
+	a, _ := state.upsertNode("YKF", "AA112233", "A", "repeater", false, 43.4, -80.4, true, nowMillis)
+	b, _ := state.upsertNode("YKF", "BB112233", "B", "repeater", false, 43.5, -80.5, true, nowMillis)
+	c, _ := state.upsertNode("YKF", "CC112233", "C", "repeater", false, 43.6, -80.6, true, nowMillis)
+	aID, bID, cID := nodePublicID(a), nodePublicID(b), nodePublicID(c)
+	atBoundaryID := routePublicID(aID, bID)
+	staleID := routePublicID(bID, cID)
+	state.routes[atBoundaryID] = &privateRoute{
+		ID: atBoundaryID, FromID: aID, ToID: bID, PacketCount: 1,
+		LastHeard: nowMillis - routeVisibilityWindow.Milliseconds(), LastKind: "Trace", Traffic: 1,
+	}
+	state.routes[staleID] = &privateRoute{
+		ID: staleID, FromID: bID, ToID: cID, PacketCount: 1,
+		LastHeard: nowMillis - routeVisibilityWindow.Milliseconds() - 1, LastKind: "Text", Traffic: 1,
+	}
+
+	state.updateSnapshot(now)
+	var public StateV1
+	if err := json.Unmarshal(state.StateJSON(), &public); err != nil {
+		t.Fatal(err)
+	}
+	if len(public.Routes) != 1 || public.Routes[0].ID != atBoundaryID {
+		t.Fatalf("visible routes = %#v, want only exact 24-hour boundary", public.Routes)
 	}
 }
 
@@ -177,6 +251,70 @@ func TestCheckpointRoundTripAndCorruptFailure(t *testing.T) {
 	}
 	if _, err := New(Options{Checkpoint: path, QueueSize: 64}); err == nil {
 		t.Fatal("corrupt checkpoint did not fail startup")
+	}
+}
+
+func TestRouteActivityCheckpointRoundTripLegacyDefaultsAndValidation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state-v1.json")
+	state, err := New(Options{Checkpoint: path, QueueSize: 64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UnixMilli()
+	a, _ := state.upsertNode("YKF", "AA112233", "A", "repeater", false, 43.4, -80.4, true, now)
+	b, _ := state.upsertNode("YKF", "BB112233", "B", "repeater", false, 43.5, -80.5, true, now)
+	aID, bID := nodePublicID(a), nodePublicID(b)
+	routeID := routePublicID(aID, bID)
+	state.routes[routeID] = &privateRoute{
+		ID: routeID, FromID: aID, ToID: bID, PacketCount: 4, LastHeard: now,
+		LastKind: "ACK", Traffic: 2.75,
+	}
+	if err := writeCheckpoint(path, state.nodes, state.routes); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := New(Options{Checkpoint: path, QueueSize: 64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := restored.routes[routeID]; got == nil || got.LastKind != "ACK" || got.Traffic != 2.75 {
+		t.Fatalf("restored route activity = %#v", got)
+	}
+
+	legacy := *state.routes[routeID]
+	legacy.LastKind = ""
+	legacy.Traffic = 0
+	state.routes[routeID] = &legacy
+	if err := writeCheckpoint(path, state.nodes, state.routes); err != nil {
+		t.Fatal(err)
+	}
+	restored, err = New(Options{Checkpoint: path, QueueSize: 64})
+	if err != nil {
+		t.Fatalf("legacy checkpoint was rejected: %v", err)
+	}
+	if got := restored.routes[routeID]; got == nil || got.LastKind != "Other" || got.Traffic != 1 {
+		t.Fatalf("legacy route activity defaults = %#v", got)
+	}
+
+	unsafe := legacy
+	unsafe.LastKind = "<script>"
+	unsafe.Traffic = 1
+	state.routes[routeID] = &unsafe
+	if err := writeCheckpoint(path, state.nodes, state.routes); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(Options{Checkpoint: path, QueueSize: 64}); err == nil {
+		t.Fatal("checkpoint accepted an unsafe route kind")
+	}
+
+	unsafe.LastKind = "Control"
+	unsafe.Traffic = maxRouteTraffic + 1
+	state.routes[routeID] = &unsafe
+	if err := writeCheckpoint(path, state.nodes, state.routes); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(Options{Checkpoint: path, QueueSize: 64}); err == nil {
+		t.Fatal("checkpoint accepted out-of-range route traffic")
 	}
 }
 

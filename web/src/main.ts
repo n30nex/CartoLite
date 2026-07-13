@@ -4,6 +4,7 @@ import { fetchState, LiveFeed } from './api';
 import { LiveMap, type LiveMapFocus } from './map';
 import { PacketAnimator } from './packetAnimator';
 import { activityLabel, LiveStore } from './state';
+import { PACKET_KIND_COLORS, ROUTE_LEGEND_ITEMS } from './trafficVisuals';
 import type { EndpointV1, PacketV1 } from './types';
 
 const statusElement = required<HTMLElement>('status');
@@ -19,6 +20,7 @@ const legend = required<HTMLElement>('legend');
 const legendToggle = required<HTMLButtonElement>('legend-toggle');
 const focusChip = required<HTMLElement>('focus-chip');
 const focusText = required<HTMLElement>('focus-text');
+const routeLegend = required<HTMLElement>('route-legend');
 
 let legendExpanded = false;
 let lastTrafficPulseAt = -Infinity;
@@ -29,6 +31,8 @@ legendToggle.addEventListener('click', () => {
   legendToggle.setAttribute('aria-expanded', String(legendExpanded));
   legendToggle.setAttribute('aria-label', legendExpanded ? 'Hide map legend' : 'Show map legend');
 });
+
+renderRouteLegend(routeLegend);
 
 void start();
 
@@ -186,4 +190,26 @@ function wireLayerToggle(
     setVisible(visible);
     update();
   });
+}
+
+function renderRouteLegend(container: HTMLElement): void {
+  for (const item of ROUTE_LEGEND_ITEMS) {
+    const entry = document.createElement('span');
+    entry.className = 'route-legend-item';
+    entry.setAttribute('aria-label', item.accessibleLabel);
+    entry.title = item.accessibleLabel;
+
+    const swatch = document.createElement('i');
+    swatch.className = 'route-legend-swatch';
+    swatch.setAttribute('aria-hidden', 'true');
+    swatch.style.setProperty('--route-color', PACKET_KIND_COLORS[item.kind]);
+
+    const label = document.createElement('span');
+    label.className = 'route-legend-label';
+    label.dataset.short = item.shortLabel;
+    label.textContent = item.label;
+
+    entry.append(swatch, label);
+    container.append(entry);
+  }
 }

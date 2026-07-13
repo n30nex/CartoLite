@@ -49,8 +49,12 @@ type RouteV1 = {
   packetCount: number;
   lastHeard: number;
   intensity: 0 | 1 | 2 | 3 | 4;
+  lastKind: "Advert" | "Trace" | "Text" | "ACK" | "Control" | "Other";
+  traffic: number;
 };
 ```
+
+`lastKind` is the single sanitized kind from the newest packet observed on the route. `traffic` is a bounded activity score measured at `lastHeard`; clients decay it with a 15-minute half-life. It is not packet history or a per-kind counter. Routes older than 24 hours are omitted from the public snapshot.
 
 SSE event names are `hello`, `node`, `packet`, `status`, and `reset`; state-changing events carry the increasing sequence as `id`. `hello` deliberately has no SSE ID so a disconnect cannot skip its following replay. Packet events contain either ordered sanitized route segments or one observer point and a safe traffic kind. They never include message content.
 

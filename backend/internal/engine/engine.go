@@ -27,6 +27,9 @@ const (
 	maxRoutes               = 20_000
 	maxEdgeKM               = 150.0
 	nodeFreshnessEventEvery = time.Minute
+	routeTrafficHalfLife    = 15 * time.Minute
+	routeVisibilityWindow   = 24 * time.Hour
+	maxRouteTraffic         = 64.0
 )
 
 var sensitiveLabelPatterns = []*regexp.Regexp{
@@ -230,12 +233,13 @@ func (e *Engine) process(message mqtt.Message) bool {
 	if source == nil {
 		source = e.sourceNode(message.Topic.Region, packet)
 	}
-	segments, routed := e.resolveAndRecord(message, packet, source, observer)
+	payloadKind := meshcore.PayloadName(packet.PayloadType)
+	segments, routed := e.resolveAndRecord(message, packet, source, observer, payloadKind)
 	if routed {
-		e.emitPacket(message.HeardAt, meshcore.PayloadName(packet.PayloadType), segments, nil)
+		e.emitPacket(message.HeardAt, payloadKind, segments, nil)
 	} else if observer != nil && observer.HasCoords {
 		endpoint := endpointFor(observer)
-		e.emitPacket(message.HeardAt, meshcore.PayloadName(packet.PayloadType), nil, &endpoint)
+		e.emitPacket(message.HeardAt, payloadKind, nil, &endpoint)
 	}
 	return changed || observerChanged || routed
 }
@@ -301,7 +305,7 @@ func (e *Engine) sourceNode(region string, packet meshcore.Packet) *privateNode 
 	return positioned[0]
 }
 
-func (e *Engine) resolveAndRecord(message mqtt.Message, packet meshcore.Packet, source, observer *privateNode) ([]RouteSegmentV1, bool) {
+func (e *Engine) resolveAndRecord(message mqtt.Message, packet meshcore.Packet, source, observer *privateNode, payloadKind string) ([]RouteSegmentV1, bool) {
 	if packet.InvalidForMap || (message.RSSI == nil && message.SNR == nil) {
 		return nil, false
 	}
@@ -351,7 +355,7 @@ func (e *Engine) resolveAndRecord(message mqtt.Message, packet meshcore.Packet, 
 			e.routes[segment.RouteID] = route
 		}
 		route.PacketCount++
-		route.LastHeard = message.HeardAt
+		updateRouteActivity(route, message.HeardAt, payloadKind)
 	}
 	e.evictRoutes()
 	return segments, len(segments) > 0
@@ -434,6 +438,7 @@ func (e *Engine) emit(event Event) {
 }
 
 func (e *Engine) updateSnapshot(now time.Time) {
+	nowMillis := now.UnixMilli()
 	state := StateV1{
 		SchemaVersion: 1,
 		BootID:        e.bootID,
@@ -451,12 +456,24 @@ func (e *Engine) updateSnapshot(now time.Time) {
 	}
 	sort.Slice(state.Nodes, func(i, j int) bool { return state.Nodes[i].ID < state.Nodes[j].ID })
 	for _, route := range e.routes {
+		if !routeVisible(route.LastHeard, nowMillis) {
+			continue
+		}
 		from, fromOK := e.nodeIDs[route.FromID]
 		to, toOK := e.nodeIDs[route.ToID]
 		if !fromOK || !toOK || !from.HasCoords || !to.HasCoords {
 			continue
 		}
-		state.Routes = append(state.Routes, RouteV1{ID: route.ID, From: endpointFor(from), To: endpointFor(to), PacketCount: route.PacketCount, LastHeard: route.LastHeard, Intensity: intensity(route.PacketCount)})
+		state.Routes = append(state.Routes, RouteV1{
+			ID:          route.ID,
+			From:        endpointFor(from),
+			To:          endpointFor(to),
+			PacketCount: route.PacketCount,
+			LastHeard:   route.LastHeard,
+			Intensity:   intensity(route.PacketCount),
+			LastKind:    normalizeRouteKind(route.LastKind),
+			Traffic:     publicRouteTraffic(route),
+		})
 	}
 	sort.Slice(state.Routes, func(i, j int) bool { return state.Routes[i].ID < state.Routes[j].ID })
 	body, err := json.Marshal(state)
@@ -690,4 +707,63 @@ func intensity(count int64) int {
 	default:
 		return 0
 	}
+}
+
+func updateRouteActivity(route *privateRoute, at int64, kind string) {
+	kind = normalizeRouteKind(kind)
+	traffic := route.Traffic
+	if math.IsNaN(traffic) || math.IsInf(traffic, 0) || traffic < 0 {
+		traffic = 0
+	}
+	if route.LastHeard <= 0 {
+		route.LastHeard = at
+		route.LastKind = kind
+		route.Traffic = 1
+		return
+	}
+	if at >= route.LastHeard {
+		traffic *= routeTrafficDecay(at - route.LastHeard)
+		route.LastHeard = at
+		route.LastKind = kind
+		traffic++
+	} else {
+		traffic += routeTrafficDecay(route.LastHeard - at)
+	}
+	route.Traffic = math.Min(maxRouteTraffic, traffic)
+}
+
+func routeTrafficDecay(elapsedMillis int64) float64 {
+	if elapsedMillis <= 0 {
+		return 1
+	}
+	return math.Exp2(-float64(elapsedMillis) / float64(routeTrafficHalfLife.Milliseconds()))
+}
+
+func routeVisible(lastHeard, now int64) bool {
+	return lastHeard > 0 && now-lastHeard <= routeVisibilityWindow.Milliseconds()
+}
+
+func validRouteKind(kind string) bool {
+	switch kind {
+	case "Advert", "Trace", "Text", "ACK", "Control", "Other":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeRouteKind(kind string) string {
+	if validRouteKind(kind) {
+		return kind
+	}
+	return "Other"
+}
+
+func publicRouteTraffic(route *privateRoute) float64 {
+	traffic := route.Traffic
+	if traffic <= 0 && route.PacketCount > 0 {
+		traffic = 1
+	}
+	traffic = math.Max(0, math.Min(maxRouteTraffic, traffic))
+	return math.Round(traffic*1000) / 1000
 }

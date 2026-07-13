@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,11 +58,20 @@ func loadCheckpoint(path string) (map[string]*privateNode, map[string]*privateRo
 		if route == nil || route.ID == "" || route.FromID == "" || route.ToID == "" || route.PacketCount < 1 {
 			return nil, nil, fmt.Errorf("checkpoint contains an invalid route")
 		}
+		if (route.LastKind != "" && !validRouteKind(route.LastKind)) || math.IsNaN(route.Traffic) || math.IsInf(route.Traffic, 0) || route.Traffic < 0 || route.Traffic > maxRouteTraffic {
+			return nil, nil, fmt.Errorf("checkpoint contains unsafe route activity")
+		}
 		if _, ok := allowedNodeIDs[route.FromID]; !ok {
 			return nil, nil, fmt.Errorf("checkpoint route references a missing endpoint")
 		}
 		if _, ok := allowedNodeIDs[route.ToID]; !ok || route.ID != routePublicID(route.FromID, route.ToID) || routes[route.ID] != nil {
 			return nil, nil, fmt.Errorf("checkpoint contains an unsafe route")
+		}
+		if route.LastKind == "" {
+			route.LastKind = "Other"
+		}
+		if route.Traffic == 0 {
+			route.Traffic = 1
 		}
 		routes[route.ID] = route
 	}
