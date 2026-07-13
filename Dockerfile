@@ -7,7 +7,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM golang:1.25.12-bookworm AS go-build
+FROM golang:1.26.5-bookworm AS go-build
 ARG APP_VERSION=dev
 ARG GIT_SHA=unknown
 ARG BUILD_TIME=unknown
