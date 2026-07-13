@@ -78,14 +78,19 @@ test('keeps a recent packet trail after stable routes are hidden', async ({ page
   };
 
   await page.route('**/api/state', (route) => route.fulfill({ json: state }));
-  await page.route('**/api/events', (route) => route.fulfill({
-    status: 200,
-    contentType: 'text/event-stream',
-    body: `retry: 60000\n\nevent: hello\ndata: ${JSON.stringify({ seq: 0, bootId: state.bootId })}\n\nid: 1\nevent: packet\ndata: ${JSON.stringify(packet)}\n\n`
-  }));
+  let eventStreamRequested = false;
+  await page.route('**/api/events**', (route) => {
+    eventStreamRequested = true;
+    return route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: `retry: 60000\n\nevent: hello\ndata: ${JSON.stringify({ seq: 0, bootId: state.bootId })}\n\nid: 1\nevent: packet\ndata: ${JSON.stringify(packet)}\n\n`
+    });
+  });
 
   await page.goto('/');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
+  await expect.poll(() => eventStreamRequested, { message: 'mock event stream should receive the query-bearing SSE request' }).toBe(true);
   await page.locator('#routes-button').click();
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
   const packetCanvas = page.locator('#packet-canvas');
