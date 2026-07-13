@@ -180,6 +180,31 @@ func TestCheckpointRoundTripAndCorruptFailure(t *testing.T) {
 	}
 }
 
+func TestCheckpointRoundTripWithTruncatedLabel(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state-v1.json")
+	state, err := New(Options{Checkpoint: path, QueueSize: 64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := strings.Repeat("Z", 17) + " trailing"
+	node, _ := state.upsertNode("YKF", "AA112233", name, "repeater", false, 43.4, -80.4, true, time.Now().UnixMilli())
+	if err := writeCheckpoint(path, state.nodes, state.routes); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := New(Options{Checkpoint: path, QueueSize: 64})
+	if err != nil {
+		t.Fatalf("checkpoint with truncated label did not restore: %v", err)
+	}
+	restoredNode := restored.nodes[nodeMapKey("YKF", "AA112233")]
+	if restoredNode == nil {
+		t.Fatal("checkpoint did not restore the node")
+	}
+	if restoredNode.Label != node.Label {
+		t.Fatalf("restored label = %q, want %q", restoredNode.Label, node.Label)
+	}
+}
+
 func TestCheckpointPreflightRejectsUnusableParent(t *testing.T) {
 	parent := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(parent, []byte("occupied"), 0o600); err != nil {
@@ -219,6 +244,17 @@ func TestSanitizeLabel(t *testing.T) {
 	}
 	if got := sanitizeLabel("Cafe Radio", "repeater", false); got != "Cafe Radio" {
 		t.Fatalf("ordinary label was over-redacted: %q", got)
+	}
+}
+
+func TestSanitizeLabelTruncationIsIdempotent(t *testing.T) {
+	want := strings.Repeat("Z", 17)
+	got := sanitizeLabel(want+" trailing", "repeater", false)
+	if got != want {
+		t.Fatalf("truncated label = %q, want %q", got, want)
+	}
+	if next := sanitizeLabel(got, "repeater", false); next != got {
+		t.Fatalf("sanitizeLabel is not idempotent: first %q, second %q", got, next)
 	}
 }
 
