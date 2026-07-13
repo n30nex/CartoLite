@@ -1,17 +1,32 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles.css';
 import { fetchState, LiveFeed } from './api';
-import { LiveMap } from './map';
+import { LiveMap, type LiveMapFocus } from './map';
 import { PacketAnimator } from './packetAnimator';
 import { activityLabel, LiveStore } from './state';
 import type { EndpointV1, PacketV1 } from './types';
 
 const statusElement = required<HTMLElement>('status');
 const statusText = required<HTMLElement>('status-text');
+const topbar = required<HTMLElement>('topbar');
 const fatal = required<HTMLElement>('fatal');
 const followButton = required<HTMLButtonElement>('follow-button');
 const routesButton = required<HTMLButtonElement>('routes-button');
 const resetButton = required<HTMLButtonElement>('reset-button');
+const legend = required<HTMLElement>('legend');
+const legendToggle = required<HTMLButtonElement>('legend-toggle');
+const focusChip = required<HTMLElement>('focus-chip');
+const focusText = required<HTMLElement>('focus-text');
+
+let legendExpanded = false;
+let lastTrafficPulseAt = -Infinity;
+
+legendToggle.addEventListener('click', () => {
+  legendExpanded = !legendExpanded;
+  legend.dataset.collapsed = String(!legendExpanded);
+  legendToggle.setAttribute('aria-expanded', String(legendExpanded));
+  legendToggle.setAttribute('aria-label', legendExpanded ? 'Hide map legend' : 'Show map legend');
+});
 
 void start();
 
@@ -23,8 +38,12 @@ async function start(): Promise<void> {
   try {
     // Construct MapLibre before the state request so the basemap can paint while
     // the initial snapshot is in flight.
-    const liveMap = new LiveMap(required<HTMLElement>('map'), required<HTMLElement>('tooltip'));
+    const liveMap = new LiveMap(required<HTMLElement>('map'), required<HTMLElement>('tooltip'), {
+      onFocusChange: updateFocusChrome
+    });
+    mapView = liveMap;
     const liveAnimator = new PacketAnimator(liveMap.map, required<HTMLCanvasElement>('packet-canvas'));
+    animator = liveAnimator;
     let routesVisible = true;
     const updateRoutesButton = (): void => {
       routesButton.setAttribute('aria-pressed', String(routesVisible));
@@ -37,8 +56,6 @@ async function start(): Promise<void> {
       updateRoutesButton();
     });
     updateRoutesButton();
-    mapView = liveMap;
-    animator = liveAnimator;
     document.addEventListener('visibilitychange', () => animator?.setPaused(document.hidden));
     window.addEventListener('beforeunload', () => {
       feed?.stop();
@@ -52,6 +69,15 @@ async function start(): Promise<void> {
     store = liveStore;
     let streamConnected = false;
     let liveFollow = false;
+
+    const setLiveFollow = (enabled: boolean): void => {
+      liveFollow = enabled;
+      followButton.setAttribute('aria-pressed', String(enabled));
+      followButton.classList.toggle('selected', enabled);
+      followButton.title = enabled ? 'Stop following live packets' : 'Follow live packets';
+    };
+
+    liveMap.map.on('dragstart', () => setLiveFollow(false));
 
     const updateStatus = (): void => {
       const display = activityLabel(liveStore.snapshot, streamConnected);
@@ -77,6 +103,7 @@ async function start(): Promise<void> {
       onPacket(event) {
         liveStore.applyPacket(event);
         liveAnimator.add(event);
+        pulseTrafficChrome();
         if (liveFollow) liveMap.follow(packetDestination(event));
       },
       onStatus(event) {
@@ -95,17 +122,43 @@ async function start(): Promise<void> {
     liveFeed.start();
 
     followButton.addEventListener('click', () => {
-      liveFollow = !liveFollow;
-      followButton.setAttribute('aria-pressed', String(liveFollow));
-      followButton.classList.toggle('selected', liveFollow);
+      setLiveFollow(!liveFollow);
     });
-    resetButton.addEventListener('click', () => liveMap.reset(liveStore.snapshot.map.center, liveStore.snapshot.map.zoom));
+    resetButton.addEventListener('click', () => {
+      setLiveFollow(false);
+      liveMap.reset(liveStore.snapshot.map.center, liveStore.snapshot.map.zoom);
+    });
   } catch (error) {
+    feed?.stop();
+    store?.destroy();
+    animator?.destroy();
+    mapView?.destroy();
     statusElement.dataset.state = 'offline';
     statusText.textContent = 'Unavailable';
     fatal.textContent = error instanceof Error ? error.message : 'CartoLite could not start';
     fatal.hidden = false;
   }
+}
+
+function updateFocusChrome(focus: LiveMapFocus | null): void {
+  legend.dataset.focused = String(Boolean(focus));
+  focusChip.hidden = !focus;
+  if (!focus) {
+    focusText.textContent = '';
+    legend.setAttribute('aria-label', 'Map legend');
+    return;
+  }
+  const neighbors = `${focus.neighborCount} ${focus.neighborCount === 1 ? 'neighbor' : 'neighbors'}`;
+  focusText.textContent = `${focus.label} · ${neighbors}`;
+  legend.setAttribute('aria-label', `Selected node: ${focus.label}, ${neighbors}`);
+}
+
+function pulseTrafficChrome(): void {
+  const now = performance.now();
+  if (now - lastTrafficPulseAt < 1_000) return;
+  lastTrafficPulseAt = now;
+  topbar.classList.add('traffic-pulse');
+  window.setTimeout(() => topbar.classList.remove('traffic-pulse'), 720);
 }
 
 function packetDestination(packet: PacketV1): EndpointV1 {

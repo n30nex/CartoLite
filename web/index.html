@@ -10,8 +10,9 @@
   <body>
     <main id="app" aria-label="CartoLite live map">
       <div id="map" aria-label="Live MeshCore route map"></div>
+      <div class="map-grade" aria-hidden="true"></div>
       <canvas id="packet-canvas" aria-hidden="true"></canvas>
-      <section class="topbar glass" aria-label="Live status">
+      <section id="topbar" class="topbar glass" aria-label="Live status">
         <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>CartoLite</span></div>
         <div id="status" class="status" data-state="loading" role="status">
           <span class="status-dot" aria-hidden="true"></span><span id="status-text">Starting…</span>
@@ -31,11 +32,19 @@
         </button>
         <button id="reset-button" class="control-button icon-button" type="button" title="Reset map view" aria-label="Reset map view">⌂</button>
       </section>
-      <section class="legend glass" aria-label="Map legend">
-        <span><i class="node repeater"></i>Repeater</span>
-        <span><i class="node companion"></i>Companion</span>
-        <span><i class="node room"></i>Room</span>
-        <span><i class="route"></i>RF route</span>
+      <section id="legend" class="legend glass" aria-label="Map legend" data-collapsed="true" data-focused="false">
+        <button id="legend-toggle" class="legend-toggle" type="button" aria-label="Show map legend" aria-controls="legend-items" aria-expanded="false">
+          <span class="legend-toggle-mark" aria-hidden="true">i</span>
+        </button>
+        <div id="legend-items" class="legend-items">
+          <span><i class="node repeater"></i>Repeater</span>
+          <span><i class="node companion"></i>Companion</span>
+          <span><i class="node room"></i>Room</span>
+          <span><i class="route"></i>RF route</span>
+        </div>
+        <div id="focus-chip" class="focus-chip" role="status" aria-live="polite" aria-atomic="true" hidden>
+          <i aria-hidden="true"></i><span id="focus-text"></span>
+        </div>
       </section>
       <div id="tooltip" class="tooltip glass" role="tooltip" hidden></div>
       <div id="fatal" class="fatal glass" role="alert" hidden></div>

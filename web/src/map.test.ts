@@ -2,17 +2,36 @@ import { describe, expect, it, vi } from 'vitest';
 import type { RouteV1 } from './types';
 import { NEIGHBOR_ROUTE_RECENT_MS, recentNeighborRoutes } from './routeFocus';
 import {
+  applyClusterHighlightFilter,
+  applyNodeFocus,
+  applyNeighborRingVisibility,
+  applyRouteHoverFilter,
   applyRouteHitLayerVisibility,
   applyRouteLayerVisibility,
   applyRouteSelectionFilter,
   applySelectedNodeFilter,
+  canMoveLiveFollow,
+  CLUSTER_HIGHLIGHT_LAYER_ID,
   darkStyle,
+  isRouteInspectable,
+  isPointInSafeArea,
+  labelSortKey,
+  LIVE_FOLLOW_MIN_INTERVAL_MS,
+  neighborNodeIDs,
+  NEIGHBOR_NODE_LAYER_ID,
+  NODE_HIT_LAYER_ID,
   neighborRouteFilter,
+  nodeIDFilter,
+  nodeLabelPriority,
   ROUTE_FILTER_LAYER_IDS,
+  ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
   ROUTE_LAYER_IDS,
+  routeVisualProperties,
+  SELECTED_NODE_OUTER_LAYER_ID,
   SELECTED_NODE_LAYER_ID,
-  selectedNodeFilter
+  selectedNodeFilter,
+  tooltipPosition
 } from './map';
 
 describe('darkStyle', () => {
@@ -61,6 +80,21 @@ describe('route layer visibility', () => {
       [ROUTE_HIT_LAYER_ID, 'visibility', 'none']
     ]);
   });
+
+  it('keeps recent-neighbor rings in lockstep with the Routes toggle', () => {
+    const setLayoutProperty = vi.fn();
+    const map = {
+      getLayer: vi.fn(() => ({})),
+      setLayoutProperty
+    } as unknown as Parameters<typeof applyNeighborRingVisibility>[0];
+
+    expect(applyNeighborRingVisibility(map, true)).toBe(true);
+    expect(applyNeighborRingVisibility(map, false)).toBe(true);
+    expect(setLayoutProperty.mock.calls).toEqual([
+      [NEIGHBOR_NODE_LAYER_ID, 'visibility', 'visible'],
+      [NEIGHBOR_NODE_LAYER_ID, 'visibility', 'none']
+    ]);
+  });
 });
 
 describe('node neighbor focus', () => {
@@ -88,7 +122,10 @@ describe('node neighbor focus', () => {
     } as unknown as Parameters<typeof applySelectedNodeFilter>[0];
 
     expect(applySelectedNodeFilter(present, 'node-b')).toBe(true);
-    expect(setFilter).toHaveBeenCalledWith(SELECTED_NODE_LAYER_ID, selectedNodeFilter('node-b'));
+    expect(setFilter.mock.calls).toEqual([
+      [SELECTED_NODE_OUTER_LAYER_ID, selectedNodeFilter('node-b')],
+      [SELECTED_NODE_LAYER_ID, selectedNodeFilter('node-b')]
+    ]);
 
     const missing = {
       getLayer: vi.fn(() => undefined),
@@ -109,6 +146,125 @@ describe('node neighbor focus', () => {
 
     expect(recentNeighborRoutes(routes, 'a', now).map((item) => item.id)).toEqual(['a-b', 'c-a']);
     expect(recentNeighborRoutes(routes, null, now)).toEqual([]);
+    expect(isRouteInspectable(routes, 'a', 'a-b', now)).toBe(true);
+    expect(isRouteInspectable(routes, 'a', 'a-d-stale', now)).toBe(false);
+    expect(isRouteInspectable(routes, 'a', 'b-c', now)).toBe(false);
+  });
+
+  it('deduplicates and sorts the neighbor node IDs without including the selected node', () => {
+    const now = 1_900_000_000_000;
+    const routes = [
+      route('a-c', 'a', 'c', now),
+      route('b-a', 'b', 'a', now),
+      route('a-b', 'a', 'b', now),
+      route('a-a', 'a', 'a', now)
+    ];
+
+    expect(neighborNodeIDs(routes, 'a')).toEqual(['b', 'c']);
+    expect(neighborNodeIDs(routes, null)).toEqual([]);
+  });
+
+  it('dims context nodes, limits labels and glow, and prioritizes the selected label', () => {
+    const setFilter = vi.fn();
+    const setPaintProperty = vi.fn();
+    const setLayoutProperty = vi.fn();
+    const map = {
+      getLayer: vi.fn(() => ({})),
+      setFilter,
+      setPaintProperty,
+      setLayoutProperty
+    } as unknown as Parameters<typeof applyNodeFocus>[0];
+
+    expect(applyNodeFocus(map, 'a', ['a', 'b'], ['b'])).toBe(true);
+    expect(setFilter).toHaveBeenCalledWith('nodes-glow', nodeIDFilter(['a', 'b']));
+    expect(setFilter).toHaveBeenCalledWith(NEIGHBOR_NODE_LAYER_ID, nodeIDFilter(['b']));
+    expect(setFilter).toHaveBeenCalledWith('node-labels', nodeIDFilter(['a', 'b']));
+    expect(setLayoutProperty).toHaveBeenCalledWith('node-labels', 'symbol-sort-key', labelSortKey('a', ['b']));
+    expect(setPaintProperty).toHaveBeenCalledWith('nodes', 'circle-opacity', expect.any(Array));
+    expect(setPaintProperty).toHaveBeenCalledWith('node-core', 'circle-opacity', expect.any(Array));
+  });
+
+  it('adds and clears the filtered route spotlight without touching source data', () => {
+    const setFilter = vi.fn();
+    const setLayoutProperty = vi.fn();
+    const map = {
+      getLayer: vi.fn(() => ({})),
+      setFilter,
+      setLayoutProperty
+    } as unknown as Parameters<typeof applyRouteHoverFilter>[0];
+
+    expect(applyRouteHoverFilter(map, 'route-a')).toBe(true);
+    expect(setFilter.mock.calls).toEqual(ROUTE_HOVER_LAYER_IDS.map((layerID) => [layerID, ['==', ['get', 'id'], 'route-a']]));
+    expect(setLayoutProperty.mock.calls).toEqual(ROUTE_HOVER_LAYER_IDS.map((layerID) => [layerID, 'visibility', 'visible']));
+
+    setFilter.mockClear();
+    setLayoutProperty.mockClear();
+    applyRouteHoverFilter(map, null);
+    expect(setLayoutProperty.mock.calls).toEqual(ROUTE_HOVER_LAYER_IDS.map((layerID) => [layerID, 'visibility', 'none']));
+  });
+
+  it('targets one cluster for hover polish and clears it with an impossible ID', () => {
+    const setFilter = vi.fn();
+    const map = {
+      getLayer: vi.fn(() => ({})),
+      setFilter
+    } as unknown as Parameters<typeof applyClusterHighlightFilter>[0];
+
+    expect(applyClusterHighlightFilter(map, 42)).toBe(true);
+    expect(applyClusterHighlightFilter(map, null)).toBe(true);
+    expect(setFilter.mock.calls).toEqual([
+      [CLUSTER_HIGHLIGHT_LAYER_ID, ['==', ['get', 'cluster_id'], 42]],
+      [CLUSTER_HIGHLIGHT_LAYER_ID, ['==', ['get', 'cluster_id'], -1]]
+    ]);
+  });
+});
+
+describe('visual hierarchy and soft follow', () => {
+  it('keeps tooltips inside the viewport near every edge', () => {
+    const viewport = { width: 360, height: 640 };
+    const tooltip = { width: 180, height: 54 };
+    expect(tooltipPosition({ x: 2, y: 2 }, viewport, tooltip)).toEqual({ x: 98, y: 14 });
+    expect(tooltipPosition({ x: 358, y: 638 }, viewport, tooltip)).toEqual({ x: 262, y: 572 });
+  });
+
+  it('defines a dedicated enlarged node hit target', () => {
+    expect(NODE_HIT_LAYER_ID).toBe('node-hit');
+  });
+
+  it('keeps only the central 60 percent inside the safe area', () => {
+    const viewport = { width: 1_000, height: 500 };
+    expect(isPointInSafeArea({ x: 200, y: 100 }, viewport)).toBe(true);
+    expect(isPointInSafeArea({ x: 800, y: 400 }, viewport)).toBe(true);
+    expect(isPointInSafeArea({ x: 199, y: 250 }, viewport)).toBe(false);
+    expect(isPointInSafeArea({ x: 500, y: 401 }, viewport)).toBe(false);
+    expect(isPointInSafeArea({ x: 0, y: 0 }, { width: 0, height: 0 })).toBe(false);
+  });
+
+  it('throttles follow moves to one per 1.2 seconds', () => {
+    expect(canMoveLiveFollow(0, 100)).toBe(true);
+    expect(canMoveLiveFollow(10_000, 10_000 + LIVE_FOLLOW_MIN_INTERVAL_MS - 1)).toBe(false);
+    expect(canMoveLiveFollow(10_000, 10_000 + LIVE_FOLLOW_MIN_INTERVAL_MS)).toBe(true);
+  });
+
+  it('uses packet intensity for width while route age controls opacity', () => {
+    const now = 1_900_000_000_000;
+    const quiet = routeVisualProperties({ intensity: 0, lastHeard: now }, now);
+    const active = routeVisualProperties({ intensity: 4, lastHeard: now }, now);
+    const old = routeVisualProperties({ intensity: 4, lastHeard: now - 48 * 60 * 60_000 }, now);
+
+    expect(active.width).toBeGreaterThan(quiet.width);
+    expect(active.glowWidth).toBeGreaterThan(quiet.glowWidth);
+    expect(active.opacity).toBeGreaterThan(old.opacity);
+  });
+
+  it('prioritizes fresh observers and repeaters over stale leaf nodes', () => {
+    const now = 1_900_000_000_000;
+    const observer = nodeLabelPriority({ role: 'companion', observer: true, lastSeen: now }, now);
+    const repeater = nodeLabelPriority({ role: 'repeater', observer: false, lastSeen: now }, now);
+    const stale = nodeLabelPriority({ role: 'unknown', observer: false, lastSeen: now - 48 * 60 * 60_000 }, now);
+
+    expect(observer).toBeLessThan(repeater);
+    expect(repeater).toBeLessThan(stale);
   });
 });
 
