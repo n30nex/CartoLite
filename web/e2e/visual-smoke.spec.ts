@@ -4,6 +4,7 @@ import { NEIGHBOR_ROUTE_RECENT_MS } from '../src/routeFocus';
 import type { StateV1 } from '../src/types';
 
 test('renders the live route map and privacy-safe state', async ({ page }, testInfo) => {
+  const mapStyleErrors = captureMapStyleErrors(page);
   const stateResponse = page.waitForResponse((response) => response.url().endsWith('/api/state') && response.ok());
   await page.goto('/');
   const response = await stateResponse;
@@ -13,6 +14,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(page.locator('.map-grade')).toBeVisible();
   await expect(page.locator('.map-grade')).toHaveCSS('pointer-events', 'none');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
+  expect(mapStyleErrors, 'MapLibre should accept every installed layer expression').toEqual([]);
   await expect(page.locator('#packet-canvas')).toBeVisible();
   await expect(page.locator('#status-text')).not.toHaveText('Starting…');
   await expect(page.locator('.legend')).toContainText('RF route');
@@ -278,6 +280,15 @@ async function canvasHasPixels(canvas: Locator): Promise<boolean> {
     }
     return false;
   });
+}
+
+function captureMapStyleErrors(page: Page): string[] {
+  const errors: string[] = [];
+  page.on('console', (message) => {
+    const text = message.text();
+    if (message.type() === 'error' && text.includes('layers.') && text.includes('.paint.')) errors.push(text);
+  });
+  return errors;
 }
 
 interface ViewportBox {

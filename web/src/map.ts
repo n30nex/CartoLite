@@ -436,7 +436,12 @@ export class LiveMap {
         'text-halo-color': '#02070b',
         'text-halo-width': 1.35,
         'text-halo-blur': 0.3,
-        'text-opacity': ['*', ['get', 'opacity'], ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 0.42, 8.3, 0.82, 10, 1]]
+        'text-opacity': [
+          'interpolate', ['linear'], ['zoom'],
+          DETAIL_ZOOM, ['*', ['get', 'opacity'], 0.42],
+          8.3, ['*', ['get', 'opacity'], 0.82],
+          10, ['get', 'opacity']
+        ]
       }
     });
     this.map.addLayer({
@@ -937,16 +942,22 @@ export function prefersReducedMotion(): boolean {
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-function routeZoomOpacity(): ExpressionSpecification {
-  return ['interpolate', ['linear'], ['zoom'], 3, 0.1, 5, 0.24, 7, 0.58, 9, 1];
+function routeZoomOpacity(scale: number): ExpressionSpecification {
+  return [
+    'interpolate', ['linear'], ['zoom'],
+    3, ['*', ['get', 'opacity'], 0.1 * scale],
+    5, ['*', ['get', 'opacity'], 0.24 * scale],
+    7, ['*', ['get', 'opacity'], 0.58 * scale],
+    9, ['*', ['get', 'opacity'], scale]
+  ];
 }
 
 function routeGlowOpacity(focused: boolean): ExpressionSpecification {
-  return ['*', ['get', 'opacity'], routeZoomOpacity(), focused ? 0.52 : 0.16];
+  return routeZoomOpacity(focused ? 0.52 : 0.16);
 }
 
 function routeCoreOpacity(focused: boolean): ExpressionSpecification {
-  return ['*', ['get', 'opacity'], routeZoomOpacity(), focused ? 1 : 0.72];
+  return routeZoomOpacity(focused ? 1 : 0.72);
 }
 
 function routeGlowWidth(focused: boolean): ExpressionSpecification {
@@ -986,9 +997,17 @@ function nodeCoreOpacity(focused: boolean, focusIDs: readonly string[]): Express
 }
 
 function nodeGlowOpacity(focused: boolean, focusIDs: readonly string[]): ExpressionSpecification {
-  const zoomFade: ExpressionSpecification = ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 0.08, 9, 0.2, 13, 0.28];
-  if (!focused) return ['*', ['get', 'opacity'], zoomFade];
-  return ['case', focusMembership(focusIDs), ['*', ['get', 'opacity'], zoomFade, 1.35], 0];
+  const atZoom = (fade: number): ExpressionSpecification => (
+    focused
+      ? ['case', focusMembership(focusIDs), ['*', ['get', 'opacity'], fade * 1.35], 0]
+      : ['*', ['get', 'opacity'], fade]
+  );
+  return [
+    'interpolate', ['linear'], ['zoom'],
+    DETAIL_ZOOM, atZoom(0.08),
+    9, atZoom(0.2),
+    13, atZoom(0.28)
+  ];
 }
 
 export function darkStyle(): StyleSpecification {
