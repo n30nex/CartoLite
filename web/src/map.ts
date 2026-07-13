@@ -454,7 +454,11 @@ export class LiveMap {
     this.applyFocusState();
 
     this.map.on('mousemove', NODE_HIT_LAYER_ID, (event) => this.showNodeTooltip(event));
-    this.map.on('mouseleave', NODE_HIT_LAYER_ID, () => this.hideTooltip());
+    this.map.on('mouseleave', NODE_HIT_LAYER_ID, () => {
+      // Touch browsers can synthesize this after a route tap. Do not let a
+      // late node leave hide the route tooltip that has just replaced it.
+      if (this.tooltip.dataset.kind === 'node') this.hideTooltip();
+    });
     this.map.on('mousemove', ROUTE_HIT_LAYER_ID, (event) => this.showRouteTooltip(event));
     this.map.on('mouseleave', ROUTE_HIT_LAYER_ID, () => {
       this.map.getCanvas().style.cursor = '';
