@@ -44,6 +44,18 @@ func TestPublicRoutesAndPrivateBoundaries(t *testing.T) {
 	}
 }
 
+func TestSecurityHeadersAllowOnlyRequiredMapOrigins(t *testing.T) {
+	response := httptest.NewRecorder()
+	testHandler(t, true).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	csp := response.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "https://demotiles.maplibre.org") {
+		t.Fatalf("CSP does not allow the configured glyph origin: %q", csp)
+	}
+	if strings.Contains(csp, "https://fonts.openmaptiles.org") {
+		t.Fatalf("CSP still allows the retired glyph origin: %q", csp)
+	}
+}
+
 func TestSSERejectsCrossOrigin(t *testing.T) {
 	handler := testHandler(t, true)
 	request := httptest.NewRequest(http.MethodGet, "/api/events", nil)

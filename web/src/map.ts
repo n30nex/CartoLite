@@ -262,11 +262,11 @@ export class LiveMap {
   }
 }
 
-function darkStyle(): StyleSpecification {
+export function darkStyle(): StyleSpecification {
   return {
     version: 8,
     name: 'CartoLite Dark',
-    glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
+    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
     sources: {
       carto: {
         type: 'raster',
