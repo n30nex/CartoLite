@@ -18,10 +18,12 @@ export class LiveMap {
   private lastRoutes?: readonly RouteV1[];
   private lastState?: Readonly<StateV1>;
   private freshnessTimer: number;
+  private renderEpoch = 0;
 
-  constructor(container: HTMLElement, private readonly tooltip: HTMLElement) {
+  constructor(private readonly container: HTMLElement, private readonly tooltip: HTMLElement) {
+    this.container.dataset.renderState = 'loading';
     this.map = new maplibregl.Map({
-      container,
+      container: this.container,
       style: darkStyle(),
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
@@ -44,11 +46,13 @@ export class LiveMap {
     if (!state) return;
     this.lastState = state;
     if (!this.map.getSource('nodes')) return;
+    let changed = false;
     if (forceFreshness || state.nodes !== this.lastNodes) {
       const nodeSignature = signatureForNodes(state.nodes);
       if (forceFreshness || nodeSignature !== this.nodeSignature) {
         (this.map.getSource('nodes') as GeoJSONSource).setData(nodeCollection(state.nodes));
         this.nodeSignature = nodeSignature;
+        changed = true;
       }
       this.lastNodes = state.nodes;
     }
@@ -57,9 +61,11 @@ export class LiveMap {
       if (forceFreshness || routeSignature !== this.routeSignature) {
         (this.map.getSource('routes') as GeoJSONSource).setData(routeCollection(state.routes));
         this.routeSignature = routeSignature;
+        changed = true;
       }
       this.lastRoutes = state.routes;
     }
+    if (changed) this.markRendering();
   }
 
   reset(center: [number, number] = DEFAULT_CENTER, zoom = DEFAULT_ZOOM): void {
@@ -210,6 +216,14 @@ export class LiveMap {
       this.map.on('mouseleave', layer, () => { this.map.getCanvas().style.cursor = ''; });
     }
     this.render(this.lastState, true);
+  }
+
+  private markRendering(): void {
+    const epoch = ++this.renderEpoch;
+    this.container.dataset.renderState = 'rendering';
+    this.map.once('idle', () => {
+      if (epoch === this.renderEpoch) this.container.dataset.renderState = 'idle';
+    });
   }
 
   private async expandCluster(event: MapMouseEvent): Promise<void> {

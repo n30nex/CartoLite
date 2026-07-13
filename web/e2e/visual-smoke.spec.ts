@@ -7,6 +7,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   const state = await response.json() as Record<string, unknown>;
 
   await expect(page.locator('#map .maplibregl-canvas')).toBeVisible();
+  await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   await expect(page.locator('#packet-canvas')).toBeVisible();
   await expect(page.locator('#status-text')).not.toHaveText('Starting…');
   await expect(page.locator('.legend')).toContainText('RF route');

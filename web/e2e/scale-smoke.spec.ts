@@ -26,6 +26,7 @@ test('keeps a 2k-node / 5k-route first view responsive', async ({ page }, testIn
   await page.goto('/');
   await expect(page.locator('#status')).toHaveAttribute('title', '2000 nodes · 5000 routes', { timeout: 10_000 });
   await expect(page.locator('#map .maplibregl-canvas')).toBeVisible();
+  await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(Date.now() - started, 'large topology should hydrate inside the first-view budget').toBeLessThan(10_000);
 
   const eventLoopWindow = await page.evaluate(() => new Promise<number>((resolve) => {
