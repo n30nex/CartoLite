@@ -1,4 +1,9 @@
-import maplibregl, { type GeoJSONSource, type MapMouseEvent, type StyleSpecification } from 'maplibre-gl';
+import maplibregl, {
+  type ExpressionSpecification,
+  type GeoJSONSource,
+  type MapMouseEvent,
+  type StyleSpecification
+} from 'maplibre-gl';
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
 import type { EndpointV1, NodeV1, RouteV1, StateV1 } from './types';
@@ -6,15 +11,50 @@ import type { EndpointV1, NodeV1, RouteV1, StateV1 } from './types';
 export const DEFAULT_CENTER: [number, number] = [-80.35, 43.45];
 export const DEFAULT_ZOOM = 8.25;
 export const DETAIL_ZOOM = 7;
+export const LIVE_FOLLOW_SAFE_RATIO = 0.6;
+export const LIVE_FOLLOW_MIN_INTERVAL_MS = 1_200;
 
 const EMPTY_POINTS: FeatureCollection<Point> = { type: 'FeatureCollection', features: [] };
 const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', features: [] };
 export const ROUTE_LAYER_IDS = ['route-glow', 'routes'] as const;
 export const ROUTE_HIT_LAYER_ID = 'route-hit';
+export const NODE_HIT_LAYER_ID = 'node-hit';
 export const ROUTE_FILTER_LAYER_IDS = [...ROUTE_LAYER_IDS, ROUTE_HIT_LAYER_ID] as const;
 export const SELECTED_NODE_LAYER_ID = 'selected-node';
-const ROUTE_PALETTE = ['#1d8c86', '#26a69a', '#1687a0', '#d58fb0', '#dbc22c'] as const;
+export const SELECTED_NODE_OUTER_LAYER_ID = 'selected-node-outer';
+export const NEIGHBOR_NODE_LAYER_ID = 'neighbor-nodes';
+export const ROUTE_HOVER_LAYER_IDS = ['route-hover-glow', 'route-hover-core'] as const;
+export const CLUSTER_HIGHLIGHT_LAYER_ID = 'cluster-highlight';
+const NODE_GLOW_LAYER_ID = 'nodes-glow';
+const NODE_LAYER_ID = 'nodes';
+const NODE_CORE_LAYER_ID = 'node-core';
+const NODE_LABEL_LAYER_ID = 'node-labels';
+const NODE_BASE_FILTER = ['!', ['has', 'point_count']] as ActiveLayerFilter;
 const LOCAL_FONTS = ['Noto Sans', 'Segoe UI', 'Arial', 'Noto Color Emoji', 'Segoe UI Emoji', 'Apple Color Emoji'];
+
+export interface LiveMapFocus {
+  label: string;
+  neighborCount: number;
+}
+
+export interface LiveMapOptions {
+  onFocusChange?: (focus: LiveMapFocus | null) => void;
+}
+
+export interface ViewportPoint {
+  x: number;
+  y: number;
+}
+
+export interface ViewportSize {
+  width: number;
+  height: number;
+}
+
+export interface TooltipSize {
+  width: number;
+  height: number;
+}
 
 export class LiveMap {
   readonly map: maplibregl.Map;
@@ -26,14 +66,30 @@ export class LiveMap {
   private routesByID = new Map<string, RouteV1>();
   private routesVisible = true;
   private selectedNodeID: string | null = null;
+  private selectedNodeLabel = '';
+  private neighborNodeIDs: string[] = [];
+  private hoveredRouteID: string | null = null;
+  private routeInspectionPinned = false;
+  private highlightedClusterID: number | null = null;
+  private clusterFlashTimer?: number;
+  private tooltipSignature = '';
+  private tooltipSize: TooltipSize = { width: 0, height: 0 };
+  private lastFocusSignature: string | undefined;
+  private lastFollowMoveAt = 0;
+  private readonly reducedMotion = prefersReducedMotion();
   private freshnessTimer: number;
   private renderEpoch = 0;
 
-  constructor(private readonly container: HTMLElement, private readonly tooltip: HTMLElement) {
+  constructor(
+    private readonly container: HTMLElement,
+    private readonly tooltip: HTMLElement,
+    private readonly options: LiveMapOptions = {}
+  ) {
     this.container.dataset.renderState = 'loading';
     this.container.dataset.routesVisible = 'true';
     this.container.dataset.selectedNodeId = '';
     this.container.dataset.neighborRouteCount = '0';
+    this.container.dataset.hoveredRouteId = '';
     this.map = new maplibregl.Map({
       container: this.container,
       style: darkStyle(),
@@ -46,6 +102,7 @@ export class LiveMap {
       dragRotate: false,
       touchPitch: false,
       cooperativeGestures: false,
+      reduceMotion: this.reducedMotion,
       renderWorldCopies: false,
       maxBounds: [[-142, 38], [-48, 72]]
     });
@@ -71,6 +128,7 @@ export class LiveMap {
         changed = true;
       }
       this.lastNodes = state.nodes;
+      if (this.selectedNodeID) this.updateFocusData();
     }
     const routesChanged = forceFreshness || state.routes !== this.lastRoutes;
     if (routesChanged) {
@@ -82,17 +140,38 @@ export class LiveMap {
         changed = true;
       }
       this.lastRoutes = state.routes;
-      this.updateNeighborRouteCount();
+      this.updateFocusData();
+      if (this.hoveredRouteID && !isRouteInspectable(state.routes, this.selectedNodeID, this.hoveredRouteID)) {
+        this.clearRouteInspection();
+      }
+      if (this.selectedNodeID) this.applyFocusState();
     }
     if (changed) this.markRendering();
   }
 
   reset(center: [number, number] = DEFAULT_CENTER, zoom = DEFAULT_ZOOM): void {
-    this.map.easeTo({ center, zoom, bearing: 0, pitch: 0, duration: 700 });
+    this.lastFollowMoveAt = 0;
+    if (this.reducedMotion) {
+      this.map.jumpTo({ center, zoom, bearing: 0, pitch: 0 });
+      return;
+    }
+    this.map.easeTo({ center, zoom, bearing: 0, pitch: 0, duration: 520, essential: false });
   }
 
   follow(endpoint: EndpointV1): void {
-    this.map.easeTo({ center: [endpoint.lng, endpoint.lat], duration: 700, essential: true });
+    if (!validEndpoint(endpoint)) return;
+    const container = this.map.getContainer();
+    const point = this.map.project([endpoint.lng, endpoint.lat]);
+    if (isPointInSafeArea(point, { width: container.clientWidth, height: container.clientHeight })) return;
+    const now = Date.now();
+    if (!canMoveLiveFollow(this.lastFollowMoveAt, now)) return;
+    this.lastFollowMoveAt = now;
+    const center: [number, number] = [endpoint.lng, endpoint.lat];
+    if (this.reducedMotion) {
+      this.map.jumpTo({ center });
+      return;
+    }
+    this.map.easeTo({ center, duration: 450, essential: false });
   }
 
   setRoutesVisible(visible: boolean): void {
@@ -100,13 +179,15 @@ export class LiveMap {
     this.container.dataset.routesVisible = String(visible);
     const stableApplied = applyRouteLayerVisibility(this.map, visible);
     const hitApplied = applyRouteHitLayerVisibility(this.map, visible && this.selectedNodeID !== null);
-    if (!visible && this.tooltip.dataset.kind === 'route') this.hideTooltip();
+    const neighborsApplied = applyNeighborRingVisibility(this.map, visible && this.selectedNodeID !== null);
+    if (!visible) this.clearRouteInspection();
     if (!visible) this.map.getCanvas().style.cursor = '';
-    if (stableApplied || hitApplied) this.markRendering();
+    if (stableApplied || hitApplied || neighborsApplied) this.markRendering();
   }
 
   destroy(): void {
     window.clearInterval(this.freshnessTimer);
+    if (this.clusterFlashTimer !== undefined) window.clearTimeout(this.clusterFlashTimer);
     this.map.remove();
   }
 
@@ -117,10 +198,10 @@ export class LiveMap {
       type: 'line',
       source: 'routes',
       paint: {
-        'line-color': ['get', 'color'],
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.2, 8, ['get', 'glowWidth'], 13, ['*', ['get', 'glowWidth'], 1.35]],
-        'line-opacity': ['*', ['get', 'opacity'], 0.2],
-        'line-blur': 3
+        'line-color': '#1ca69d',
+        'line-width': routeGlowWidth(false),
+        'line-opacity': routeGlowOpacity(false),
+        'line-blur': 2.6
       }
     });
     this.map.addLayer({
@@ -129,9 +210,34 @@ export class LiveMap {
       source: 'routes',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': ['get', 'color'],
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.55, 8, ['get', 'width'], 13, ['*', ['get', 'width'], 1.2]],
-        'line-opacity': ['get', 'opacity']
+        'line-color': '#238f89',
+        'line-width': routeCoreWidth(false),
+        'line-opacity': routeCoreOpacity(false)
+      }
+    });
+    this.map.addLayer({
+      id: ROUTE_HOVER_LAYER_IDS[0],
+      type: 'line',
+      source: 'routes',
+      filter: routeIDFilter(null),
+      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+      paint: {
+        'line-color': '#52e4d5',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, ['*', ['get', 'glowWidth'], 1.8], 14, ['*', ['get', 'glowWidth'], 2.15]],
+        'line-opacity': 0.62,
+        'line-blur': 4.2
+      }
+    });
+    this.map.addLayer({
+      id: ROUTE_HOVER_LAYER_IDS[1],
+      type: 'line',
+      source: 'routes',
+      filter: routeIDFilter(null),
+      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+      paint: {
+        'line-color': '#eafffc',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.1, 8, ['*', ['get', 'width'], 1.28], 14, ['*', ['get', 'width'], 1.65]],
+        'line-opacity': 0.96
       }
     });
     this.map.addLayer({
@@ -146,8 +252,10 @@ export class LiveMap {
       }
     });
     applyRouteSelectionFilter(this.map, this.selectedNodeID);
+    applyRouteFocusAppearance(this.map, this.selectedNodeID !== null);
     applyRouteLayerVisibility(this.map, this.routesVisible);
     applyRouteHitLayerVisibility(this.map, this.routesVisible && this.selectedNodeID !== null);
+    applyRouteHoverFilter(this.map, null);
 
     this.map.addSource('nodes', {
       type: 'geojson',
@@ -164,10 +272,10 @@ export class LiveMap {
       maxzoom: DETAIL_ZOOM,
       filter: ['has', 'point_count'],
       paint: {
-        'circle-color': '#27a69a',
-        'circle-radius': ['step', ['get', 'point_count'], 15, 20, 19, 100, 24],
-        'circle-opacity': 0.16,
-        'circle-blur': 0.5
+        'circle-color': '#32c8bb',
+        'circle-radius': ['interpolate', ['linear'], ['get', 'point_count'], 2, 13, 20, 18, 100, 23, 500, 28],
+        'circle-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.1, 5.5, 0.18, DETAIL_ZOOM, 0.04],
+        'circle-blur': 0.64
       }
     });
     this.map.addLayer({
@@ -177,10 +285,26 @@ export class LiveMap {
       maxzoom: DETAIL_ZOOM,
       filter: ['has', 'point_count'],
       paint: {
-        'circle-color': '#092b30',
-        'circle-stroke-color': '#3ec7bb',
-        'circle-stroke-width': 1.2,
-        'circle-radius': ['step', ['get', 'point_count'], 9, 20, 12, 100, 16]
+        'circle-color': '#08272c',
+        'circle-stroke-color': '#48d5c7',
+        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 3, 0.8, DETAIL_ZOOM, 1.35],
+        'circle-radius': ['interpolate', ['linear'], ['get', 'point_count'], 2, 8, 20, 11, 100, 14.5, 500, 18],
+        'circle-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.84, 6.2, 0.98, DETAIL_ZOOM, 0.5]
+      }
+    });
+    this.map.addLayer({
+      id: CLUSTER_HIGHLIGHT_LAYER_ID,
+      type: 'circle',
+      source: 'nodes',
+      maxzoom: DETAIL_ZOOM,
+      filter: clusterIDFilter(null),
+      paint: {
+        'circle-color': 'rgba(0,0,0,0)',
+        'circle-radius': ['interpolate', ['linear'], ['get', 'point_count'], 2, 12, 20, 15, 100, 19, 500, 23],
+        'circle-stroke-color': '#dffffb',
+        'circle-stroke-width': 2,
+        'circle-stroke-opacity': 0.9,
+        'circle-blur': 0.2
       }
     });
     this.map.addLayer({
@@ -192,85 +316,168 @@ export class LiveMap {
       layout: {
         'text-field': ['get', 'point_count_abbreviated'],
         'text-font': LOCAL_FONTS,
-        'text-size': 10
+        'text-size': ['interpolate', ['linear'], ['zoom'], 3, 8.5, DETAIL_ZOOM, 10.5]
       },
-      paint: { 'text-color': '#d9fffb' }
+      paint: {
+        'text-color': '#e5fffc',
+        'text-halo-color': '#061216',
+        'text-halo-width': 1
+      }
     });
     this.map.addLayer({
-      id: 'observer-rings',
+      id: NODE_GLOW_LAYER_ID,
       type: 'circle',
       source: 'nodes',
-      minzoom: DETAIL_ZOOM,
-      filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'observer'], true]],
+      minzoom: DETAIL_ZOOM - 0.15,
+      filter: NODE_BASE_FILTER,
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 6, 12, 10],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 8, 10, 11, 14, 15],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': nodeGlowOpacity(false, []),
+        'circle-blur': 0.72
+      }
+    });
+    this.map.addLayer({
+      id: NEIGHBOR_NODE_LAYER_ID,
+      type: 'circle',
+      source: 'nodes',
+      minzoom: DETAIL_ZOOM - 0.15,
+      filter: nodeIDFilter([]),
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 7.5, 10, 10.5, 14, 14],
         'circle-color': 'rgba(0,0,0,0)',
-        'circle-stroke-color': '#f1b548',
-        'circle-stroke-width': 1.8,
-        'circle-opacity': ['get', 'opacity']
+        'circle-stroke-color': '#f3b844',
+        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 1.2, 12, 2.1],
+        'circle-stroke-opacity': ['*', ['get', 'opacity'], 0.94]
+      }
+    });
+    this.map.addLayer({
+      id: SELECTED_NODE_OUTER_LAYER_ID,
+      type: 'circle',
+      source: 'nodes',
+      minzoom: DETAIL_ZOOM - 0.15,
+      filter: selectedNodeFilter(this.selectedNodeID),
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 10, 10, 14, 14, 18],
+        'circle-color': 'rgba(0,0,0,0)',
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 1.1,
+        'circle-stroke-opacity': 0.48,
+        'circle-blur': 0.45
       }
     });
     this.map.addLayer({
       id: SELECTED_NODE_LAYER_ID,
       type: 'circle',
       source: 'nodes',
-      minzoom: DETAIL_ZOOM,
+      minzoom: DETAIL_ZOOM - 0.15,
       filter: selectedNodeFilter(this.selectedNodeID),
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 7, 12, 11],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 7.2, 10, 10.2, 14, 13.5],
         'circle-color': 'rgba(0,0,0,0)',
-        'circle-stroke-color': '#dffffb',
+        'circle-stroke-color': '#ffffff',
         'circle-stroke-width': 2.2,
-        'circle-stroke-opacity': ['get', 'opacity']
+        'circle-stroke-opacity': 0.96
       }
     });
     this.map.addLayer({
-      id: 'nodes',
+      id: NODE_LAYER_ID,
       type: 'circle',
       source: 'nodes',
-      minzoom: DETAIL_ZOOM,
-      filter: ['!', ['has', 'point_count']],
+      minzoom: DETAIL_ZOOM - 0.15,
+      filter: NODE_BASE_FILTER,
+      layout: {
+        'circle-sort-key': ['-', 100, ['get', 'labelPriority']]
+      },
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 3.5, 12, 6.5],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 3.6, 9, 4.6, 12, 6.4, 16, 7.6],
         'circle-color': ['get', 'color'],
-        'circle-stroke-color': '#dffeff',
-        'circle-stroke-width': ['case', ['get', 'observer'], 1.5, 0.8],
-        'circle-opacity': ['get', 'opacity']
+        'circle-stroke-color': ['case', ['get', 'observer'], '#f5cf76', '#bce9e5'],
+        'circle-stroke-width': ['case', ['get', 'observer'], 1.6, 0.9],
+        'circle-opacity': nodeOpacity(false, [])
       }
     });
     this.map.addLayer({
-      id: 'node-labels',
+      id: NODE_CORE_LAYER_ID,
+      type: 'circle',
+      source: 'nodes',
+      minzoom: DETAIL_ZOOM - 0.15,
+      filter: NODE_BASE_FILTER,
+      layout: {
+        'circle-sort-key': ['-', 100, ['get', 'labelPriority']]
+      },
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 1.15, 10, 1.65, 14, 2.35],
+        'circle-color': '#edfffd',
+        'circle-opacity': nodeCoreOpacity(false, [])
+      }
+    });
+    this.map.addLayer({
+      id: NODE_LABEL_LAYER_ID,
       type: 'symbol',
       source: 'nodes',
-      minzoom: DETAIL_ZOOM,
-      filter: ['!', ['has', 'point_count']],
+      minzoom: DETAIL_ZOOM - 0.05,
+      filter: NODE_BASE_FILTER,
       layout: {
         'text-field': ['get', 'label'],
         'text-font': LOCAL_FONTS,
-        'text-size': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 9, 11, 11.5],
-        'text-offset': [0, 1.05],
-        'text-anchor': 'top',
-        'text-allow-overlap': true,
-        'text-ignore-placement': true
+        'text-size': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 8.6, 9, 9.8, 12, 11.2, 16, 12.4],
+        'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
+        'text-radial-offset': 0.82,
+        'text-justify': 'auto',
+        'text-padding': 3,
+        'text-max-width': 12,
+        'symbol-sort-key': ['get', 'labelPriority'],
+        'text-allow-overlap': false,
+        'text-ignore-placement': false
       },
       paint: {
-        'text-color': ['case', ['get', 'observer'], '#f5d57d', '#b9c8df'],
+        'text-color': ['case', ['get', 'observer'], '#f6d77f', '#d2e0ef'],
         'text-halo-color': '#02070b',
-        'text-halo-width': 1.5,
-        'text-opacity': ['get', 'opacity']
+        'text-halo-width': 1.35,
+        'text-halo-blur': 0.3,
+        'text-opacity': ['*', ['get', 'opacity'], ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 0.42, 8.3, 0.82, 10, 1]]
+      }
+    });
+    this.map.addLayer({
+      id: NODE_HIT_LAYER_ID,
+      type: 'circle',
+      source: 'nodes',
+      minzoom: DETAIL_ZOOM - 0.15,
+      filter: NODE_BASE_FILTER,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 18, 10, 20, 14, 22],
+        'circle-color': '#ffffff',
+        'circle-opacity': 0.001
       }
     });
 
-    this.map.on('mousemove', 'nodes', (event) => this.showNodeTooltip(event));
-    this.map.on('mouseleave', 'nodes', () => this.hideTooltip());
-    this.map.on('mousemove', ROUTE_HIT_LAYER_ID, (event) => this.showRouteTooltip(event));
+    this.applyFocusState();
+
+    this.map.on('mousemove', NODE_HIT_LAYER_ID, (event) => this.showNodeTooltip(event));
+    this.map.on('mouseleave', NODE_HIT_LAYER_ID, () => {
+      // Touch browsers can synthesize this after a route tap. Do not let a
+      // late node leave hide the route tooltip that has just replaced it.
+      if (this.tooltip.dataset.kind === 'node') this.hideTooltip();
+    });
+    this.map.on('mousemove', ROUTE_HIT_LAYER_ID, (event) => {
+      if (!this.routeInspectionPinned) this.showRouteTooltip(event);
+    });
     this.map.on('mouseleave', ROUTE_HIT_LAYER_ID, () => {
       this.map.getCanvas().style.cursor = '';
-      if (this.tooltip.dataset.kind === 'route') this.hideTooltip();
+      if (!this.routeInspectionPinned) this.clearRouteInspection();
+    });
+    this.map.on('mousemove', 'clusters', (event) => this.highlightCluster(event));
+    this.map.on('mouseleave', 'clusters', () => {
+      if (this.clusterFlashTimer === undefined) this.setHighlightedCluster(null);
     });
     this.map.on('click', (event) => this.handleMapClick(event));
-    this.map.on('movestart', () => this.hideTooltip());
-    for (const layer of ['nodes', 'clusters']) {
+    this.map.on('movestart', () => {
+      this.hideTooltip();
+      this.clearRouteInspection();
+      if (this.clusterFlashTimer === undefined) this.setHighlightedCluster(null);
+    });
+    for (const layer of [NODE_HIT_LAYER_ID, 'clusters']) {
       this.map.on('mouseenter', layer, () => { this.map.getCanvas().style.cursor = 'pointer'; });
       this.map.on('mouseleave', layer, () => { this.map.getCanvas().style.cursor = ''; });
     }
@@ -290,16 +497,22 @@ export class LiveMap {
     const feature = this.map.queryRenderedFeatures(event.point, { layers: ['clusters'] })[0];
     const clusterId = Number(feature?.properties?.cluster_id);
     if (!Number.isFinite(clusterId)) return;
+    this.flashCluster(clusterId);
     const source = this.map.getSource('nodes') as GeoJSONSource;
     const zoom = await source.getClusterExpansionZoom(clusterId);
     const coordinates = feature?.geometry.type === 'Point' ? feature.geometry.coordinates : undefined;
     if (coordinates && typeof coordinates[0] === 'number' && typeof coordinates[1] === 'number') {
-      this.map.easeTo({ center: { lng: coordinates[0], lat: coordinates[1] }, zoom, duration: 500 });
+      const center: [number, number] = [coordinates[0], coordinates[1]];
+      if (this.reducedMotion) {
+        this.map.jumpTo({ center, zoom });
+      } else {
+        this.map.easeTo({ center, zoom, duration: 460, essential: false });
+      }
     }
   }
 
   private handleMapClick(event: MapMouseEvent): void {
-    if (this.map.queryRenderedFeatures(event.point, { layers: ['nodes'] }).length > 0) {
+    if (this.map.queryRenderedFeatures(event.point, { layers: [NODE_HIT_LAYER_ID] }).length > 0) {
       this.selectNode(event);
       return;
     }
@@ -308,15 +521,17 @@ export class LiveMap {
       void this.expandCluster(event);
       return;
     }
+    if (this.showRouteTooltip(event, true)) return;
     this.clearNodeSelection();
   }
 
   private selectNode(event: MapMouseEvent): void {
-    const feature = this.map.queryRenderedFeatures(event.point, { layers: ['nodes'] })[0];
+    const feature = this.map.queryRenderedFeatures(event.point, { layers: [NODE_HIT_LAYER_ID] })[0];
     if (!feature) return;
     const nodeID = String(feature.properties?.id ?? feature.id ?? '');
     if (!nodeID) return;
-    this.setSelectedNode(nodeID);
+    this.clearRouteInspection();
+    this.setSelectedNode(nodeID, String(feature.properties?.label ?? 'MeshCore node'));
     this.showNodeTooltip(event);
   }
 
@@ -326,24 +541,49 @@ export class LiveMap {
     this.map.getCanvas().style.cursor = '';
   }
 
-  private setSelectedNode(nodeID: string | null): void {
-    if (this.selectedNodeID === nodeID) return;
+  private setSelectedNode(nodeID: string | null, label = ''): void {
+    if (this.selectedNodeID === nodeID && (!nodeID || !label || label === this.selectedNodeLabel)) return;
+    this.clearRouteInspection();
     this.selectedNodeID = nodeID;
+    this.selectedNodeLabel = nodeID ? label : '';
     this.container.dataset.selectedNodeId = nodeID ?? '';
-    this.updateNeighborRouteCount();
-    const routesApplied = applyRouteSelectionFilter(this.map, nodeID);
-    const nodeApplied = applySelectedNodeFilter(this.map, nodeID);
-    const hitApplied = applyRouteHitLayerVisibility(this.map, this.routesVisible && nodeID !== null);
+    this.updateFocusData();
+    this.applyFocusState();
     if (nodeID === null && this.tooltip.dataset.kind === 'route') this.hideTooltip();
-    if (routesApplied || nodeApplied || hitApplied) this.markRendering();
+    this.markRendering();
   }
 
-  private updateNeighborRouteCount(): void {
-    this.container.dataset.neighborRouteCount = String(recentNeighborRoutes(this.lastState?.routes ?? [], this.selectedNodeID).length);
+  private updateFocusData(): void {
+    const routes = recentNeighborRoutes(this.lastState?.routes ?? [], this.selectedNodeID);
+    this.neighborNodeIDs = neighborNodeIDs(routes, this.selectedNodeID);
+    this.container.dataset.neighborRouteCount = String(routes.length);
+    const stateLabel = this.lastState?.nodes.find((node) => node.id === this.selectedNodeID)?.label;
+    if (stateLabel) this.selectedNodeLabel = stateLabel;
+    this.emitFocusChange();
+  }
+
+  private emitFocusChange(): void {
+    const focus = this.selectedNodeID
+      ? { label: this.selectedNodeLabel || 'MeshCore node', neighborCount: this.neighborNodeIDs.length }
+      : null;
+    const signature = focus ? `${this.selectedNodeID}:${focus.label}:${focus.neighborCount}` : '';
+    if (signature === this.lastFocusSignature) return;
+    this.lastFocusSignature = signature;
+    this.options.onFocusChange?.(focus);
+  }
+
+  private applyFocusState(): void {
+    const focusIDs = this.selectedNodeID ? [this.selectedNodeID, ...this.neighborNodeIDs] : [];
+    applyRouteSelectionFilter(this.map, this.selectedNodeID);
+    applyRouteFocusAppearance(this.map, this.selectedNodeID !== null);
+    applySelectedNodeFilter(this.map, this.selectedNodeID);
+    applyNodeFocus(this.map, this.selectedNodeID, focusIDs, this.neighborNodeIDs);
+    applyRouteHitLayerVisibility(this.map, this.routesVisible && this.selectedNodeID !== null);
+    applyNeighborRingVisibility(this.map, this.routesVisible && this.selectedNodeID !== null);
   }
 
   private showNodeTooltip(event: MapMouseEvent): void {
-    const feature = this.map.queryRenderedFeatures(event.point, { layers: ['nodes'] })[0];
+    const feature = this.map.queryRenderedFeatures(event.point, { layers: [NODE_HIT_LAYER_ID] })[0];
     if (!feature) return;
     const properties = feature.properties ?? {};
     const role = String(properties.role ?? 'unknown').replace('_', ' ');
@@ -356,14 +596,16 @@ export class LiveMap {
     );
   }
 
-  private showRouteTooltip(event: MapMouseEvent): void {
-    if (!this.routesVisible || !this.selectedNodeID) return;
-    if (this.map.queryRenderedFeatures(event.point, { layers: ['nodes'] }).length > 0) return;
+  private showRouteTooltip(event: MapMouseEvent, pin = false): boolean {
+    if (!this.routesVisible || !this.selectedNodeID) return false;
+    if (this.map.queryRenderedFeatures(event.point, { layers: [NODE_HIT_LAYER_ID] }).length > 0) return false;
     const feature = this.map.queryRenderedFeatures(event.point, { layers: [ROUTE_HIT_LAYER_ID] })[0];
-    if (!feature) return;
+    if (!feature) return false;
     const properties = feature.properties ?? {};
     const route = this.routesByID.get(String(properties.id ?? feature.id ?? ''));
-    if (!route) return;
+    if (!route) return false;
+    this.routeInspectionPinned = pin;
+    this.setHoveredRoute(route.id);
     const packetCount = Math.max(0, route.packetCount);
     this.presentTooltip(
       event,
@@ -371,19 +613,66 @@ export class LiveMap {
       `${packetCount.toLocaleString()} ${packetCount === 1 ? 'packet' : 'packets'} · heard ${relativeTime(route.lastHeard)}`,
       'route'
     );
+    return true;
+  }
+
+  private setHoveredRoute(routeID: string | null): void {
+    if (this.hoveredRouteID === routeID) return;
+    this.hoveredRouteID = routeID;
+    this.container.dataset.hoveredRouteId = routeID ?? '';
+    applyRouteHoverFilter(this.map, this.routesVisible && this.selectedNodeID ? routeID : null);
+  }
+
+  private clearRouteInspection(): void {
+    this.routeInspectionPinned = false;
+    this.setHoveredRoute(null);
+    if (this.tooltip.dataset.kind === 'route') this.hideTooltip();
+  }
+
+  private highlightCluster(event: MapMouseEvent): void {
+    const feature = this.map.queryRenderedFeatures(event.point, { layers: ['clusters'] })[0];
+    const clusterID = Number(feature?.properties?.cluster_id);
+    this.setHighlightedCluster(Number.isFinite(clusterID) ? clusterID : null);
+  }
+
+  private setHighlightedCluster(clusterID: number | null): void {
+    if (this.highlightedClusterID === clusterID) return;
+    this.highlightedClusterID = clusterID;
+    applyClusterHighlightFilter(this.map, clusterID);
+  }
+
+  private flashCluster(clusterID: number): void {
+    if (this.clusterFlashTimer !== undefined) window.clearTimeout(this.clusterFlashTimer);
+    this.setHighlightedCluster(clusterID);
+    this.clusterFlashTimer = window.setTimeout(() => {
+      this.clusterFlashTimer = undefined;
+      this.setHighlightedCluster(null);
+    }, 540);
   }
 
   private presentTooltip(event: MapMouseEvent, heading: string, details: string, kind: 'node' | 'route'): void {
-    this.tooltip.replaceChildren();
-    const title = document.createElement('strong');
-    title.textContent = heading;
-    const detail = document.createElement('span');
-    detail.textContent = details;
-    this.tooltip.append(title, detail);
-    this.tooltip.style.left = `${event.point.x}px`;
-    this.tooltip.style.top = `${event.point.y}px`;
+    const signature = `${kind}:${heading}:${details}`;
+    const contentChanged = signature !== this.tooltipSignature;
+    if (contentChanged) {
+      const title = document.createElement('strong');
+      title.textContent = heading;
+      const detail = document.createElement('span');
+      detail.textContent = details;
+      this.tooltip.replaceChildren(title, detail);
+      this.tooltipSignature = signature;
+    }
     this.tooltip.dataset.kind = kind;
     this.tooltip.hidden = false;
+    if (contentChanged || this.tooltipSize.width <= 0 || this.tooltipSize.height <= 0) {
+      this.tooltipSize = { width: this.tooltip.offsetWidth, height: this.tooltip.offsetHeight };
+    }
+    const position = tooltipPosition(
+      event.point,
+      { width: this.container.clientWidth, height: this.container.clientHeight },
+      this.tooltipSize
+    );
+    this.tooltip.style.left = `${position.x}px`;
+    this.tooltip.style.top = `${position.y}px`;
   }
 
   private hideTooltip(): void {
@@ -394,6 +683,9 @@ export class LiveMap {
 
 type RouteLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setLayoutProperty'>;
 type RouteFilterMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter'>;
+type PaintMap = Pick<maplibregl.Map, 'getLayer' | 'setPaintProperty'>;
+type FocusMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setPaintProperty' | 'setLayoutProperty'>;
+type InteractiveLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setLayoutProperty'>;
 type LayerFilter = Parameters<maplibregl.Map['setFilter']>[1];
 type ActiveLayerFilter = Exclude<LayerFilter, null | undefined>;
 
@@ -413,6 +705,12 @@ export function applyRouteHitLayerVisibility(map: RouteLayerMap, visible: boolea
   return true;
 }
 
+export function applyNeighborRingVisibility(map: RouteLayerMap, visible: boolean): boolean {
+  if (!map.getLayer(NEIGHBOR_NODE_LAYER_ID)) return false;
+  map.setLayoutProperty(NEIGHBOR_NODE_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
+  return true;
+}
+
 export function applyRouteSelectionFilter(map: RouteFilterMap, selectedNodeID: string | null): boolean {
   const filter = neighborRouteFilter(selectedNodeID);
   let applied = false;
@@ -425,9 +723,79 @@ export function applyRouteSelectionFilter(map: RouteFilterMap, selectedNodeID: s
 }
 
 export function applySelectedNodeFilter(map: RouteFilterMap, selectedNodeID: string | null): boolean {
-  if (!map.getLayer(SELECTED_NODE_LAYER_ID)) return false;
-  map.setFilter(SELECTED_NODE_LAYER_ID, selectedNodeFilter(selectedNodeID));
+  let applied = false;
+  for (const layerID of [SELECTED_NODE_OUTER_LAYER_ID, SELECTED_NODE_LAYER_ID]) {
+    if (!map.getLayer(layerID)) continue;
+    map.setFilter(layerID, selectedNodeFilter(selectedNodeID));
+    applied = true;
+  }
+  return applied;
+}
+
+export function applyRouteFocusAppearance(map: PaintMap, focused: boolean): boolean {
+  let applied = false;
+  if (map.getLayer('route-glow')) {
+    map.setPaintProperty('route-glow', 'line-color', focused ? '#35d4c6' : '#1ca69d');
+    map.setPaintProperty('route-glow', 'line-width', routeGlowWidth(focused));
+    map.setPaintProperty('route-glow', 'line-opacity', routeGlowOpacity(focused));
+    applied = true;
+  }
+  if (map.getLayer('routes')) {
+    map.setPaintProperty('routes', 'line-color', focused ? '#67e7da' : '#238f89');
+    map.setPaintProperty('routes', 'line-width', routeCoreWidth(focused));
+    map.setPaintProperty('routes', 'line-opacity', routeCoreOpacity(focused));
+    applied = true;
+  }
+  return applied;
+}
+
+export function applyRouteHoverFilter(map: InteractiveLayerMap, routeID: string | null): boolean {
+  let applied = false;
+  for (const layerID of ROUTE_HOVER_LAYER_IDS) {
+    if (!map.getLayer(layerID)) continue;
+    map.setFilter(layerID, routeIDFilter(routeID));
+    map.setLayoutProperty(layerID, 'visibility', routeID ? 'visible' : 'none');
+    applied = true;
+  }
+  return applied;
+}
+
+export function applyClusterHighlightFilter(map: RouteFilterMap, clusterID: number | null): boolean {
+  if (!map.getLayer(CLUSTER_HIGHLIGHT_LAYER_ID)) return false;
+  map.setFilter(CLUSTER_HIGHLIGHT_LAYER_ID, clusterIDFilter(clusterID));
   return true;
+}
+
+export function applyNodeFocus(
+  map: FocusMap,
+  selectedNodeID: string | null,
+  focusIDs: readonly string[],
+  neighborIDs: readonly string[]
+): boolean {
+  let applied = false;
+  if (map.getLayer(NODE_GLOW_LAYER_ID)) {
+    map.setFilter(NODE_GLOW_LAYER_ID, selectedNodeID ? nodeIDFilter(focusIDs) : NODE_BASE_FILTER);
+    map.setPaintProperty(NODE_GLOW_LAYER_ID, 'circle-opacity', nodeGlowOpacity(selectedNodeID !== null, focusIDs));
+    applied = true;
+  }
+  if (map.getLayer(NEIGHBOR_NODE_LAYER_ID)) {
+    map.setFilter(NEIGHBOR_NODE_LAYER_ID, nodeIDFilter(neighborIDs));
+    applied = true;
+  }
+  if (map.getLayer(NODE_LAYER_ID)) {
+    map.setPaintProperty(NODE_LAYER_ID, 'circle-opacity', nodeOpacity(selectedNodeID !== null, focusIDs));
+    applied = true;
+  }
+  if (map.getLayer(NODE_CORE_LAYER_ID)) {
+    map.setPaintProperty(NODE_CORE_LAYER_ID, 'circle-opacity', nodeCoreOpacity(selectedNodeID !== null, focusIDs));
+    applied = true;
+  }
+  if (map.getLayer(NODE_LABEL_LAYER_ID)) {
+    map.setFilter(NODE_LABEL_LAYER_ID, selectedNodeID ? nodeIDFilter(focusIDs) : NODE_BASE_FILTER);
+    map.setLayoutProperty(NODE_LABEL_LAYER_ID, 'symbol-sort-key', labelSortKey(selectedNodeID, neighborIDs));
+    applied = true;
+  }
+  return applied;
 }
 
 export function neighborRouteFilter(selectedNodeID: string | null): LayerFilter {
@@ -441,6 +809,186 @@ export function neighborRouteFilter(selectedNodeID: string | null): LayerFilter 
 
 export function selectedNodeFilter(selectedNodeID: string | null): ActiveLayerFilter {
   return ['==', ['get', 'id'], selectedNodeID ?? ''] as ActiveLayerFilter;
+}
+
+export function nodeIDFilter(nodeIDs: readonly string[]): ActiveLayerFilter {
+  return ['in', ['get', 'id'], ['literal', [...nodeIDs]]] as ActiveLayerFilter;
+}
+
+export function routeIDFilter(routeID: string | null): ActiveLayerFilter {
+  return ['==', ['get', 'id'], routeID ?? ''] as ActiveLayerFilter;
+}
+
+export function clusterIDFilter(clusterID: number | null): ActiveLayerFilter {
+  return ['==', ['get', 'cluster_id'], clusterID ?? -1] as ActiveLayerFilter;
+}
+
+export function labelSortKey(selectedNodeID: string | null, neighborIDs: readonly string[]): ExpressionSpecification {
+  if (!selectedNodeID) return ['get', 'labelPriority'];
+  return [
+    'case',
+    ['==', ['get', 'id'], selectedNodeID],
+    0,
+    ['in', ['get', 'id'], ['literal', [...neighborIDs]]],
+    1,
+    ['get', 'labelPriority']
+  ];
+}
+
+export function neighborNodeIDs(routes: readonly RouteV1[], selectedNodeID: string | null): string[] {
+  if (!selectedNodeID) return [];
+  const ids = new Set<string>();
+  for (const route of routes) {
+    if (route.from.id === selectedNodeID && route.to.id !== selectedNodeID) ids.add(route.to.id);
+    if (route.to.id === selectedNodeID && route.from.id !== selectedNodeID) ids.add(route.from.id);
+  }
+  return [...ids].sort();
+}
+
+export function isRouteInspectable(
+  routes: readonly RouteV1[],
+  selectedNodeID: string | null,
+  routeID: string | null,
+  now = Date.now()
+): boolean {
+  if (!routeID) return false;
+  return recentNeighborRoutes(routes, selectedNodeID, now).some((route) => route.id === routeID);
+}
+
+export function isPointInSafeArea(
+  point: ViewportPoint,
+  viewport: ViewportSize,
+  safeRatio = LIVE_FOLLOW_SAFE_RATIO
+): boolean {
+  if (viewport.width <= 0 || viewport.height <= 0) return false;
+  const ratio = Math.max(0, Math.min(1, safeRatio));
+  const marginX = viewport.width * (1 - ratio) / 2;
+  const marginY = viewport.height * (1 - ratio) / 2;
+  return point.x >= marginX
+    && point.x <= viewport.width - marginX
+    && point.y >= marginY
+    && point.y <= viewport.height - marginY;
+}
+
+export function canMoveLiveFollow(
+  lastMoveAt: number,
+  now: number,
+  minimumInterval = LIVE_FOLLOW_MIN_INTERVAL_MS
+): boolean {
+  return lastMoveAt <= 0 || now - lastMoveAt >= minimumInterval;
+}
+
+export function tooltipPosition(
+  anchor: ViewportPoint,
+  viewport: ViewportSize,
+  tooltip: TooltipSize,
+  margin = 8,
+  gap = 12
+): ViewportPoint {
+  const width = Math.max(0, tooltip.width);
+  const height = Math.max(0, tooltip.height);
+  const halfWidth = width / 2;
+  const minimumX = margin + halfWidth;
+  const maximumX = Math.max(minimumX, viewport.width - margin - halfWidth);
+  const x = Math.max(minimumX, Math.min(maximumX, anchor.x));
+  const above = anchor.y - gap - height;
+  const below = anchor.y + gap;
+  const maximumY = Math.max(margin, viewport.height - margin - height);
+  const preferredY = above >= margin ? above : below;
+  return { x, y: Math.max(margin, Math.min(maximumY, preferredY)) };
+}
+
+export interface RouteVisualProperties {
+  width: number;
+  glowWidth: number;
+  opacity: number;
+}
+
+export function routeVisualProperties(route: Pick<RouteV1, 'intensity' | 'lastHeard'>, now: number): RouteVisualProperties {
+  const intensity = Math.max(0, Math.min(4, route.intensity));
+  const ageOpacity = freshness(route.lastHeard, now);
+  return {
+    width: 0.72 + intensity * 0.24,
+    glowWidth: 2.4 + intensity * 0.58,
+    opacity: Math.max(0.06, Math.min(0.84, ageOpacity * (0.58 + intensity * 0.065)))
+  };
+}
+
+export function nodeLabelPriority(node: Pick<NodeV1, 'role' | 'observer' | 'lastSeen'>, now: number): number {
+  const age = Math.max(0, now - node.lastSeen);
+  const ageRank = age < 15 * 60_000 ? 0 : age < 6 * 60 * 60_000 ? 1 : age < 24 * 60 * 60_000 ? 2 : 3;
+  const roleRank = node.observer
+    ? 0
+    : node.role === 'repeater'
+      ? 1
+      : node.role === 'room_server'
+        ? 2
+        : node.role === 'companion'
+          ? 3
+          : node.role === 'sensor'
+            ? 4
+            : 5;
+  return ageRank * 10 + roleRank;
+}
+
+export function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function routeZoomOpacity(): ExpressionSpecification {
+  return ['interpolate', ['linear'], ['zoom'], 3, 0.1, 5, 0.24, 7, 0.58, 9, 1];
+}
+
+function routeGlowOpacity(focused: boolean): ExpressionSpecification {
+  return ['*', ['get', 'opacity'], routeZoomOpacity(), focused ? 0.52 : 0.16];
+}
+
+function routeCoreOpacity(focused: boolean): ExpressionSpecification {
+  return ['*', ['get', 'opacity'], routeZoomOpacity(), focused ? 1 : 0.72];
+}
+
+function routeGlowWidth(focused: boolean): ExpressionSpecification {
+  const boost = focused ? 1.45 : 1;
+  return [
+    'interpolate', ['linear'], ['zoom'],
+    3, 0.75,
+    7, ['*', ['get', 'glowWidth'], 0.7 * boost],
+    10, ['*', ['get', 'glowWidth'], boost],
+    14, ['*', ['get', 'glowWidth'], 1.25 * boost]
+  ];
+}
+
+function routeCoreWidth(focused: boolean): ExpressionSpecification {
+  const boost = focused ? 1.24 : 1;
+  return [
+    'interpolate', ['linear'], ['zoom'],
+    3, 0.34,
+    7, ['*', ['get', 'width'], 0.7 * boost],
+    10, ['*', ['get', 'width'], boost],
+    14, ['*', ['get', 'width'], 1.18 * boost]
+  ];
+}
+
+function focusMembership(focusIDs: readonly string[]): ExpressionSpecification {
+  return ['in', ['get', 'id'], ['literal', [...focusIDs]]];
+}
+
+function nodeOpacity(focused: boolean, focusIDs: readonly string[]): ExpressionSpecification {
+  if (!focused) return ['get', 'opacity'];
+  return ['case', focusMembership(focusIDs), ['get', 'opacity'], ['*', ['get', 'opacity'], 0.2]];
+}
+
+function nodeCoreOpacity(focused: boolean, focusIDs: readonly string[]): ExpressionSpecification {
+  if (!focused) return ['*', ['get', 'opacity'], 0.86];
+  return ['case', focusMembership(focusIDs), ['*', ['get', 'opacity'], 0.94], ['*', ['get', 'opacity'], 0.11]];
+}
+
+function nodeGlowOpacity(focused: boolean, focusIDs: readonly string[]): ExpressionSpecification {
+  const zoomFade: ExpressionSpecification = ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 0.08, 9, 0.2, 13, 0.28];
+  if (!focused) return ['*', ['get', 'opacity'], zoomFade];
+  return ['case', focusMembership(focusIDs), ['*', ['get', 'opacity'], zoomFade, 1.35], 0];
 }
 
 export function darkStyle(): StyleSpecification {
@@ -483,7 +1031,8 @@ function nodeCollection(nodes: readonly NodeV1[]): FeatureCollection<Point> {
         observer: node.observer,
         lastSeen: node.lastSeen,
         color: roleColor(node.role),
-        opacity: freshness(node.lastSeen, now)
+        opacity: freshness(node.lastSeen, now),
+        labelPriority: nodeLabelPriority(node, now)
       }
     }))
   };
@@ -494,7 +1043,7 @@ function routeCollection(routes: readonly RouteV1[]): FeatureCollection<LineStri
   return {
     type: 'FeatureCollection',
     features: routes.filter((route) => validEndpoint(route.from) && validEndpoint(route.to)).map((route): Feature<LineString> => {
-      const intensity = Math.max(0, Math.min(4, route.intensity));
+      const visual = routeVisualProperties(route, now);
       return {
         type: 'Feature',
         id: route.id,
@@ -504,10 +1053,9 @@ function routeCollection(routes: readonly RouteV1[]): FeatureCollection<LineStri
           fromId: route.from.id,
           toId: route.to.id,
           recent: isRecentNeighborRoute(route, now),
-          color: ROUTE_PALETTE[stableIndex(route.id, ROUTE_PALETTE.length)],
-          width: 0.85 + intensity * 0.42,
-          glowWidth: 3 + intensity * 0.65,
-          opacity: freshness(route.lastHeard, now) * (0.55 + intensity * 0.08)
+          width: visual.width,
+          glowWidth: visual.glowWidth,
+          opacity: visual.opacity
         }
       };
     })
@@ -534,14 +1082,8 @@ function freshness(timestamp: number, now: number): number {
   return 0.2;
 }
 
-function stableIndex(value: string, length: number): number {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash ^ value.charCodeAt(index), 16777619);
-  return (hash >>> 0) % length;
-}
-
 function signatureForNodes(nodes: readonly NodeV1[]): string {
-  return nodes.map((node) => `${node.id}:${node.lng}:${node.lat}:${node.role}:${node.observer}:${Math.floor(node.lastSeen / 60_000)}`).join('|');
+  return nodes.map((node) => `${node.id}:${node.label}:${node.lng}:${node.lat}:${node.role}:${node.observer}:${Math.floor(node.lastSeen / 60_000)}`).join('|');
 }
 
 function signatureForRoutes(routes: readonly RouteV1[]): string {

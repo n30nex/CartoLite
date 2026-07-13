@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { AFTERGLOW_MS, RESIDUE_MS, SINGLE_HOP_MS } from '../src/packetAnimator';
+import { DESTINATION_BLOOM_MS, RESIDUE_MS, RESIDUE_REDRAW_MS, routeDuration } from '../src/packetAnimator';
 import { NEIGHBOR_ROUTE_RECENT_MS } from '../src/routeFocus';
 import type { StateV1 } from '../src/types';
 
@@ -10,10 +10,25 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   const state = await response.json() as Record<string, unknown>;
 
   await expect(page.locator('#map .maplibregl-canvas')).toBeVisible();
+  await expect(page.locator('.map-grade')).toBeVisible();
+  await expect(page.locator('.map-grade')).toHaveCSS('pointer-events', 'none');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   await expect(page.locator('#packet-canvas')).toBeVisible();
   await expect(page.locator('#status-text')).not.toHaveText('Starting…');
   await expect(page.locator('.legend')).toContainText('RF route');
+  if (testInfo.project.name === 'mobile') {
+    await expect(page.locator('#legend-toggle')).toBeVisible();
+    await expect(page.locator('#legend')).toHaveAttribute('data-collapsed', 'true');
+    await expect(page.locator('#legend-toggle')).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('#legend-items')).toBeHidden();
+    await page.locator('#legend-toggle').click();
+    await expect(page.locator('#legend-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#legend-toggle')).toHaveAttribute('aria-label', 'Hide map legend');
+    await expect(page.locator('#legend-items')).toBeVisible();
+    await page.locator('#legend-toggle').click();
+  } else {
+    await expect(page.locator('#legend-items')).toBeVisible();
+  }
   const routesButton = page.locator('#routes-button');
   await expect(routesButton).toBeVisible();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
@@ -37,10 +52,11 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await page.screenshot({ path: testInfo.outputPath('cartolite.png'), fullPage: true });
 });
 
-test('keeps the map primary on mobile with reduced motion', async ({ page }) => {
+test('keeps the map primary with reduced motion and releases live follow on drag', async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   await expect(page.locator('#map')).toBeVisible();
+  await expect(page.locator('#packet-canvas')).toHaveAttribute('data-motion-mode', 'static');
   await expect(page.locator('#follow-button')).toBeVisible();
   await expect(page.locator('#routes-button')).toBeVisible();
   await expect(page.locator('#routes-button')).toHaveAttribute('aria-pressed', 'true');
@@ -49,6 +65,29 @@ test('keeps the map primary on mobile with reduced motion', async ({ page }) => 
   await expect(page.locator('#reset-button')).toBeVisible();
   await page.locator('#follow-button').click();
   await expect(page.locator('#follow-button')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#follow-button')).toHaveClass(/selected/);
+  await expect(page.locator('#follow-button')).toHaveAttribute('title', 'Stop following live packets');
+  const mapCanvas = page.locator('#map .maplibregl-canvas');
+  const box = await mapCanvas.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+  if (testInfo.project.name !== 'mobile') {
+    await page.mouse.move(box.x + box.width * 0.54, box.y + box.height * 0.54);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.64, box.y + box.height * 0.58, { steps: 4 });
+    await page.mouse.up();
+    await expect(page.locator('#follow-button')).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('#follow-button')).not.toHaveClass(/selected/);
+    await expect(page.locator('#follow-button')).toHaveAttribute('title', 'Follow live packets');
+    await page.locator('#follow-button').click();
+    await expect(page.locator('#follow-button')).toHaveAttribute('aria-pressed', 'true');
+  }
+  await page.locator('#reset-button').click();
+  await expect(page.locator('#follow-button')).toHaveAttribute('aria-pressed', 'false');
+  await expect.poll(() => canvasHasPixels(page.locator('#packet-canvas')), {
+    message: 'reduced motion should render a restrained static traffic cue',
+    timeout: 15_000
+  }).toBe(true);
 });
 
 test('keeps a recent packet trail after stable routes are hidden', async ({ page }, testInfo) => {
@@ -96,15 +135,15 @@ test('keeps a recent packet trail after stable routes are hidden', async ({ page
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
   const packetCanvas = page.locator('#packet-canvas');
   await expect.poll(() => canvasHasPixels(packetCanvas), { timeout: 5_000 }).toBe(true);
-  const afterglowWindow = SINGLE_HOP_MS + AFTERGLOW_MS + 600;
+  const afterglowWindow = routeDuration(packet.segments) + DESTINATION_BLOOM_MS + 600;
   await page.waitForTimeout(afterglowWindow);
   await expect.poll(() => canvasHasPixels(packetCanvas), { message: '15-second trail should outlive the moving comet and afterglow', timeout: 2_000 }).toBe(true);
-  await page.waitForTimeout(RESIDUE_MS - afterglowWindow + 600);
+  await page.waitForTimeout(RESIDUE_MS + RESIDUE_REDRAW_MS + 600);
   await expect.poll(() => canvasHasPixels(packetCanvas), { message: 'recent packet trail should clear after 15 seconds', timeout: 2_000 }).toBe(false);
 });
 
 test('focuses recent route neighbors and clears selection on the map', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile', 'precise route-hover behavior is covered once on desktop');
+  const mobile = testInfo.project.name === 'mobile';
   const now = Date.now();
   const center: [number, number] = [-80.35, 43.45];
   const alpha = { id: 'a', label: 'Alpha', lng: center[0], lat: center[1] };
@@ -143,6 +182,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   const map = page.locator('#map');
   const canvas = page.locator('#map .maplibregl-canvas');
   const tooltip = page.locator('#tooltip');
+  const focusChip = page.locator('#focus-chip');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
@@ -152,51 +192,78 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   const charliePoint = projectToViewport(charlie, center, state.map.zoom, box);
   const deltaPoint = projectToViewport(delta, center, state.map.zoom, box);
 
-  await page.mouse.click(alphaPoint.x, alphaPoint.y);
+  await clickPoint(page, { x: alphaPoint.x + (mobile ? 12 : 0), y: alphaPoint.y }, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'a');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '2');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
+  await expect(focusChip).toBeVisible();
+  await expect(focusChip).toContainText('Alpha · 2 neighbors');
+  await expect(page.locator('#legend')).toHaveAttribute('data-focused', 'true');
+  await expect(page.locator('#legend-items')).toBeHidden();
+  await expect(page.locator('#legend-toggle')).toBeHidden();
 
-  await hoverMidpoint(page, alphaPoint, bravoPoint);
+  await inspectRoute(page, alphaPoint, bravoPoint, mobile);
+  await expect(map).toHaveAttribute('data-hovered-route-id', 'a-b');
   await expect(tooltip).toHaveAttribute('data-kind', 'route');
   await expect(tooltip).toContainText('Alpha ↔ Bravo');
   await expect(tooltip).toContainText('12 packets');
+  await expectTooltipInsideViewport(tooltip, page);
+  await page.screenshot({ path: testInfo.outputPath(`cartolite-neighbors-focus-${testInfo.project.name}.png`) });
 
-  await hoverMidpoint(page, bravoPoint, charliePoint);
-  await expect(tooltip).toBeHidden();
-  await hoverMidpoint(page, alphaPoint, deltaPoint);
-  await expect(tooltip).toBeHidden();
+  if (!mobile) {
+    await hoverMidpoint(page, bravoPoint, charliePoint);
+    await expect(tooltip).toBeHidden();
+    await expect(map).toHaveAttribute('data-hovered-route-id', '');
+    await hoverMidpoint(page, alphaPoint, deltaPoint);
+    await expect(tooltip).toBeHidden();
+  }
 
   const routesButton = page.locator('#routes-button');
   await routesButton.click();
   await expect(map).toHaveAttribute('data-routes-visible', 'false');
   await expect(map).toHaveAttribute('data-selected-node-id', 'a');
+  await expect(map).toHaveAttribute('data-hovered-route-id', '');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
-  await hoverMidpoint(page, alphaPoint, bravoPoint);
   await expect(tooltip).toBeHidden();
+  await expect(focusChip).toContainText('Alpha · 2 neighbors');
+  await expect(page.locator('#legend')).toHaveAttribute('data-focused', 'true');
 
   await routesButton.click();
   await expect(map).toHaveAttribute('data-routes-visible', 'true');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
-  await hoverMidpoint(page, alphaPoint, charliePoint);
+  await inspectRoute(page, alphaPoint, charliePoint, mobile);
+  await expect(map).toHaveAttribute('data-hovered-route-id', 'a-c');
   await expect(tooltip).toHaveAttribute('data-kind', 'route');
   await expect(tooltip).toContainText('Alpha ↔ Charlie');
 
-  await page.mouse.click(bravoPoint.x, bravoPoint.y);
+  await clickPoint(page, bravoPoint, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'b');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '2');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
-  await hoverMidpoint(page, bravoPoint, charliePoint);
+  await expect(focusChip).toContainText('Bravo · 2 neighbors');
+  await inspectRoute(page, bravoPoint, charliePoint, mobile);
+  await expect(map).toHaveAttribute('data-hovered-route-id', 'b-c');
   await expect(tooltip).toHaveAttribute('data-kind', 'route');
   await expect(tooltip).toContainText('Bravo ↔ Charlie');
-  await hoverMidpoint(page, alphaPoint, charliePoint);
-  await expect(tooltip).toBeHidden();
+  if (!mobile) {
+    await hoverMidpoint(page, alphaPoint, charliePoint);
+    await expect(tooltip).toBeHidden();
+  }
 
-  await page.mouse.click(box.x + box.width * 0.84, box.y + box.height * 0.82);
+  await clickPoint(page, { x: box.x + box.width * 0.84, y: box.y + box.height * 0.82 }, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', '');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '0');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
   await expect(tooltip).toBeHidden();
+  await expect(focusChip).toBeHidden();
+  await expect(page.locator('#legend')).toHaveAttribute('data-focused', 'false');
+  if (mobile) {
+    await expect(page.locator('#legend-toggle')).toBeVisible();
+    await expect(page.locator('#legend')).toHaveAttribute('data-collapsed', 'true');
+    await expect(page.locator('#legend-items')).toBeHidden();
+  } else {
+    await expect(page.locator('#legend-items')).toBeVisible();
+  }
   await page.screenshot({ path: testInfo.outputPath('cartolite-neighbors.png') });
 });
 
@@ -250,4 +317,36 @@ function mercator(lng: number, lat: number): ViewportPoint {
 
 async function hoverMidpoint(page: Page, from: ViewportPoint, to: ViewportPoint): Promise<void> {
   await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });
+}
+
+async function inspectRoute(page: Page, from: ViewportPoint, to: ViewportPoint, mobile: boolean): Promise<void> {
+  const x = (from.x + to.x) / 2;
+  const y = (from.y + to.y) / 2;
+  if (mobile) {
+    await page.touchscreen.tap(x, y);
+    // Prove the tap stays pinned after Chromium's delayed synthetic mouseleave.
+    await page.waitForTimeout(550);
+    return;
+  }
+  await page.mouse.move(x, y, { steps: 4 });
+}
+
+async function clickPoint(page: Page, point: ViewportPoint, mobile: boolean): Promise<void> {
+  if (mobile) {
+    await page.touchscreen.tap(point.x, point.y);
+    return;
+  }
+  await page.mouse.click(point.x, point.y);
+}
+
+async function expectTooltipInsideViewport(tooltip: Locator, page: Page): Promise<void> {
+  const box = await tooltip.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  if (!box || !viewport) return;
+  expect(box.x).toBeGreaterThanOrEqual(7);
+  expect(box.y).toBeGreaterThanOrEqual(7);
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width - 7);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - 7);
 }

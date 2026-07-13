@@ -1,6 +1,6 @@
 # CartoLite
 
-CartoLite is a compact, privacy-safe live map of high-confidence MeshCore Canada RF traffic. The default page is the product: a dark Canada map with nodes, labels, a default-on route lattice toggle, and Canvas2D packet comets with 15-second fading trails. Selecting a node focuses the lattice on its connections heard in the last 24 hours; hovering a focused route shows its endpoints, packet count, and last-heard time. It deliberately omits history, chat, PacketTV, search, phonebooks, operator tools, analytics, and databases.
+CartoLite is a compact, privacy-safe live map of high-confidence MeshCore Canada RF traffic. The default page is the product: a dark radio-constellation map with collision-managed labels, jewel-like nodes, quiet teal topology, and event-driven, distance-aware Canvas2D packet light with 15-second fading trails. Selecting a node focuses and illuminates connections heard in the last 24 hours; hovering or tapping a focused route shows its endpoints, packet count, and last-heard time. It deliberately omits history, chat, PacketTV, search, phonebooks, operator tools, analytics, and databases.
 
 ## Runtime shape
 
