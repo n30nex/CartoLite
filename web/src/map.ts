@@ -1,5 +1,6 @@
 import maplibregl, { type GeoJSONSource, type MapMouseEvent, type StyleSpecification } from 'maplibre-gl';
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
+import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
 import type { EndpointV1, NodeV1, RouteV1, StateV1 } from './types';
 
 export const DEFAULT_CENTER: [number, number] = [-80.35, 43.45];
@@ -9,6 +10,9 @@ export const DETAIL_ZOOM = 7;
 const EMPTY_POINTS: FeatureCollection<Point> = { type: 'FeatureCollection', features: [] };
 const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', features: [] };
 export const ROUTE_LAYER_IDS = ['route-glow', 'routes'] as const;
+export const ROUTE_HIT_LAYER_ID = 'route-hit';
+export const ROUTE_FILTER_LAYER_IDS = [...ROUTE_LAYER_IDS, ROUTE_HIT_LAYER_ID] as const;
+export const SELECTED_NODE_LAYER_ID = 'selected-node';
 const ROUTE_PALETTE = ['#1d8c86', '#26a69a', '#1687a0', '#d58fb0', '#dbc22c'] as const;
 const LOCAL_FONTS = ['Noto Sans', 'Segoe UI', 'Arial', 'Noto Color Emoji', 'Segoe UI Emoji', 'Apple Color Emoji'];
 
@@ -19,13 +23,17 @@ export class LiveMap {
   private lastNodes?: readonly NodeV1[];
   private lastRoutes?: readonly RouteV1[];
   private lastState?: Readonly<StateV1>;
+  private routesByID = new Map<string, RouteV1>();
   private routesVisible = true;
+  private selectedNodeID: string | null = null;
   private freshnessTimer: number;
   private renderEpoch = 0;
 
   constructor(private readonly container: HTMLElement, private readonly tooltip: HTMLElement) {
     this.container.dataset.renderState = 'loading';
     this.container.dataset.routesVisible = 'true';
+    this.container.dataset.selectedNodeId = '';
+    this.container.dataset.neighborRouteCount = '0';
     this.map = new maplibregl.Map({
       container: this.container,
       style: darkStyle(),
@@ -49,6 +57,10 @@ export class LiveMap {
   render(state: Readonly<StateV1> | undefined, forceFreshness = false): void {
     if (!state) return;
     this.lastState = state;
+    if (this.selectedNodeID && !state.nodes.some((node) => node.id === this.selectedNodeID)) {
+      this.setSelectedNode(null);
+      this.hideTooltip();
+    }
     if (!this.map.getSource('nodes')) return;
     let changed = false;
     if (forceFreshness || state.nodes !== this.lastNodes) {
@@ -60,7 +72,9 @@ export class LiveMap {
       }
       this.lastNodes = state.nodes;
     }
-    if (forceFreshness || state.routes !== this.lastRoutes) {
+    const routesChanged = forceFreshness || state.routes !== this.lastRoutes;
+    if (routesChanged) {
+      if (state.routes !== this.lastRoutes) this.routesByID = new Map(state.routes.map((route) => [route.id, route]));
       const routeSignature = signatureForRoutes(state.routes);
       if (forceFreshness || routeSignature !== this.routeSignature) {
         (this.map.getSource('routes') as GeoJSONSource).setData(routeCollection(state.routes));
@@ -68,6 +82,7 @@ export class LiveMap {
         changed = true;
       }
       this.lastRoutes = state.routes;
+      this.updateNeighborRouteCount();
     }
     if (changed) this.markRendering();
   }
@@ -83,7 +98,11 @@ export class LiveMap {
   setRoutesVisible(visible: boolean): void {
     this.routesVisible = visible;
     this.container.dataset.routesVisible = String(visible);
-    if (applyRouteLayerVisibility(this.map, visible)) this.markRendering();
+    const stableApplied = applyRouteLayerVisibility(this.map, visible);
+    const hitApplied = applyRouteHitLayerVisibility(this.map, visible && this.selectedNodeID !== null);
+    if (!visible && this.tooltip.dataset.kind === 'route') this.hideTooltip();
+    if (!visible) this.map.getCanvas().style.cursor = '';
+    if (stableApplied || hitApplied) this.markRendering();
   }
 
   destroy(): void {
@@ -115,7 +134,20 @@ export class LiveMap {
         'line-opacity': ['get', 'opacity']
       }
     });
+    this.map.addLayer({
+      id: ROUTE_HIT_LAYER_ID,
+      type: 'line',
+      source: 'routes',
+      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+      paint: {
+        'line-color': '#ffffff',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 9, 8, 13, 13, 18],
+        'line-opacity': 0.001
+      }
+    });
+    applyRouteSelectionFilter(this.map, this.selectedNodeID);
     applyRouteLayerVisibility(this.map, this.routesVisible);
+    applyRouteHitLayerVisibility(this.map, this.routesVisible && this.selectedNodeID !== null);
 
     this.map.addSource('nodes', {
       type: 'geojson',
@@ -179,6 +211,20 @@ export class LiveMap {
       }
     });
     this.map.addLayer({
+      id: SELECTED_NODE_LAYER_ID,
+      type: 'circle',
+      source: 'nodes',
+      minzoom: DETAIL_ZOOM,
+      filter: selectedNodeFilter(this.selectedNodeID),
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 7, 12, 11],
+        'circle-color': 'rgba(0,0,0,0)',
+        'circle-stroke-color': '#dffffb',
+        'circle-stroke-width': 2.2,
+        'circle-stroke-opacity': ['get', 'opacity']
+      }
+    });
+    this.map.addLayer({
       id: 'nodes',
       type: 'circle',
       source: 'nodes',
@@ -215,17 +261,20 @@ export class LiveMap {
       }
     });
 
-    this.map.on('click', 'clusters', (event) => void this.expandCluster(event));
-    this.map.on('mousemove', 'nodes', (event) => this.showTooltip(event));
+    this.map.on('mousemove', 'nodes', (event) => this.showNodeTooltip(event));
     this.map.on('mouseleave', 'nodes', () => this.hideTooltip());
-    this.map.on('click', 'nodes', (event) => this.showTooltip(event, true));
-    this.map.on('click', (event) => {
-      if (this.map.queryRenderedFeatures(event.point, { layers: ['nodes', 'clusters'] }).length === 0) this.hideTooltip();
+    this.map.on('mousemove', ROUTE_HIT_LAYER_ID, (event) => this.showRouteTooltip(event));
+    this.map.on('mouseleave', ROUTE_HIT_LAYER_ID, () => {
+      this.map.getCanvas().style.cursor = '';
+      if (this.tooltip.dataset.kind === 'route') this.hideTooltip();
     });
+    this.map.on('click', (event) => this.handleMapClick(event));
+    this.map.on('movestart', () => this.hideTooltip());
     for (const layer of ['nodes', 'clusters']) {
       this.map.on('mouseenter', layer, () => { this.map.getCanvas().style.cursor = 'pointer'; });
       this.map.on('mouseleave', layer, () => { this.map.getCanvas().style.cursor = ''; });
     }
+    this.map.on('mouseenter', ROUTE_HIT_LAYER_ID, () => { this.map.getCanvas().style.cursor = 'pointer'; });
     this.render(this.lastState, true);
   }
 
@@ -249,31 +298,104 @@ export class LiveMap {
     }
   }
 
-  private showTooltip(event: MapMouseEvent, pin = false): void {
+  private handleMapClick(event: MapMouseEvent): void {
+    if (this.map.queryRenderedFeatures(event.point, { layers: ['nodes'] }).length > 0) {
+      this.selectNode(event);
+      return;
+    }
+    if (this.map.queryRenderedFeatures(event.point, { layers: ['clusters'] }).length > 0) {
+      this.clearNodeSelection();
+      void this.expandCluster(event);
+      return;
+    }
+    this.clearNodeSelection();
+  }
+
+  private selectNode(event: MapMouseEvent): void {
+    const feature = this.map.queryRenderedFeatures(event.point, { layers: ['nodes'] })[0];
+    if (!feature) return;
+    const nodeID = String(feature.properties?.id ?? feature.id ?? '');
+    if (!nodeID) return;
+    this.setSelectedNode(nodeID);
+    this.showNodeTooltip(event);
+  }
+
+  private clearNodeSelection(): void {
+    this.setSelectedNode(null);
+    this.hideTooltip();
+    this.map.getCanvas().style.cursor = '';
+  }
+
+  private setSelectedNode(nodeID: string | null): void {
+    if (this.selectedNodeID === nodeID) return;
+    this.selectedNodeID = nodeID;
+    this.container.dataset.selectedNodeId = nodeID ?? '';
+    this.updateNeighborRouteCount();
+    const routesApplied = applyRouteSelectionFilter(this.map, nodeID);
+    const nodeApplied = applySelectedNodeFilter(this.map, nodeID);
+    const hitApplied = applyRouteHitLayerVisibility(this.map, this.routesVisible && nodeID !== null);
+    if (nodeID === null && this.tooltip.dataset.kind === 'route') this.hideTooltip();
+    if (routesApplied || nodeApplied || hitApplied) this.markRendering();
+  }
+
+  private updateNeighborRouteCount(): void {
+    this.container.dataset.neighborRouteCount = String(recentNeighborRoutes(this.lastState?.routes ?? [], this.selectedNodeID).length);
+  }
+
+  private showNodeTooltip(event: MapMouseEvent): void {
     const feature = this.map.queryRenderedFeatures(event.point, { layers: ['nodes'] })[0];
     if (!feature) return;
     const properties = feature.properties ?? {};
-    this.tooltip.replaceChildren();
-    const title = document.createElement('strong');
-    title.textContent = String(properties.label ?? 'MeshCore node');
-    const detail = document.createElement('span');
     const role = String(properties.role ?? 'unknown').replace('_', ' ');
     const seen = Number(properties.lastSeen);
-    detail.textContent = `${role}${properties.observer ? ' · observer' : ''}${Number.isFinite(seen) ? ` · ${relativeTime(seen)}` : ''}`;
+    this.presentTooltip(
+      event,
+      String(properties.label ?? 'MeshCore node'),
+      `${role}${properties.observer ? ' · observer' : ''}${Number.isFinite(seen) ? ` · ${relativeTime(seen)}` : ''}`,
+      'node'
+    );
+  }
+
+  private showRouteTooltip(event: MapMouseEvent): void {
+    if (!this.routesVisible || !this.selectedNodeID) return;
+    if (this.map.queryRenderedFeatures(event.point, { layers: ['nodes'] }).length > 0) return;
+    const feature = this.map.queryRenderedFeatures(event.point, { layers: [ROUTE_HIT_LAYER_ID] })[0];
+    if (!feature) return;
+    const properties = feature.properties ?? {};
+    const route = this.routesByID.get(String(properties.id ?? feature.id ?? ''));
+    if (!route) return;
+    const packetCount = Math.max(0, route.packetCount);
+    this.presentTooltip(
+      event,
+      `${route.from.label} ↔ ${route.to.label}`,
+      `${packetCount.toLocaleString()} ${packetCount === 1 ? 'packet' : 'packets'} · heard ${relativeTime(route.lastHeard)}`,
+      'route'
+    );
+  }
+
+  private presentTooltip(event: MapMouseEvent, heading: string, details: string, kind: 'node' | 'route'): void {
+    this.tooltip.replaceChildren();
+    const title = document.createElement('strong');
+    title.textContent = heading;
+    const detail = document.createElement('span');
+    detail.textContent = details;
     this.tooltip.append(title, detail);
     this.tooltip.style.left = `${event.point.x}px`;
     this.tooltip.style.top = `${event.point.y}px`;
-    this.tooltip.dataset.pinned = String(pin);
+    this.tooltip.dataset.kind = kind;
     this.tooltip.hidden = false;
   }
 
   private hideTooltip(): void {
     this.tooltip.hidden = true;
-    delete this.tooltip.dataset.pinned;
+    delete this.tooltip.dataset.kind;
   }
 }
 
 type RouteLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setLayoutProperty'>;
+type RouteFilterMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter'>;
+type LayerFilter = Parameters<maplibregl.Map['setFilter']>[1];
+type ActiveLayerFilter = Exclude<LayerFilter, null | undefined>;
 
 export function applyRouteLayerVisibility(map: RouteLayerMap, visible: boolean): boolean {
   let applied = false;
@@ -283,6 +405,42 @@ export function applyRouteLayerVisibility(map: RouteLayerMap, visible: boolean):
     applied = true;
   }
   return applied;
+}
+
+export function applyRouteHitLayerVisibility(map: RouteLayerMap, visible: boolean): boolean {
+  if (!map.getLayer(ROUTE_HIT_LAYER_ID)) return false;
+  map.setLayoutProperty(ROUTE_HIT_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
+  return true;
+}
+
+export function applyRouteSelectionFilter(map: RouteFilterMap, selectedNodeID: string | null): boolean {
+  const filter = neighborRouteFilter(selectedNodeID);
+  let applied = false;
+  for (const layerID of ROUTE_FILTER_LAYER_IDS) {
+    if (!map.getLayer(layerID)) continue;
+    map.setFilter(layerID, filter);
+    applied = true;
+  }
+  return applied;
+}
+
+export function applySelectedNodeFilter(map: RouteFilterMap, selectedNodeID: string | null): boolean {
+  if (!map.getLayer(SELECTED_NODE_LAYER_ID)) return false;
+  map.setFilter(SELECTED_NODE_LAYER_ID, selectedNodeFilter(selectedNodeID));
+  return true;
+}
+
+export function neighborRouteFilter(selectedNodeID: string | null): LayerFilter {
+  if (!selectedNodeID) return null;
+  return [
+    'all',
+    ['==', ['get', 'recent'], true],
+    ['any', ['==', ['get', 'fromId'], selectedNodeID], ['==', ['get', 'toId'], selectedNodeID]]
+  ] as LayerFilter;
+}
+
+export function selectedNodeFilter(selectedNodeID: string | null): ActiveLayerFilter {
+  return ['==', ['get', 'id'], selectedNodeID ?? ''] as ActiveLayerFilter;
 }
 
 export function darkStyle(): StyleSpecification {
@@ -343,6 +501,9 @@ function routeCollection(routes: readonly RouteV1[]): FeatureCollection<LineStri
         geometry: { type: 'LineString', coordinates: [[route.from.lng, route.from.lat], [route.to.lng, route.to.lat]] },
         properties: {
           id: route.id,
+          fromId: route.from.id,
+          toId: route.to.id,
+          recent: isRecentNeighborRoute(route, now),
           color: ROUTE_PALETTE[stableIndex(route.id, ROUTE_PALETTE.length)],
           width: 0.85 + intensity * 0.42,
           glowWidth: 3 + intensity * 0.65,
