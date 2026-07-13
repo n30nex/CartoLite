@@ -2,9 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import type { RouteV1 } from './types';
 import { NEIGHBOR_ROUTE_RECENT_MS, recentNeighborRoutes } from './routeFocus';
 import {
+  activityHeatCollection,
   applyClusterHighlightFilter,
+  applyHeatmapFocus,
+  applyHeatmapLayerVisibility,
   applyNodeFocus,
   applyNeighborRingVisibility,
+  applyRegionLayerVisibility,
   applyRouteHoverFilter,
   applyRouteHitLayerVisibility,
   applyRouteLayerVisibility,
@@ -13,6 +17,7 @@ import {
   canMoveLiveFollow,
   CLUSTER_HIGHLIGHT_LAYER_ID,
   darkStyle,
+  HEATMAP_LAYER_ID,
   isRouteInspectable,
   isPointInSafeArea,
   labelSortKey,
@@ -27,6 +32,7 @@ import {
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
   ROUTE_LAYER_IDS,
+  REGION_LAYER_IDS,
   routeVisualProperties,
   SELECTED_NODE_OUTER_LAYER_ID,
   SELECTED_NODE_LAYER_ID,
@@ -94,6 +100,93 @@ describe('route layer visibility', () => {
       [NEIGHBOR_NODE_LAYER_ID, 'visibility', 'visible'],
       [NEIGHBOR_NODE_LAYER_ID, 'visibility', 'none']
     ]);
+  });
+});
+
+describe('optional map layers', () => {
+  it.each([
+    [true, 'visible'],
+    [false, 'none']
+  ] as const)('applies visible=%s to the heatmap independently', (visible, expected) => {
+    const setLayoutProperty = vi.fn();
+    const map = {
+      getLayer: vi.fn(() => ({})),
+      setLayoutProperty
+    } as unknown as Parameters<typeof applyHeatmapLayerVisibility>[0];
+
+    expect(applyHeatmapLayerVisibility(map, visible)).toBe(true);
+    expect(setLayoutProperty).toHaveBeenCalledWith(HEATMAP_LAYER_ID, 'visibility', expected);
+  });
+
+  it.each([
+    [true, 'visible'],
+    [false, 'none']
+  ] as const)('applies visible=%s to every regional layer', (visible, expected) => {
+    const setLayoutProperty = vi.fn();
+    const map = {
+      getLayer: vi.fn(() => ({})),
+      setLayoutProperty
+    } as unknown as Parameters<typeof applyRegionLayerVisibility>[0];
+
+    expect(applyRegionLayerVisibility(map, visible)).toBe(true);
+    expect(setLayoutProperty.mock.calls).toEqual(REGION_LAYER_IDS.map((layerID) => [layerID, 'visibility', expected]));
+  });
+
+  it('filters heat to the selected node neighborhood and clears on deselect', () => {
+    const setFilter = vi.fn();
+    const map = {
+      getLayer: vi.fn(() => ({})),
+      setFilter
+    } as unknown as Parameters<typeof applyHeatmapFocus>[0];
+
+    expect(applyHeatmapFocus(map, ['selected', 'neighbor'])).toBe(true);
+    expect(setFilter).toHaveBeenLastCalledWith(HEATMAP_LAYER_ID, nodeIDFilter(['selected', 'neighbor']));
+    expect(applyHeatmapFocus(map, [])).toBe(true);
+    expect(setFilter).toHaveBeenLastCalledWith(HEATMAP_LAYER_ID, null);
+  });
+});
+
+describe('activity heatmap data', () => {
+  it('deduplicates route endpoints and accumulates repeated activity', () => {
+    const now = 1_900_000_000_000;
+    const collection = activityHeatCollection([
+      route('a-b', 'a', 'b', now),
+      route('a-c', 'a', 'c', now)
+    ], now);
+
+    expect(collection.features.map((feature) => feature.id)).toEqual(['a', 'b', 'c']);
+    expect(heatWeight(collection, 'a')).toBeGreaterThan(heatWeight(collection, 'b'));
+    expect(heatWeight(collection, 'a')).toBeGreaterThan(heatWeight(collection, 'c'));
+  });
+
+  it('counts a self route once and excludes endpoints with invalid coordinates', () => {
+    const now = 1_900_000_000_000;
+    const invalid = route('invalid-valid', 'invalid', 'valid', now);
+    invalid.from.lat = 91;
+    const collection = activityHeatCollection([
+      route('self', 'self', 'self', now),
+      route('pair', 'pair-a', 'pair-b', now),
+      invalid
+    ], now);
+
+    expect(heatWeight(collection, 'self')).toBe(heatWeight(collection, 'pair-a'));
+    expect(collection.features.some((feature) => feature.id === 'invalid')).toBe(false);
+    expect(collection.features.some((feature) => feature.id === 'valid')).toBe(true);
+  });
+
+  it('bounds every weight and favors fresh quiet activity over stale intense activity', () => {
+    const now = 1_900_000_000_000;
+    const fresh = route('fresh', 'fresh-a', 'fresh-b', now);
+    fresh.intensity = 0;
+    const stale = route('stale', 'stale-a', 'stale-b', now - 48 * 60 * 60_000);
+    stale.intensity = 4;
+    const collection = activityHeatCollection([fresh, stale], now);
+
+    for (const feature of collection.features) {
+      expect(Number(feature.properties?.weight)).toBeGreaterThanOrEqual(0);
+      expect(Number(feature.properties?.weight)).toBeLessThanOrEqual(1);
+    }
+    expect(heatWeight(collection, 'fresh-a')).toBeGreaterThan(heatWeight(collection, 'stale-a'));
   });
 });
 
@@ -277,4 +370,10 @@ function route(id: string, from: string, to: string, lastHeard: number): RouteV1
     lastHeard,
     intensity: 1
   };
+}
+
+function heatWeight(collection: ReturnType<typeof activityHeatCollection>, id: string): number {
+  const feature = collection.features.find((item) => item.id === id);
+  if (!feature) throw new Error(`missing heat feature ${id}`);
+  return Number(feature.properties?.weight);
 }

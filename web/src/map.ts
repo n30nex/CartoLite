@@ -5,6 +5,7 @@ import maplibregl, {
   type StyleSpecification
 } from 'maplibre-gl';
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
+import canadaRegionsURL from './assets/meshmapper-canada-regions.geojson?url';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
 import type { EndpointV1, NodeV1, RouteV1, StateV1 } from './types';
 
@@ -16,6 +17,12 @@ export const LIVE_FOLLOW_MIN_INTERVAL_MS = 1_200;
 
 const EMPTY_POINTS: FeatureCollection<Point> = { type: 'FeatureCollection', features: [] };
 const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', features: [] };
+const EMPTY_FEATURES: FeatureCollection = { type: 'FeatureCollection', features: [] };
+const ACTIVITY_HEAT_SOURCE_ID = 'activity-heat-source';
+const REGION_SOURCE_ID = 'meshmapper-canada-regions';
+const ACTIVITY_DECAY_MS = 6 * 60 * 60_000;
+export const HEATMAP_LAYER_ID = 'activity-heat';
+export const REGION_LAYER_IDS = ['region-fill', 'region-outline', 'region-labels'] as const;
 export const ROUTE_LAYER_IDS = ['route-glow', 'routes'] as const;
 export const ROUTE_HIT_LAYER_ID = 'route-hit';
 export const NODE_HIT_LAYER_ID = 'node-hit';
@@ -65,6 +72,10 @@ export class LiveMap {
   private lastState?: Readonly<StateV1>;
   private routesByID = new Map<string, RouteV1>();
   private routesVisible = true;
+  private heatmapVisible = false;
+  private regionsVisible = false;
+  private regionsLoaded = false;
+  private regionsLoad?: Promise<void>;
   private selectedNodeID: string | null = null;
   private selectedNodeLabel = '';
   private neighborNodeIDs: string[] = [];
@@ -87,6 +98,9 @@ export class LiveMap {
   ) {
     this.container.dataset.renderState = 'loading';
     this.container.dataset.routesVisible = 'true';
+    this.container.dataset.heatmapVisible = 'false';
+    this.container.dataset.regionsVisible = 'false';
+    this.container.dataset.regionsLoaded = 'false';
     this.container.dataset.selectedNodeId = '';
     this.container.dataset.neighborRouteCount = '0';
     this.container.dataset.hoveredRouteId = '';
@@ -136,6 +150,7 @@ export class LiveMap {
       const routeSignature = signatureForRoutes(state.routes);
       if (forceFreshness || routeSignature !== this.routeSignature) {
         (this.map.getSource('routes') as GeoJSONSource).setData(routeCollection(state.routes));
+        (this.map.getSource(ACTIVITY_HEAT_SOURCE_ID) as GeoJSONSource).setData(activityHeatCollection(state.routes));
         this.routeSignature = routeSignature;
         changed = true;
       }
@@ -185,6 +200,20 @@ export class LiveMap {
     if (stableApplied || hitApplied || neighborsApplied) this.markRendering();
   }
 
+  setHeatmapVisible(visible: boolean): void {
+    this.heatmapVisible = visible;
+    this.container.dataset.heatmapVisible = String(visible);
+    if (applyHeatmapLayerVisibility(this.map, visible)) this.markRendering();
+  }
+
+  setRegionsVisible(visible: boolean): void {
+    this.regionsVisible = visible;
+    this.container.dataset.regionsVisible = String(visible);
+    if (visible) this.ensureRegionsData();
+    const applied = applyRegionLayerVisibility(this.map, visible);
+    if (applied) this.markRendering();
+  }
+
   destroy(): void {
     window.clearInterval(this.freshnessTimer);
     if (this.clusterFlashTimer !== undefined) window.clearTimeout(this.clusterFlashTimer);
@@ -192,6 +221,65 @@ export class LiveMap {
   }
 
   private installLayers(): void {
+    this.map.addSource(REGION_SOURCE_ID, {
+      type: 'geojson',
+      data: EMPTY_FEATURES,
+      attribution: 'Canadian regions &copy; <a href="https://meshmapper.net/">MeshMapper</a>, used with permission'
+    });
+    this.map.addLayer({
+      id: REGION_LAYER_IDS[0],
+      type: 'fill',
+      source: REGION_SOURCE_ID,
+      layout: { visibility: 'none' },
+      paint: {
+        'fill-color': '#32b7ad',
+        'fill-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.018, 7, 0.026, 10, 0.036, 14, 0.018]
+      }
+    });
+
+    this.map.addSource(ACTIVITY_HEAT_SOURCE_ID, { type: 'geojson', data: EMPTY_POINTS, maxzoom: 14 });
+    this.map.addLayer({
+      id: HEATMAP_LAYER_ID,
+      type: 'heatmap',
+      source: ACTIVITY_HEAT_SOURCE_ID,
+      layout: { visibility: 'none' },
+      paint: {
+        'heatmap-weight': [
+          'interpolate', ['linear'], ['number', ['get', 'weight'], 0],
+          0, 0,
+          0.2, 0.1,
+          0.55, 0.6,
+          1, 1.25
+        ],
+        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 3, 0.55, 7, 0.85, 10, 1.1, 16, 1.25],
+        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 3, 14, 6, 22, 9, 30, 13, 38, 16, 44],
+        'heatmap-color': [
+          'interpolate', ['linear'], ['heatmap-density'],
+          0, 'rgba(3,7,11,0)',
+          0.08, 'rgba(20,109,118,0.18)',
+          0.25, 'rgba(29,166,157,0.42)',
+          0.48, 'rgba(69,223,195,0.62)',
+          0.7, 'rgba(242,191,79,0.80)',
+          0.88, 'rgba(255,145,82,0.90)',
+          1, 'rgba(255,244,177,0.98)'
+        ],
+        'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.72, 7, 0.62, 10, 0.4, 14, 0.18, 16, 0.1]
+      }
+    });
+    this.map.addLayer({
+      id: REGION_LAYER_IDS[1],
+      type: 'line',
+      source: REGION_SOURCE_ID,
+      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+      paint: {
+        'line-color': '#69d1ca',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.45, 6, 0.7, 10, 1.1, 14, 1.35],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.18, 6, 0.3, 10, 0.42, 14, 0.28],
+        'line-dasharray': [2, 2],
+        'line-blur': 0.18
+      }
+    });
+
     this.map.addSource('routes', { type: 'geojson', data: EMPTY_LINES, maxzoom: 14 });
     this.map.addLayer({
       id: 'route-glow',
@@ -256,6 +344,34 @@ export class LiveMap {
     applyRouteLayerVisibility(this.map, this.routesVisible);
     applyRouteHitLayerVisibility(this.map, this.routesVisible && this.selectedNodeID !== null);
     applyRouteHoverFilter(this.map, null);
+    applyHeatmapLayerVisibility(this.map, this.heatmapVisible);
+    applyRegionLayerVisibility(this.map, this.regionsVisible);
+    if (this.regionsVisible) this.ensureRegionsData();
+
+    this.map.addLayer({
+      id: REGION_LAYER_IDS[2],
+      type: 'symbol',
+      source: REGION_SOURCE_ID,
+      minzoom: 5,
+      layout: {
+        visibility: 'none',
+        'text-field': ['get', 'code'],
+        'text-font': LOCAL_FONTS,
+        'text-size': ['interpolate', ['linear'], ['zoom'], 5, 8, 9, 9.2, 13, 10.5],
+        'text-letter-spacing': 0.13,
+        'text-padding': 8,
+        'text-allow-overlap': false,
+        'text-ignore-placement': false
+      },
+      paint: {
+        'text-color': '#8ec5c1',
+        'text-halo-color': '#02070b',
+        'text-halo-width': 1.2,
+        'text-halo-blur': 0.25,
+        'text-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.42, 8, 0.68, 12, 0.82]
+      }
+    });
+    applyRegionLayerVisibility(this.map, this.regionsVisible);
 
     this.map.addSource('nodes', {
       type: 'geojson',
@@ -490,6 +606,23 @@ export class LiveMap {
     this.render(this.lastState, true);
   }
 
+  private ensureRegionsData(): void {
+    if (this.regionsLoaded || this.regionsLoad) return;
+    const source = this.map.getSource(REGION_SOURCE_ID) as GeoJSONSource | undefined;
+    if (!source) return;
+    this.regionsLoad = source.setData(canadaRegionsURL, true)
+      .then(() => {
+        this.regionsLoaded = true;
+        this.container.dataset.regionsLoaded = 'true';
+      })
+      .catch((error: unknown) => {
+        console.warn('Region boundary load failed:', error instanceof Error ? error.message : error);
+      })
+      .finally(() => {
+        this.regionsLoad = undefined;
+      });
+  }
+
   private markRendering(): void {
     const epoch = ++this.renderEpoch;
     this.container.dataset.renderState = 'rendering';
@@ -583,6 +716,7 @@ export class LiveMap {
     applyRouteFocusAppearance(this.map, this.selectedNodeID !== null);
     applySelectedNodeFilter(this.map, this.selectedNodeID);
     applyNodeFocus(this.map, this.selectedNodeID, focusIDs, this.neighborNodeIDs);
+    applyHeatmapFocus(this.map, focusIDs);
     applyRouteHitLayerVisibility(this.map, this.routesVisible && this.selectedNodeID !== null);
     applyNeighborRingVisibility(this.map, this.routesVisible && this.selectedNodeID !== null);
   }
@@ -695,8 +829,20 @@ type LayerFilter = Parameters<maplibregl.Map['setFilter']>[1];
 type ActiveLayerFilter = Exclude<LayerFilter, null | undefined>;
 
 export function applyRouteLayerVisibility(map: RouteLayerMap, visible: boolean): boolean {
+  return applyLayerVisibility(map, ROUTE_LAYER_IDS, visible);
+}
+
+export function applyHeatmapLayerVisibility(map: RouteLayerMap, visible: boolean): boolean {
+  return applyLayerVisibility(map, [HEATMAP_LAYER_ID], visible);
+}
+
+export function applyRegionLayerVisibility(map: RouteLayerMap, visible: boolean): boolean {
+  return applyLayerVisibility(map, REGION_LAYER_IDS, visible);
+}
+
+function applyLayerVisibility(map: RouteLayerMap, layerIDs: readonly string[], visible: boolean): boolean {
   let applied = false;
-  for (const layerID of ROUTE_LAYER_IDS) {
+  for (const layerID of layerIDs) {
     if (!map.getLayer(layerID)) continue;
     map.setLayoutProperty(layerID, 'visibility', visible ? 'visible' : 'none');
     applied = true;
@@ -768,6 +914,12 @@ export function applyRouteHoverFilter(map: InteractiveLayerMap, routeID: string 
 export function applyClusterHighlightFilter(map: RouteFilterMap, clusterID: number | null): boolean {
   if (!map.getLayer(CLUSTER_HIGHLIGHT_LAYER_ID)) return false;
   map.setFilter(CLUSTER_HIGHLIGHT_LAYER_ID, clusterIDFilter(clusterID));
+  return true;
+}
+
+export function applyHeatmapFocus(map: RouteFilterMap, focusIDs: readonly string[]): boolean {
+  if (!map.getLayer(HEATMAP_LAYER_ID)) return false;
+  map.setFilter(HEATMAP_LAYER_ID, focusIDs.length > 0 ? nodeIDFilter(focusIDs) : null);
   return true;
 }
 
@@ -1052,6 +1204,34 @@ function nodeCollection(nodes: readonly NodeV1[]): FeatureCollection<Point> {
         color: roleColor(node.role),
         opacity: freshness(node.lastSeen, now),
         labelPriority: nodeLabelPriority(node, now)
+      }
+    }))
+  };
+}
+
+export function activityHeatCollection(routes: readonly RouteV1[], now = Date.now()): FeatureCollection<Point> {
+  const activity = new Map<string, { endpoint: EndpointV1; score: number }>();
+  for (const route of routes) {
+    const intensity = Math.max(0, Math.min(4, route.intensity));
+    const age = Math.max(0, now - route.lastHeard);
+    const contribution = Math.exp(-age / ACTIVITY_DECAY_MS) * (1 + intensity * 0.25);
+    const endpoints = route.from.id === route.to.id ? [route.from] : [route.from, route.to];
+    for (const endpoint of endpoints) {
+      if (!validEndpoint(endpoint)) continue;
+      const existing = activity.get(endpoint.id);
+      if (existing) existing.score += contribution;
+      else activity.set(endpoint.id, { endpoint, score: contribution });
+    }
+  }
+  return {
+    type: 'FeatureCollection',
+    features: [...activity.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([id, item]): Feature<Point> => ({
+      type: 'Feature',
+      id,
+      geometry: { type: 'Point', coordinates: [item.endpoint.lng, item.endpoint.lat] },
+      properties: {
+        id,
+        weight: Math.round(Math.min(1, Math.log1p(item.score) / Math.log1p(10)) * 1_000) / 1_000
       }
     }))
   };

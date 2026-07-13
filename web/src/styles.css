@@ -228,6 +228,26 @@ button { font: inherit; }
   .legend[data-focused="true"] { max-width: calc(100vw - 16px); padding: 8px 10px; }
 }
 
+@media (max-width: 380px) {
+  .topbar { gap: 7px; padding-inline: 8px; }
+  .topbar .brand > span:last-child,
+  #status-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .status { gap: 0; }
+  .control-button { padding-inline: 7px; }
+  .control-icon { width: 14px; height: 14px; }
+  .icon-button { width: 34px; padding: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }

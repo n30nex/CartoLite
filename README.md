@@ -1,6 +1,6 @@
 # CartoLite
 
-CartoLite is a compact, privacy-safe live map of high-confidence MeshCore Canada RF traffic. The default page is the product: a dark radio-constellation map with collision-managed labels, jewel-like nodes, quiet teal topology, and event-driven, distance-aware Canvas2D packet light with 15-second fading trails. Selecting a node focuses and illuminates connections heard in the last 24 hours; hovering or tapping a focused route shows its endpoints, packet count, and last-heard time. It deliberately omits history, chat, PacketTV, search, phonebooks, operator tools, analytics, and databases.
+CartoLite is a compact, privacy-safe live map of high-confidence MeshCore Canada RF traffic. The default page is the product: a dark radio-constellation map with collision-managed labels, jewel-like nodes, quiet teal topology, and event-driven, distance-aware Canvas2D packet light with 15-second fading trails. Selecting a node focuses and illuminates connections heard in the last 24 hours; hovering or tapping a focused route shows its endpoints, packet count, and last-heard time. Optional GPU-rendered Heatmap and MeshMapper Canada Regions layers stay off until requested, preserving the fast default view. It deliberately omits history, chat, PacketTV, search, phonebooks, operator tools, analytics, and databases.
 
 ## Runtime shape
 
@@ -9,7 +9,7 @@ CartoLite is a compact, privacy-safe live map of high-confidence MeshCore Canada
 - One `/data/state-v1.json` checkpoint preserves current nodes and routes across restarts. It is not packet history.
 - One non-root, read-only, `linux/amd64` container is published to `ghcr.io/n30nex/cartolite`.
 
-See [Architecture](docs/architecture.md), [public API](docs/public-api.md), and [deployment](docs/deployment.md).
+See [Architecture](docs/architecture.md), [data sources](docs/data-sources.md), [public API](docs/public-api.md), and [deployment](docs/deployment.md).
 
 ## Deploy a published image
 
