@@ -1079,8 +1079,8 @@ export function routeVisualProperties(
   const recent = 1 - smoothstep(55 * 60_000, 65 * 60_000, age);
   const oldProgress = clamp((age - ROUTE_BRIGHT_AGE_MS) / (ROUTE_MAX_AGE_MS - ROUTE_BRIGHT_AGE_MS), 0, 1);
   return {
-    width: 0.68 + 0.82 * trafficLevel,
-    glowWidth: 1.8 + 1.6 * trafficLevel,
+    width: Math.min(1.5, 0.68 + 0.82 * trafficLevel),
+    glowWidth: Math.min(3.4, 1.8 + 1.6 * trafficLevel),
     opacity: 0.36 - 0.28 * oldProgress + 0.58 * recent,
     trafficLevel
   };
