@@ -41,6 +41,21 @@ kill "$events_pid" >/dev/null 2>&1 || true
 wait "$events_pid" >/dev/null 2>&1 || true
 trap - EXIT
 
+for _ in $(seq 1 60); do
+  curl --fail --silent --show-error "$base_url/api/state" > "$artifact_dir/state.json"
+  if jq -e '(.routes | length) >= 1' "$artifact_dir/state.json" >/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+jq -e '
+  (.routes | length) >= 1 and
+  (.routes | all(
+    (.lastKind as $kind | ["Advert", "Trace", "Text", "ACK", "Control", "Other"] | index($kind)) != null and
+    (.traffic | type == "number" and . >= 0 and . <= 64)
+  ))
+' "$artifact_dir/state.json" >/dev/null
+
 if grep -Eiq '(^|["_])(public.?key|observer.?key|packet.?hash|raw.?path|raw.?payload|payload|decoded|message|resolver.?reason|mqtt.?password)(["_:]|$)' \
   "$artifact_dir/state.json" "$artifact_dir/events.txt"; then
   echo "forbidden public field detected" >&2

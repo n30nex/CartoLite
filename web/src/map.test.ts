@@ -9,6 +9,7 @@ import {
   applyNodeFocus,
   applyNeighborRingVisibility,
   applyRegionLayerVisibility,
+  applyRouteFocusAppearance,
   applyRouteHoverFilter,
   applyRouteHitLayerVisibility,
   applyRouteLayerVisibility,
@@ -33,12 +34,15 @@ import {
   ROUTE_HIT_LAYER_ID,
   ROUTE_LAYER_IDS,
   REGION_LAYER_IDS,
+  routeCollection,
+  routeColorExpression,
   routeVisualProperties,
   SELECTED_NODE_OUTER_LAYER_ID,
   SELECTED_NODE_LAYER_ID,
   selectedNodeFilter,
   tooltipPosition
 } from './map';
+import { PACKET_KIND_COLORS, ROUTE_MAX_AGE_MS } from './trafficVisuals';
 
 describe('darkStyle', () => {
   it('uses local fonts without an external glyph dependency', () => {
@@ -100,6 +104,20 @@ describe('route layer visibility', () => {
       [NEIGHBOR_NODE_LAYER_ID, 'visibility', 'visible'],
       [NEIGHBOR_NODE_LAYER_ID, 'visibility', 'none']
     ]);
+  });
+
+  it('changes focus emphasis without overwriting packet-driven route colors', () => {
+    const setPaintProperty = vi.fn();
+    const map = {
+      getLayer: vi.fn(() => ({})),
+      setPaintProperty
+    } as unknown as Parameters<typeof applyRouteFocusAppearance>[0];
+
+    expect(applyRouteFocusAppearance(map, true)).toBe(true);
+    expect(applyRouteFocusAppearance(map, false)).toBe(true);
+    expect(setPaintProperty).toHaveBeenCalledWith('route-glow', 'line-width', expect.any(Array));
+    expect(setPaintProperty).toHaveBeenCalledWith('routes', 'line-opacity', expect.any(Array));
+    expect(setPaintProperty.mock.calls.some((call) => call[1] === 'line-color')).toBe(false);
   });
 });
 
@@ -174,19 +192,59 @@ describe('activity heatmap data', () => {
     expect(collection.features.some((feature) => feature.id === 'valid')).toBe(true);
   });
 
-  it('bounds every weight and favors fresh quiet activity over stale intense activity', () => {
+  it('bounds every weight and expires heat activity after 24 hours', () => {
     const now = 1_900_000_000_000;
     const fresh = route('fresh', 'fresh-a', 'fresh-b', now);
-    fresh.intensity = 0;
-    const stale = route('stale', 'stale-a', 'stale-b', now - 48 * 60 * 60_000);
-    stale.intensity = 4;
-    const collection = activityHeatCollection([fresh, stale], now);
+    const boundary = route('boundary', 'boundary-a', 'boundary-b', now - ROUTE_MAX_AGE_MS);
+    const expired = route('expired', 'expired-a', 'expired-b', now - ROUTE_MAX_AGE_MS - 1);
+    const collection = activityHeatCollection([fresh, boundary, expired], now);
 
     for (const feature of collection.features) {
       expect(Number(feature.properties?.weight)).toBeGreaterThanOrEqual(0);
       expect(Number(feature.properties?.weight)).toBeLessThanOrEqual(1);
     }
-    expect(heatWeight(collection, 'fresh-a')).toBeGreaterThan(heatWeight(collection, 'stale-a'));
+    expect(collection.features.some((feature) => feature.id === 'boundary-a')).toBe(true);
+    expect(collection.features.some((feature) => feature.id === 'expired-a')).toBe(false);
+    expect(heatWeight(collection, 'fresh-a')).toBeGreaterThan(heatWeight(collection, 'boundary-a'));
+  });
+});
+
+describe('stable route visual data', () => {
+  it('keeps the exact 24-hour boundary, expires older routes, and assigns trail colors', () => {
+    const now = 1_900_000_000_000;
+    const text = route('text', 'text-a', 'text-b', now, 'Text', 8);
+    const boundary = route('boundary', 'boundary-a', 'boundary-b', now - ROUTE_MAX_AGE_MS, 'Trace', 4);
+    const expired = route('expired', 'expired-a', 'expired-b', now - ROUTE_MAX_AGE_MS - 1, 'Advert', 16);
+    const collection = routeCollection([text, boundary, expired], now);
+
+    expect(collection.features.map((feature) => feature.id)).toEqual(['text', 'boundary']);
+    expect(collection.features.find((feature) => feature.id === 'text')?.properties).toMatchObject({
+      color: PACKET_KIND_COLORS.Text,
+      lastKind: 'Text'
+    });
+    expect(collection.features.find((feature) => feature.id === 'boundary')?.properties).toMatchObject({
+      color: PACKET_KIND_COLORS.Trace,
+      lastKind: 'Trace'
+    });
+    expect(routeColorExpression()).toEqual(['to-color', ['get', 'color']]);
+  });
+
+  it('keeps relative widths bounded and lets quiet routes thin naturally', () => {
+    const now = 1_900_000_000_000;
+    const quiet = route('quiet', 'quiet-a', 'quiet-b', now, 'Advert', 1);
+    const busy = route('busy', 'busy-a', 'busy-b', now, 'ACK', 16);
+    const collection = routeCollection([quiet, busy], now);
+    const quietProperties = collection.features.find((feature) => feature.id === 'quiet')?.properties;
+    const busyProperties = collection.features.find((feature) => feature.id === 'busy')?.properties;
+
+    expect(Number(busyProperties?.width)).toBeGreaterThan(Number(quietProperties?.width));
+    expect(Number(busyProperties?.glowWidth)).toBeGreaterThan(Number(quietProperties?.glowWidth));
+    for (const properties of [quietProperties, busyProperties]) {
+      expect(Number(properties?.width)).toBeGreaterThanOrEqual(0.68);
+      expect(Number(properties?.width)).toBeLessThanOrEqual(1.5);
+      expect(Number(properties?.glowWidth)).toBeGreaterThanOrEqual(1.8);
+      expect(Number(properties?.glowWidth)).toBeLessThanOrEqual(3.4);
+    }
   });
 });
 
@@ -339,15 +397,25 @@ describe('visual hierarchy and soft follow', () => {
     expect(canMoveLiveFollow(10_000, 10_000 + LIVE_FOLLOW_MIN_INTERVAL_MS)).toBe(true);
   });
 
-  it('uses packet intensity for width while route age controls opacity', () => {
+  it('uses decaying traffic for width while route age controls brightness', () => {
     const now = 1_900_000_000_000;
-    const quiet = routeVisualProperties({ intensity: 0, lastHeard: now }, now);
-    const active = routeVisualProperties({ intensity: 4, lastHeard: now }, now);
-    const old = routeVisualProperties({ intensity: 4, lastHeard: now - 48 * 60 * 60_000 }, now);
+    const quiet = routeVisualProperties({ traffic: 0, lastHeard: now }, now, 1);
+    const active = routeVisualProperties({ traffic: 64, lastHeard: now }, now, 1);
+    const old = routeVisualProperties({ traffic: 64, lastHeard: now - 60 * 60_000 }, now, 1);
 
     expect(active.width).toBeGreaterThan(quiet.width);
     expect(active.glowWidth).toBeGreaterThan(quiet.glowWidth);
     expect(active.opacity).toBeGreaterThan(old.opacity);
+    expect(active.width).toBeLessThanOrEqual(1.5);
+    expect(active.glowWidth).toBeLessThanOrEqual(3.4);
+    expect(old.width).toBeLessThan(active.width);
+    expect(old.glowWidth).toBeLessThan(active.glowWidth);
+    for (const visual of [quiet, active, old]) {
+      expect(visual.trafficLevel).toBeGreaterThanOrEqual(0);
+      expect(visual.trafficLevel).toBeLessThanOrEqual(1);
+      expect(visual.opacity).toBeGreaterThanOrEqual(0);
+      expect(visual.opacity).toBeLessThanOrEqual(1);
+    }
   });
 
   it('prioritizes fresh observers and repeaters over stale leaf nodes', () => {
@@ -361,14 +429,23 @@ describe('visual hierarchy and soft follow', () => {
   });
 });
 
-function route(id: string, from: string, to: string, lastHeard: number): RouteV1 {
+function route(
+  id: string,
+  from: string,
+  to: string,
+  lastHeard: number,
+  lastKind: RouteV1['lastKind'] = 'Other',
+  traffic = 1
+): RouteV1 {
   return {
     id,
     from: { id: from, label: from.toUpperCase(), lat: 43.45, lng: -80.35 },
     to: { id: to, label: to.toUpperCase(), lat: 43.5, lng: -80.2 },
     packetCount: 1,
     lastHeard,
-    intensity: 1
+    intensity: 1,
+    lastKind,
+    traffic
   };
 }
 

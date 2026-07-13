@@ -1,5 +1,8 @@
 import type maplibregl from 'maplibre-gl';
 import type { EndpointV1, ObserverPacketV1, PacketV1, RoutePacketV1, RouteSegmentV1 } from './types';
+import { payloadColor } from './trafficVisuals';
+
+export { payloadColor } from './trafficVisuals';
 
 export const SINGLE_HOP_MS = 2100;
 export const MIN_ROUTE_MS = 1300;
@@ -78,15 +81,6 @@ export function packetDuration(hops: number, totalDistanceKm?: number): number {
   const distanceProgress = Math.sqrt(Math.min(1, distance / DISTANCE_SATURATION_KM));
   const distanceDuration = MIN_ROUTE_MS + (MAX_ROUTE_MS - MIN_ROUTE_MS) * distanceProgress;
   return Math.round(Math.min(MAX_ROUTE_MS, distanceDuration + Math.max(0, hopCount - 1) * EXTRA_HOP_MS));
-}
-
-export function payloadColor(payloadType: string): string {
-  const value = payloadType.toLowerCase();
-  if (value.includes('trace')) return '#e9d72f';
-  if (value.includes('text')) return '#ec79b0';
-  if (value.includes('ack')) return '#8bd4ff';
-  if (value.includes('advert')) return '#48dcc1';
-  return '#7dbfff';
 }
 
 export function geographicDistanceKm(from: EndpointV1, to: EndpointV1): number {

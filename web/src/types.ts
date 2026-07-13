@@ -1,3 +1,5 @@
+import type { PacketKind } from './trafficVisuals';
+
 export type NodeRole = 'repeater' | 'companion' | 'room_server' | 'sensor' | 'unknown';
 
 export interface EndpointV1 {
@@ -20,6 +22,8 @@ export interface RouteV1 {
   packetCount: number;
   lastHeard: number;
   intensity: 0 | 1 | 2 | 3 | 4;
+  lastKind: PacketKind;
+  traffic: number;
 }
 
 export interface StatusV1 {
@@ -52,7 +56,7 @@ interface PacketBaseV1 {
   seq: number;
   id: string;
   at: number;
-  payloadType: string;
+  payloadType: PacketKind;
 }
 
 export interface RoutePacketV1 extends PacketBaseV1 {

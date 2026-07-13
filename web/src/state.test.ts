@@ -52,7 +52,7 @@ describe('LiveStore', () => {
       seq: 8,
       id: 'p1',
       at: 100,
-      payloadType: 'Trace',
+      payloadType: 'Trace' as const,
       mode: 'route' as const,
       segments: [{ routeId: 'r1', from: endpoint, to: { ...endpoint, id: 'b', lng: -80.2 } }]
     };
@@ -64,7 +64,14 @@ describe('LiveStore', () => {
 
     vi.advanceTimersByTime(250);
     expect(store.snapshot.routes).toHaveLength(1);
-    expect(store.snapshot.routes[0]).toMatchObject({ id: 'r1', packetCount: 2, lastHeard: 200, intensity: 1 });
+    expect(store.snapshot.routes[0]).toMatchObject({
+      id: 'r1',
+      packetCount: 2,
+      lastHeard: 200,
+      intensity: 1,
+      lastKind: 'Trace'
+    });
+    expect(store.snapshot.routes[0]?.traffic).toBeCloseTo(2, 3);
     expect(emissions).toBe(2);
     store.destroy();
     vi.useRealTimers();
@@ -77,7 +84,16 @@ describe('LiveStore', () => {
     const store = new LiveStore({
       ...initial,
       nodes: [{ ...endpointA, role: 'repeater', observer: false, lastSeen: 1 }],
-      routes: [{ id: 'r1', from: endpointA, to: endpointB, packetCount: 8, lastHeard: 1, intensity: 3 }]
+      routes: [{
+        id: 'r1',
+        from: endpointA,
+        to: endpointB,
+        packetCount: 8,
+        lastHeard: 1,
+        intensity: 3,
+        lastKind: 'Advert',
+        traffic: 2
+      }]
     });
 
     store.upsertNode({ ...endpointA, label: 'New A', lat: 44, lng: -79, role: 'repeater', observer: false, lastSeen: 2 }, 8);
@@ -99,7 +115,16 @@ describe('LiveStore', () => {
     const to = { id: 'b', label: 'B', lat: 43.5, lng: -80.2 };
     const store = new LiveStore({
       ...initial,
-      routes: [{ id: 'r1', from, to, packetCount: 3, lastHeard: 1, intensity: 1 }]
+      routes: [{
+        id: 'r1',
+        from,
+        to,
+        packetCount: 3,
+        lastHeard: 1,
+        intensity: 1,
+        lastKind: 'Trace',
+        traffic: 1
+      }]
     });
     let emissions = 0;
     store.subscribe(() => { emissions += 1; });
@@ -119,7 +144,13 @@ describe('LiveStore', () => {
     expect(emissions).toBe(1);
 
     vi.advanceTimersByTime(250);
-    expect(store.snapshot.routes[0]).toMatchObject({ packetCount: 6, lastHeard: 1_000, intensity: 2 });
+    expect(store.snapshot.routes[0]).toMatchObject({
+      packetCount: 6,
+      lastHeard: 1_000,
+      intensity: 2,
+      lastKind: 'Trace'
+    });
+    expect(store.snapshot.routes[0]?.traffic).toBeCloseTo(4, 2);
     expect(emissions).toBe(2);
     store.destroy();
     vi.useRealTimers();
@@ -131,7 +162,16 @@ describe('LiveStore', () => {
     const to = { id: 'b', label: 'B', lat: 43.5, lng: -80.2 };
     const store = new LiveStore({
       ...initial,
-      routes: [{ id: 'r1', from, to, packetCount: 4, lastHeard: 100, intensity: 2 }]
+      routes: [{
+        id: 'r1',
+        from,
+        to,
+        packetCount: 4,
+        lastHeard: 100,
+        intensity: 2,
+        lastKind: 'Trace',
+        traffic: 64
+      }]
     });
     let emissions = 0;
     store.subscribe(() => { emissions += 1; });
@@ -139,7 +179,7 @@ describe('LiveStore', () => {
       seq: 8,
       id: 'p8',
       at: 200,
-      payloadType: 'Trace',
+      payloadType: 'Trace' as const,
       mode: 'route' as const,
       segments: [{ routeId: 'r1', from, to }]
     };
@@ -149,8 +189,54 @@ describe('LiveStore', () => {
     vi.advanceTimersByTime(250);
 
     expect(store.snapshot).toMatchObject({ seq: 9 });
-    expect(store.snapshot.routes[0]).toMatchObject({ packetCount: 6, lastHeard: 200, intensity: 2 });
+    expect(store.snapshot.routes[0]).toMatchObject({
+      packetCount: 6,
+      lastHeard: 200,
+      intensity: 2,
+      lastKind: 'Trace',
+      traffic: 64
+    });
     expect(emissions).toBe(1);
+    store.destroy();
+    vi.useRealTimers();
+  });
+
+  it('recolors from the newest packet without regressing on an older arrival', () => {
+    vi.useFakeTimers();
+    const from = { id: 'a', label: 'A', lat: 43.4, lng: -80.3 };
+    const to = { id: 'b', label: 'B', lat: 43.5, lng: -80.2 };
+    const store = new LiveStore({
+      ...initial,
+      routes: [{
+        id: 'r1',
+        from,
+        to,
+        packetCount: 4,
+        lastHeard: 200,
+        intensity: 2,
+        lastKind: 'Advert',
+        traffic: 2
+      }]
+    });
+    const packet = {
+      seq: 8,
+      id: 'p8',
+      at: 300,
+      payloadType: 'Text' as const,
+      mode: 'route' as const,
+      segments: [{ routeId: 'r1', from, to }]
+    };
+
+    store.applyPacket(packet);
+    store.applyPacket({ ...packet, seq: 9, id: 'p9', at: 250, payloadType: 'Trace' });
+    vi.advanceTimersByTime(250);
+
+    expect(store.snapshot.routes[0]).toMatchObject({
+      packetCount: 6,
+      lastHeard: 300,
+      lastKind: 'Text'
+    });
+    expect(store.snapshot.routes[0]?.traffic).toBeCloseTo(4, 3);
     store.destroy();
     vi.useRealTimers();
   });

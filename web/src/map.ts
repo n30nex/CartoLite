@@ -7,6 +7,13 @@ import maplibregl, {
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import canadaRegionsURL from './assets/meshmapper-canada-regions.geojson?url';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
+import {
+  decayedRouteTraffic,
+  payloadColor,
+  ROUTE_BRIGHT_AGE_MS,
+  ROUTE_MAX_AGE_MS,
+  trafficRenderBucket
+} from './trafficVisuals';
 import type { EndpointV1, NodeV1, RouteV1, StateV1 } from './types';
 
 export const DEFAULT_CENTER: [number, number] = [-80.35, 43.45];
@@ -20,7 +27,6 @@ const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', 
 const EMPTY_FEATURES: FeatureCollection = { type: 'FeatureCollection', features: [] };
 const ACTIVITY_HEAT_SOURCE_ID = 'activity-heat-source';
 const REGION_SOURCE_ID = 'meshmapper-canada-regions';
-const ACTIVITY_DECAY_MS = 6 * 60 * 60_000;
 export const HEATMAP_LAYER_ID = 'activity-heat';
 export const REGION_LAYER_IDS = ['region-fill', 'region-outline', 'region-labels'] as const;
 export const ROUTE_LAYER_IDS = ['route-glow', 'routes'] as const;
@@ -286,7 +292,7 @@ export class LiveMap {
       type: 'line',
       source: 'routes',
       paint: {
-        'line-color': '#1ca69d',
+        'line-color': routeColorExpression(),
         'line-width': routeGlowWidth(false),
         'line-opacity': routeGlowOpacity(false),
         'line-blur': 2.6
@@ -298,7 +304,7 @@ export class LiveMap {
       source: 'routes',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': '#238f89',
+        'line-color': routeColorExpression(),
         'line-width': routeCoreWidth(false),
         'line-opacity': routeCoreOpacity(false)
       }
@@ -310,7 +316,7 @@ export class LiveMap {
       filter: routeIDFilter(null),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
       paint: {
-        'line-color': '#52e4d5',
+        'line-color': routeColorExpression(),
         'line-width': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, ['*', ['get', 'glowWidth'], 1.8], 14, ['*', ['get', 'glowWidth'], 2.15]],
         'line-opacity': 0.62,
         'line-blur': 4.2
@@ -749,7 +755,7 @@ export class LiveMap {
     this.presentTooltip(
       event,
       `${route.from.label} ↔ ${route.to.label}`,
-      `${packetCount.toLocaleString()} ${packetCount === 1 ? 'packet' : 'packets'} · heard ${relativeTime(route.lastHeard)}`,
+      `${route.lastKind} · ${packetCount.toLocaleString()} ${packetCount === 1 ? 'packet' : 'packets'} · heard ${relativeTime(route.lastHeard)}`,
       'route'
     );
     return true;
@@ -886,13 +892,11 @@ export function applySelectedNodeFilter(map: RouteFilterMap, selectedNodeID: str
 export function applyRouteFocusAppearance(map: PaintMap, focused: boolean): boolean {
   let applied = false;
   if (map.getLayer('route-glow')) {
-    map.setPaintProperty('route-glow', 'line-color', focused ? '#35d4c6' : '#1ca69d');
     map.setPaintProperty('route-glow', 'line-width', routeGlowWidth(focused));
     map.setPaintProperty('route-glow', 'line-opacity', routeGlowOpacity(focused));
     applied = true;
   }
   if (map.getLayer('routes')) {
-    map.setPaintProperty('routes', 'line-color', focused ? '#67e7da' : '#238f89');
     map.setPaintProperty('routes', 'line-width', routeCoreWidth(focused));
     map.setPaintProperty('routes', 'line-opacity', routeCoreOpacity(focused));
     applied = true;
@@ -1059,16 +1063,31 @@ export interface RouteVisualProperties {
   width: number;
   glowWidth: number;
   opacity: number;
+  trafficLevel: number;
 }
 
-export function routeVisualProperties(route: Pick<RouteV1, 'intensity' | 'lastHeard'>, now: number): RouteVisualProperties {
-  const intensity = Math.max(0, Math.min(4, route.intensity));
-  const ageOpacity = freshness(route.lastHeard, now);
+export function routeVisualProperties(
+  route: Pick<RouteV1, 'traffic' | 'lastHeard'>,
+  now: number,
+  trafficBaseline = 1
+): RouteVisualProperties {
+  const score = decayedRouteTraffic(route.traffic, route.lastHeard, now);
+  const relative = clamp(score / Math.max(1, trafficBaseline * 3), 0, 1);
+  const absolute = clamp(Math.log1p(score) / Math.log(9), 0, 1);
+  const trafficLevel = Math.sqrt(relative * absolute);
+  const age = Math.max(0, now - route.lastHeard);
+  const recent = 1 - smoothstep(55 * 60_000, 65 * 60_000, age);
+  const oldProgress = clamp((age - ROUTE_BRIGHT_AGE_MS) / (ROUTE_MAX_AGE_MS - ROUTE_BRIGHT_AGE_MS), 0, 1);
   return {
-    width: 0.72 + intensity * 0.24,
-    glowWidth: 2.4 + intensity * 0.58,
-    opacity: Math.max(0.06, Math.min(0.84, ageOpacity * (0.58 + intensity * 0.065)))
+    width: 0.68 + 0.82 * trafficLevel,
+    glowWidth: 1.8 + 1.6 * trafficLevel,
+    opacity: 0.36 - 0.28 * oldProgress + 0.58 * recent,
+    trafficLevel
   };
+}
+
+export function routeColorExpression(): ExpressionSpecification {
+  return ['to-color', ['get', 'color']];
 }
 
 export function nodeLabelPriority(node: Pick<NodeV1, 'role' | 'observer' | 'lastSeen'>, now: number): number {
@@ -1113,24 +1132,24 @@ function routeCoreOpacity(focused: boolean): ExpressionSpecification {
 }
 
 function routeGlowWidth(focused: boolean): ExpressionSpecification {
-  const boost = focused ? 1.45 : 1;
+  const boost = focused ? 1.36 : 1;
   return [
     'interpolate', ['linear'], ['zoom'],
-    3, 0.75,
-    7, ['*', ['get', 'glowWidth'], 0.7 * boost],
+    3, 0.65,
+    7, ['*', ['get', 'glowWidth'], 0.68 * boost],
     10, ['*', ['get', 'glowWidth'], boost],
-    14, ['*', ['get', 'glowWidth'], 1.25 * boost]
+    14, ['*', ['get', 'glowWidth'], 1.18 * boost]
   ];
 }
 
 function routeCoreWidth(focused: boolean): ExpressionSpecification {
-  const boost = focused ? 1.24 : 1;
+  const boost = focused ? 1.18 : 1;
   return [
     'interpolate', ['linear'], ['zoom'],
-    3, 0.34,
+    3, 0.3,
     7, ['*', ['get', 'width'], 0.7 * boost],
     10, ['*', ['get', 'width'], boost],
-    14, ['*', ['get', 'width'], 1.18 * boost]
+    14, ['*', ['get', 'width'], 1.15 * boost]
   ];
 }
 
@@ -1212,9 +1231,9 @@ function nodeCollection(nodes: readonly NodeV1[]): FeatureCollection<Point> {
 export function activityHeatCollection(routes: readonly RouteV1[], now = Date.now()): FeatureCollection<Point> {
   const activity = new Map<string, { endpoint: EndpointV1; score: number }>();
   for (const route of routes) {
-    const intensity = Math.max(0, Math.min(4, route.intensity));
     const age = Math.max(0, now - route.lastHeard);
-    const contribution = Math.exp(-age / ACTIVITY_DECAY_MS) * (1 + intensity * 0.25);
+    if (age > ROUTE_MAX_AGE_MS) continue;
+    const contribution = decayedRouteTraffic(route.traffic, route.lastHeard, now);
     const endpoints = route.from.id === route.to.id ? [route.from] : [route.from, route.to];
     for (const endpoint of endpoints) {
       if (!validEndpoint(endpoint)) continue;
@@ -1231,18 +1250,22 @@ export function activityHeatCollection(routes: readonly RouteV1[], now = Date.no
       geometry: { type: 'Point', coordinates: [item.endpoint.lng, item.endpoint.lat] },
       properties: {
         id,
-        weight: Math.round(Math.min(1, Math.log1p(item.score) / Math.log1p(10)) * 1_000) / 1_000
+        weight: Math.round(Math.min(1, Math.log1p(item.score) / Math.log1p(16)) * 1_000) / 1_000
       }
     }))
   };
 }
 
-function routeCollection(routes: readonly RouteV1[]): FeatureCollection<LineString> {
-  const now = Date.now();
+export function routeCollection(routes: readonly RouteV1[], now = Date.now()): FeatureCollection<LineString> {
+  const visible = routes.filter((route) => {
+    const age = Math.max(0, now - route.lastHeard);
+    return age <= ROUTE_MAX_AGE_MS && validEndpoint(route.from) && validEndpoint(route.to);
+  });
+  const trafficBaseline = routeTrafficBaseline(visible, now);
   return {
     type: 'FeatureCollection',
-    features: routes.filter((route) => validEndpoint(route.from) && validEndpoint(route.to)).map((route): Feature<LineString> => {
-      const visual = routeVisualProperties(route, now);
+    features: visible.map((route): Feature<LineString> => {
+      const visual = routeVisualProperties(route, now, trafficBaseline);
       return {
         type: 'Feature',
         id: route.id,
@@ -1252,6 +1275,8 @@ function routeCollection(routes: readonly RouteV1[]): FeatureCollection<LineStri
           fromId: route.from.id,
           toId: route.to.id,
           recent: isRecentNeighborRoute(route, now),
+          color: payloadColor(route.lastKind),
+          lastKind: route.lastKind,
           width: visual.width,
           glowWidth: visual.glowWidth,
           opacity: visual.opacity
@@ -1259,6 +1284,13 @@ function routeCollection(routes: readonly RouteV1[]): FeatureCollection<LineStri
       };
     })
   };
+}
+
+function routeTrafficBaseline(routes: readonly RouteV1[], now: number): number {
+  if (routes.length === 0) return 0;
+  let logTotal = 0;
+  for (const route of routes) logTotal += Math.log1p(decayedRouteTraffic(route.traffic, route.lastHeard, now));
+  return Math.expm1(logTotal / routes.length);
 }
 
 function validEndpoint(endpoint: EndpointV1): boolean {
@@ -1286,7 +1318,16 @@ function signatureForNodes(nodes: readonly NodeV1[]): string {
 }
 
 function signatureForRoutes(routes: readonly RouteV1[]): string {
-  return routes.map((route) => `${route.id}:${route.from.lng}:${route.from.lat}:${route.to.lng}:${route.to.lat}:${route.intensity}:${Math.floor(route.lastHeard / 60_000)}`).join('|');
+  return routes.map((route) => `${route.id}:${route.from.lng}:${route.from.lat}:${route.to.lng}:${route.to.lat}:${route.lastKind}:${trafficRenderBucket(route.traffic)}:${Math.floor(route.lastHeard / 60_000)}`).join('|');
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+function smoothstep(edge0: number, edge1: number, value: number): number {
+  const progress = clamp((value - edge0) / (edge1 - edge0), 0, 1);
+  return progress * progress * (3 - 2 * progress);
 }
 
 function relativeTime(timestamp: number): string {

@@ -24,6 +24,8 @@ type RouteV1 struct {
 	PacketCount int64      `json:"packetCount"`
 	LastHeard   int64      `json:"lastHeard"`
 	Intensity   int        `json:"intensity"`
+	LastKind    string     `json:"lastKind"`
+	Traffic     float64    `json:"traffic"`
 }
 
 type PublicStatus struct {
@@ -97,9 +99,11 @@ type privateNode struct {
 }
 
 type privateRoute struct {
-	ID          string `json:"id"`
-	FromID      string `json:"fromId"`
-	ToID        string `json:"toId"`
-	PacketCount int64  `json:"packetCount"`
-	LastHeard   int64  `json:"lastHeard"`
+	ID          string  `json:"id"`
+	FromID      string  `json:"fromId"`
+	ToID        string  `json:"toId"`
+	PacketCount int64   `json:"packetCount"`
+	LastHeard   int64   `json:"lastHeard"`
+	LastKind    string  `json:"lastKind,omitempty"`
+	Traffic     float64 `json:"traffic,omitempty"`
 }

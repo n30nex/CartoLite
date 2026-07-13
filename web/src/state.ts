@@ -1,4 +1,5 @@
 import type { NodeV1, PacketV1, RouteV1, StateV1, StatusV1 } from './types';
+import { normalizePacketKind, routeTrafficAfterPacket, trafficRenderBucket } from './trafficVisuals';
 
 const ROUTE_BATCH_MS = 250;
 
@@ -84,13 +85,17 @@ export class LiveStore {
     for (const segment of packet.segments) {
       const existing = this.pendingRoutes.get(segment.routeId) ?? this.routeByID(segment.routeId);
       const packetCount = (existing?.packetCount ?? 0) + 1;
+      const previousLastHeard = existing?.lastHeard ?? 0;
+      const isNewest = packet.at >= previousLastHeard;
       this.queueRoute({
         id: segment.routeId,
         from: segment.from,
         to: segment.to,
         packetCount,
-        lastHeard: Math.max(existing?.lastHeard ?? 0, packet.at),
-        intensity: routeIntensity(packetCount)
+        lastHeard: Math.max(previousLastHeard, packet.at),
+        intensity: routeIntensity(packetCount),
+        lastKind: isNewest ? normalizePacketKind(packet.payloadType) : existing?.lastKind ?? 'Other',
+        traffic: routeTrafficAfterPacket(existing?.traffic ?? 0, previousLastHeard, packet.at)
       });
     }
   }
@@ -210,6 +215,8 @@ function routeNeedsRender(previous: RouteV1, next: RouteV1): boolean {
   return !sameEndpoint(previous.from, next.from)
     || !sameEndpoint(previous.to, next.to)
     || previous.intensity !== next.intensity
+    || previous.lastKind !== next.lastKind
+    || trafficRenderBucket(previous.traffic) !== trafficRenderBucket(next.traffic)
     || Math.floor(previous.lastHeard / 60_000) !== Math.floor(next.lastHeard / 60_000);
 }
 

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type maplibregl from 'maplibre-gl';
 import type { EndpointV1, RoutePacketV1, RouteSegmentV1 } from './types';
+import { PACKET_KIND_COLORS } from './trafficVisuals';
 import {
   capCombinedNewest,
   capNewest,
@@ -44,10 +45,13 @@ describe('packet animation limits', () => {
     expect(packetDuration(100)).toBe(MAX_ROUTE_MS);
   });
 
-  it('maps only payload categories to visual colours', () => {
-    expect(payloadColor('Trace')).toBe('#e9d72f');
-    expect(payloadColor('TextMessage')).toBe('#ec79b0');
-    expect(payloadColor('unknown')).toBe('#7dbfff');
+  it('uses the shared packet palette for animated trails', () => {
+    expect(payloadColor('Advert')).toBe(PACKET_KIND_COLORS.Advert);
+    expect(payloadColor('Trace')).toBe(PACKET_KIND_COLORS.Trace);
+    expect(payloadColor('TextMessage')).toBe(PACKET_KIND_COLORS.Text);
+    expect(payloadColor('ACK')).toBe(PACKET_KIND_COLORS.ACK);
+    expect(payloadColor('Control')).toBe(PACKET_KIND_COLORS.Control);
+    expect(payloadColor('unknown')).toBe(PACKET_KIND_COLORS.Other);
   });
 
   it('uses geographic segment length to weight travel time', () => {

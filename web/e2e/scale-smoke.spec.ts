@@ -51,6 +51,9 @@ test('keeps a 2k-node / 5k-route first view responsive', async ({ page }, testIn
 
 function scaleState(): StateV1 {
   const now = Date.now();
+  const kinds: readonly RouteV1['lastKind'][] = ['Advert', 'Trace', 'Text', 'ACK', 'Control', 'Other'];
+  const trafficLevels = [0.25, 1, 4, 12, 32, 64] as const;
+  const routeAges = [0, 5 * 60_000, 20 * 60_000, 2 * 60 * 60_000, 8 * 60 * 60_000, 23 * 60 * 60_000] as const;
   const nodes: NodeV1[] = Array.from({ length: 2_000 }, (_, index): NodeV1 => ({
     id: `node-${index}`,
     label: `MC ${index}`,
@@ -68,8 +71,10 @@ function scaleState(): StateV1 {
       from: endpoint(from),
       to: endpoint(to),
       packetCount: 1 + index % 31,
-      lastHeard: now - (index % 90) * 60_000,
-      intensity: (index % 5) as RouteV1['intensity']
+      lastHeard: now - routeAges[index % routeAges.length]!,
+      intensity: (index % 5) as RouteV1['intensity'],
+      lastKind: kinds[index % kinds.length]!,
+      traffic: trafficLevels[index % trafficLevels.length]!
     };
   });
   return {
