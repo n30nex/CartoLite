@@ -58,6 +58,29 @@ func TestSecurityHeadersExcludeExternalGlyphOrigins(t *testing.T) {
 	}
 }
 
+func TestCanadaverseEmbedHeadersAreScopedToTheHomepage(t *testing.T) {
+	handler := testHandler(t, true)
+	for _, test := range []struct {
+		path        string
+		frame       string
+		framePolicy string
+	}{
+		{path: "/", frame: "DENY", framePolicy: "frame-ancestors 'none'"},
+		{path: "/?embed=canadaverse", framePolicy: "frame-ancestors https://canadaverse.org"},
+		{path: "/?embed=other", frame: "DENY", framePolicy: "frame-ancestors 'none'"},
+		{path: "/api/state?embed=canadaverse", frame: "DENY", framePolicy: "frame-ancestors 'none'"},
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+		if got := response.Header().Get("X-Frame-Options"); got != test.frame {
+			t.Fatalf("%s X-Frame-Options = %q, want %q", test.path, got, test.frame)
+		}
+		if csp := response.Header().Get("Content-Security-Policy"); !strings.Contains(csp, test.framePolicy) {
+			t.Fatalf("%s CSP = %q, want %q", test.path, csp, test.framePolicy)
+		}
+	}
+}
+
 func TestSSERejectsCrossOrigin(t *testing.T) {
 	handler := testHandler(t, true)
 	request := httptest.NewRequest(http.MethodGet, "/api/events", nil)

@@ -244,8 +244,14 @@ func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https://*.basemaps.cartocdn.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.basemaps.cartocdn.com; worker-src 'self' blob:; child-src blob:")
+		csp := "default-src 'self'; img-src 'self' data: https://*.basemaps.cartocdn.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.basemaps.cartocdn.com; worker-src 'self' blob:; child-src blob:;"
+		if r.URL.Path == "/" && r.URL.Query().Get("embed") == "canadaverse" {
+			csp += " frame-ancestors https://canadaverse.org;"
+		} else {
+			w.Header().Set("X-Frame-Options", "DENY")
+			csp += " frame-ancestors 'none';"
+		}
+		w.Header().Set("Content-Security-Policy", csp)
 		next.ServeHTTP(w, r)
 	})
 }
