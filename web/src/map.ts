@@ -44,6 +44,7 @@ const NODE_CORE_LAYER_ID = 'node-core';
 const NODE_LABEL_LAYER_ID = 'node-labels';
 const NODE_BASE_FILTER = ['!', ['has', 'point_count']] as ActiveLayerFilter;
 const LOCAL_FONTS = ['Noto Sans', 'Segoe UI', 'Arial', 'Noto Color Emoji', 'Segoe UI Emoji', 'Apple Color Emoji'];
+const CARTO_BASEMAP_API_KEY = import.meta.env.VITE_CARTO_BASEMAP_API_KEY?.trim() ?? '';
 
 export interface LiveMapFocus {
   label: string;
@@ -1181,7 +1182,8 @@ function nodeGlowOpacity(focused: boolean, focusIDs: readonly string[]): Express
   ];
 }
 
-export function darkStyle(): StyleSpecification {
+export function darkStyle(apiKey = CARTO_BASEMAP_API_KEY): StyleSpecification {
+  const keyQuery = apiKey.trim() ? `?key=${encodeURIComponent(apiKey.trim())}` : '';
   return {
     version: 8,
     name: 'CartoLite Dark',
@@ -1189,10 +1191,10 @@ export function darkStyle(): StyleSpecification {
       carto: {
         type: 'raster',
         tiles: [
-          'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-          'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-          'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-          'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+          `https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png${keyQuery}`,
+          `https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png${keyQuery}`,
+          `https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png${keyQuery}`,
+          `https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png${keyQuery}`
         ],
         tileSize: 256,
         maxzoom: 20,

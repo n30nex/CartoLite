@@ -5,7 +5,8 @@ WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY web/ ./
-RUN npm run build
+RUN --mount=type=secret,id=carto_basemap_api_key,required=false \
+    VITE_CARTO_BASEMAP_API_KEY="$(cat /run/secrets/carto_basemap_api_key 2>/dev/null || true)" npm run build
 
 FROM golang:1.25.12-bookworm AS go-build
 ARG APP_VERSION=dev

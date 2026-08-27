@@ -7,6 +7,8 @@
 - a persistent Docker volume for `/data`
 - a TLS edge or reverse proxy for public use
 
+Published images receive the browser-visible CARTO raster key at build time from the `CARTO_BASEMAP_API_KEY` GitHub Actions secret. Keep the value out of source, Compose, and runtime `.env` files.
+
 ## Install
 
 Copy `.env.example` to `.env`, pin `CARTOLITE_IMAGE` to a release digest, add private MQTT values, and use an exact comma-separated region allowlist. Then:
