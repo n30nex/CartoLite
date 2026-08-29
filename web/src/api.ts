@@ -1,14 +1,14 @@
-import { assertStateV1, sequenceAction } from './state';
+import { assertStateV2, sequenceAction } from './state';
 import type {
-  HelloV1,
-  NodeEventV1,
-  PacketV1,
-  ResetV1,
-  StateV1,
-  StatusEventV1
+  HelloV2,
+  NodeEventV2,
+  PacketEventV2,
+  ResetV2,
+  StateV2,
+  StatusEventV2
 } from './types';
 
-export async function fetchState(signal?: AbortSignal): Promise<StateV1> {
+export async function fetchState(signal?: AbortSignal): Promise<StateV2> {
   const response = await fetch('/api/state', {
     cache: 'no-store',
     credentials: 'same-origin',
@@ -17,16 +17,16 @@ export async function fetchState(signal?: AbortSignal): Promise<StateV1> {
   });
   if (!response.ok) throw new Error(`state request failed (${response.status})`);
   const body: unknown = await response.json();
-  assertStateV1(body);
+  assertStateV2(body);
   return body;
 }
 
 export interface LiveFeedHandlers {
   onConnection(connected: boolean): void;
-  onNode(event: NodeEventV1): void;
-  onPacket(event: PacketV1): void;
-  onStatus(event: StatusEventV1): void;
-  recover(): Promise<StateV1>;
+  onNode(event: NodeEventV2): void;
+  onPacket(event: PacketEventV2): void;
+  onStatus(event: StatusEventV2): void;
+  recover(): Promise<StateV2>;
   onError(error: Error): void;
 }
 
@@ -39,7 +39,7 @@ export class LiveFeed {
   private recoveryFailures = 0;
   private stopped = false;
 
-  constructor(initial: StateV1, private readonly handlers: LiveFeedHandlers) {
+  constructor(initial: StateV2, private readonly handlers: LiveFeedHandlers) {
     this.bootId = initial.bootId;
     this.seq = initial.seq;
   }
@@ -66,13 +66,13 @@ export class LiveFeed {
     source.onerror = () => { if (current()) this.handlers.onConnection(false); };
     source.addEventListener('hello', (event) => { if (current()) this.handleHello(event); });
     source.addEventListener('node', (event) => {
-      if (current()) this.handleSequenced<NodeEventV1>(event, this.handlers.onNode);
+      if (current()) this.handleSequenced<NodeEventV2>(event, this.handlers.onNode);
     });
     source.addEventListener('packet', (event) => {
-      if (current()) this.handleSequenced<PacketV1>(event, this.handlers.onPacket);
+      if (current()) this.handleSequenced<PacketEventV2>(event, this.handlers.onPacket);
     });
     source.addEventListener('status', (event) => {
-      if (current()) this.handleSequenced<StatusEventV1>(event, this.handlers.onStatus);
+      if (current()) this.handleSequenced<StatusEventV2>(event, this.handlers.onStatus);
     });
     source.addEventListener('reset', (event) => { if (current()) this.handleReset(event); });
   }
@@ -86,7 +86,7 @@ export class LiveFeed {
 
   private handleHello(raw: Event): void {
     try {
-      const hello = parseEvent<HelloV1>(raw);
+      const hello = parseEvent<HelloV2>(raw);
       if (hello.bootId !== this.bootId) {
         void this.requestRecovery();
       }
@@ -98,7 +98,7 @@ export class LiveFeed {
 
   private handleReset(raw: Event): void {
     try {
-      const reset = parseEvent<ResetV1>(raw);
+      const reset = parseEvent<ResetV2>(raw);
       if (reset.bootId !== this.bootId || reset.seq >= this.seq) void this.requestRecovery();
     } catch (error) {
       this.report(error);

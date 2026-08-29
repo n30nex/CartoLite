@@ -1,13 +1,13 @@
 package engine
 
-type EndpointV1 struct {
+type EndpointV2 struct {
 	ID    string  `json:"id"`
 	Label string  `json:"label"`
 	Lat   float64 `json:"lat"`
 	Lng   float64 `json:"lng"`
 }
 
-type NodeV1 struct {
+type NodeV2 struct {
 	ID       string  `json:"id"`
 	Label    string  `json:"label"`
 	Role     string  `json:"role"`
@@ -17,15 +17,15 @@ type NodeV1 struct {
 	LastSeen int64   `json:"lastSeen"`
 }
 
-type RouteV1 struct {
-	ID          string     `json:"id"`
-	From        EndpointV1 `json:"from"`
-	To          EndpointV1 `json:"to"`
-	PacketCount int64      `json:"packetCount"`
-	LastHeard   int64      `json:"lastHeard"`
-	Intensity   int        `json:"intensity"`
-	LastKind    string     `json:"lastKind"`
-	Traffic     float64    `json:"traffic"`
+type RouteV2 struct {
+	ID          string  `json:"id"`
+	FromID      string  `json:"fromId"`
+	ToID        string  `json:"toId"`
+	PacketCount int64   `json:"packetCount"`
+	LastHeard   int64   `json:"lastHeard"`
+	Intensity   int     `json:"intensity"`
+	LastKind    string  `json:"lastKind"`
+	Traffic     float64 `json:"traffic"`
 }
 
 type PublicStatus struct {
@@ -37,52 +37,71 @@ type PublicStatus struct {
 	GitSHA       string `json:"gitSha"`
 }
 
-type StateV1 struct {
+type StateV2 struct {
 	SchemaVersion int          `json:"schemaVersion"`
 	BootID        string       `json:"bootId"`
 	Seq           uint64       `json:"seq"`
 	ServerTime    int64        `json:"serverTime"`
 	Status        PublicStatus `json:"status"`
-	Map           MapV1        `json:"map"`
-	Nodes         []NodeV1     `json:"nodes"`
-	Routes        []RouteV1    `json:"routes"`
+	Map           MapV2        `json:"map"`
+	Nodes         []NodeV2     `json:"nodes"`
+	Routes        []RouteV2    `json:"routes"`
 }
 
-type MapV1 struct {
+type MapV2 struct {
 	Center [2]float64 `json:"center"`
 	Zoom   float64    `json:"zoom"`
 }
 
-type RouteSegmentV1 struct {
-	RouteID string     `json:"routeId"`
-	From    EndpointV1 `json:"from"`
-	To      EndpointV1 `json:"to"`
+type RouteSegmentV2 struct {
+	RouteID string `json:"routeId"`
+	FromID  string `json:"fromId"`
+	ToID    string `json:"toId"`
 }
 
-type PacketEvent struct {
+type PacketEventV2 struct {
 	Seq         uint64           `json:"seq"`
 	ID          string           `json:"id"`
 	At          int64            `json:"at"`
 	PayloadType string           `json:"payloadType"`
 	Mode        string           `json:"mode"`
-	Segments    []RouteSegmentV1 `json:"segments,omitempty"`
-	Observer    *EndpointV1      `json:"observer,omitempty"`
+	Segments    []RouteSegmentV2 `json:"segments,omitempty"`
+	Observer    *EndpointV2      `json:"observer,omitempty"`
 }
 
-type NodeEvent struct {
+type NodeEventV2 struct {
 	Seq  uint64 `json:"seq"`
-	Node NodeV1 `json:"node"`
+	Node NodeV2 `json:"node"`
 }
 
-type StatusEvent struct {
+type StatusEventV2 struct {
 	Seq    uint64       `json:"seq"`
 	Status PublicStatus `json:"status"`
+}
+
+type ResetEventV2 struct {
+	Seq    uint64 `json:"seq"`
+	BootID string `json:"bootId"`
 }
 
 type Event struct {
 	Name string
 	Seq  uint64
 	Data any
+}
+
+type OperationalStats struct {
+	Processed              int64
+	SnapshotBytes          int64
+	PublicNodes            int64
+	PublicRoutes           int64
+	CheckpointBytes        int64
+	CheckpointDurationMS   int64
+	LastCheckpointAt       int64
+	LastCheckpointNodes    int64
+	LastCheckpointRoutes   int64
+	PrunedCheckpointNodes  int64
+	PrunedCheckpointRoutes int64
 }
 
 type privateNode struct {

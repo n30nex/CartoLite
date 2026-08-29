@@ -8,15 +8,23 @@ mkdir -p "$artifact_dir"
 
 curl --fail --silent --show-error "$base_url/healthz" | tee "$artifact_dir/health.json" | jq -e . >/dev/null
 curl --fail --silent --show-error "$base_url/readyz" | tee "$artifact_dir/ready.json" | jq -e . >/dev/null
+curl --fail --silent --show-error --dump-header "$artifact_dir/headers.txt" --output "$artifact_dir/index.html" "$base_url/"
+grep -Eiq '^Strict-Transport-Security: max-age=31536000[[:space:]]*$' "$artifact_dir/headers.txt"
+grep -Eiq '^Permissions-Policy: .*geolocation=\(\).*usb=\(\)' "$artifact_dir/headers.txt"
+for public_asset in favicon.svg robots.txt site.webmanifest social-card.svg; do
+  curl --fail --silent --show-error "$base_url/$public_asset" > "$artifact_dir/$public_asset"
+done
+missing_code="$(curl --silent --output /dev/null --write-out '%{http_code}' "$base_url/missing-asset.svg")"
+test "$missing_code" = 404
 
 for _ in $(seq 1 60); do
   curl --fail --silent --show-error "$base_url/api/state" > "$artifact_dir/state.json"
-  if jq -e '.schemaVersion == 1 and (.nodes | length) >= 2' "$artifact_dir/state.json" >/dev/null; then
+  if jq -e '.schemaVersion == 2 and (.nodes | length) >= 2' "$artifact_dir/state.json" >/dev/null; then
     break
   fi
   sleep 1
 done
-jq -e '.schemaVersion == 1 and (.nodes | length) >= 2 and (.status.dropped // 0) == 0' "$artifact_dir/state.json" >/dev/null
+jq -e '.schemaVersion == 2 and (.nodes | length) >= 2 and (.status.dropped // 0) == 0' "$artifact_dir/state.json" >/dev/null
 
 curl --no-buffer --silent --show-error --max-time 10 \
   -H 'Accept: text/event-stream' "$base_url/api/events" > "$artifact_dir/events.txt" &
@@ -49,12 +57,24 @@ for _ in $(seq 1 60); do
   sleep 0.1
 done
 jq -e '
+  (.nodes | map(.id)) as $node_ids |
   (.routes | length) >= 1 and
   (.routes | all(
+    . as $route |
+    (.fromId | type == "string" and length > 0) and
+    (.toId | type == "string" and length > 0) and
+    ($node_ids | index($route.fromId)) != null and
+    ($node_ids | index($route.toId)) != null and
+    (has("from") | not) and (has("to") | not) and
     (.lastKind as $kind | ["Advert", "Trace", "Text", "ACK", "Control", "Other"] | index($kind)) != null and
     (.traffic | type == "number" and . >= 0 and . <= 64)
   ))
 ' "$artifact_dir/state.json" >/dev/null
+grep -q '"fromId"' "$artifact_dir/events.txt"
+if grep -Eq '"(from|to)":' "$artifact_dir/events.txt"; then
+  echo "packet event contains duplicated endpoint objects" >&2
+  exit 1
+fi
 
 if grep -Eiq '(^|["_])(public.?key|observer.?key|packet.?hash|raw.?path|raw.?payload|payload|decoded|message|resolver.?reason|mqtt.?password)(["_:]|$)' \
   "$artifact_dir/state.json" "$artifact_dir/events.txt"; then

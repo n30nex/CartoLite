@@ -44,7 +44,10 @@ func TestHighConfidenceRouteAndPublicPrivacy(t *testing.T) {
 			t.Fatalf("public state leaked %q: %s", forbidden, body)
 		}
 	}
-	var public StateV1
+	if strings.Contains(body, `"from":`) || strings.Contains(body, `"to":`) {
+		t.Fatalf("public schema duplicated endpoint objects: %s", body)
+	}
+	var public StateV2
 	if err := json.Unmarshal([]byte(body), &public); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +55,7 @@ func TestHighConfidenceRouteAndPublicPrivacy(t *testing.T) {
 		t.Fatalf("unexpected public topology: %#v", public)
 	}
 	for _, route := range public.Routes {
-		if route.LastKind != "Control" || route.Traffic != 1 {
+		if route.FromID == "" || route.ToID == "" || route.LastKind != "Control" || route.Traffic != 1 {
 			t.Fatalf("route activity = %#v, want sanitized Control with baseline traffic", route)
 		}
 	}
@@ -117,7 +120,7 @@ func TestPublicSnapshotHidesOnlyRoutesOlderThan24Hours(t *testing.T) {
 	}
 
 	state.updateSnapshot(now)
-	var public StateV1
+	var public StateV2
 	if err := json.Unmarshal(state.StateJSON(), &public); err != nil {
 		t.Fatal(err)
 	}
@@ -446,12 +449,75 @@ func TestNodeIdentityIsStableAcrossRegions(t *testing.T) {
 		t.Fatal("same full key received different public IDs across regions")
 	}
 	state.updateSnapshot(time.Now())
-	var public StateV1
+	var public StateV2
 	if err := json.Unmarshal(state.StateJSON(), &public); err != nil {
 		t.Fatal(err)
 	}
 	if len(public.Nodes) != 1 || public.Nodes[0].Lng != -80.5 {
 		t.Fatalf("cross-region node was not deduplicated to latest observation: %#v", public.Nodes)
+	}
+}
+
+func TestPruneDurableStateRemovesExpiredTopologyWithoutDanglingRoutes(t *testing.T) {
+	state := newTestEngine(t)
+	now := time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC).UnixMilli()
+	fresh, _ := state.upsertNode("YKF", "AA112233", "Fresh", "repeater", false, 43.4, -80.4, true, now)
+	referenced, _ := state.upsertNode("YKF", "BB112233", "Referenced", "repeater", false, 43.5, -80.5, true, now-nodeRetentionWindow.Milliseconds()-1)
+	orphan, _ := state.upsertNode("YKF", "CC112233", "Orphan", "repeater", false, 43.6, -80.6, true, now-nodeRetentionWindow.Milliseconds()-1)
+
+	freshRouteID := routePublicID(nodePublicID(fresh), nodePublicID(referenced))
+	expiredRouteID := routePublicID(nodePublicID(fresh), nodePublicID(orphan))
+	state.routes[freshRouteID] = &privateRoute{ID: freshRouteID, FromID: nodePublicID(fresh), ToID: nodePublicID(referenced), PacketCount: 2, LastHeard: now, LastKind: "Text", Traffic: 2}
+	state.routes[expiredRouteID] = &privateRoute{ID: expiredRouteID, FromID: nodePublicID(fresh), ToID: nodePublicID(orphan), PacketCount: 1, LastHeard: now - routeVisibilityWindow.Milliseconds() - 1, LastKind: "Trace", Traffic: 1}
+
+	prunedRoutes, prunedNodes := state.pruneDurableState(now)
+	if prunedRoutes != 1 || prunedNodes != 1 {
+		t.Fatalf("pruned routes/nodes = %d/%d, want 1/1", prunedRoutes, prunedNodes)
+	}
+	if state.routes[freshRouteID] == nil || state.routes[expiredRouteID] != nil {
+		t.Fatalf("unexpected retained routes: %#v", state.routes)
+	}
+	if state.nodeIDs[nodePublicID(referenced)] == nil {
+		t.Fatal("old node referenced by a retained route was pruned")
+	}
+	if state.nodeIDs[nodePublicID(orphan)] != nil {
+		t.Fatal("old orphan node remained in the public index")
+	}
+	state.updateSnapshot(time.UnixMilli(now))
+	var public StateV2
+	if err := json.Unmarshal(state.StateJSON(), &public); err != nil {
+		t.Fatal(err)
+	}
+	if len(public.Routes) != 1 || len(public.Nodes) != 2 {
+		t.Fatalf("pruned public topology = %#v", public)
+	}
+}
+
+func TestCheckpointPruningResetsClientsAfterRefreshingSnapshot(t *testing.T) {
+	state := newTestEngine(t)
+	now := time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC)
+	state.upsertNode("YKF", "AA112233", "Expired", "repeater", false, 43.4, -80.4, true, now.Add(-nodeRetentionWindow-time.Millisecond).UnixMilli())
+	state.updateSnapshot(now)
+
+	var event Event
+	var snapshotAtPublish StateV2
+	state.SetPublisher(func(published Event) {
+		event = published
+		if err := json.Unmarshal(state.StateJSON(), &snapshotAtPublish); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	pruned, saved := state.flushCheckpointAndReset(now)
+	if !pruned || !saved {
+		t.Fatalf("checkpoint pruned/saved = %v/%v, want true/true", pruned, saved)
+	}
+	reset, ok := event.Data.(ResetEventV2)
+	if event.Name != "reset" || !ok || reset.Seq != event.Seq || reset.BootID != state.BootID() {
+		t.Fatalf("reset event = %#v", event)
+	}
+	if snapshotAtPublish.Seq != reset.Seq || len(snapshotAtPublish.Nodes) != 0 {
+		t.Fatalf("snapshot at reset = %#v", snapshotAtPublish)
 	}
 }
 

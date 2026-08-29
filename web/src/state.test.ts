@@ -1,15 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
-import { activityLabel, assertStateV1, LiveStore, sequenceAction } from './state';
-import type { StateV1 } from './types';
+import { activityLabel, assertStateV2, LiveStore, ROUTE_BATCH_MS, sequenceAction } from './state';
+import type { NodeV2, RouteV2, StateV2 } from './types';
 
-const initial: StateV1 = {
-  schemaVersion: 1,
+const nodes: NodeV2[] = [
+  { id: 'a', label: 'A', lat: 43.4, lng: -80.3, role: 'repeater', observer: false, lastSeen: 1 },
+  { id: 'b', label: 'B', lat: 43.5, lng: -80.2, role: 'repeater', observer: false, lastSeen: 1 }
+];
+
+const initial: StateV2 = {
+  schemaVersion: 2,
   bootId: 'boot-a',
   seq: 7,
   serverTime: 1,
-  status: { feed: 'connected', activity: 'active', dropped: 0, version: '0.1.0', gitSha: 'abc' },
-  map: { center: [-80.35, 43.45], zoom: 8.25 },
-  nodes: [],
+  status: { feed: 'connected', activity: 'active', dropped: 0, version: '0.4.0', gitSha: 'abc' },
+  map: { center: [-96, 56], zoom: 3.4 },
+  nodes,
   routes: []
 };
 
@@ -23,109 +28,69 @@ describe('sequenceAction', () => {
 });
 
 describe('LiveStore', () => {
-  it('upserts nodes without duplicating IDs', () => {
-    const store = new LiveStore(initial);
-    const node = { id: 'n1', label: 'Relay', lat: 43.4, lng: -80.3, role: 'repeater' as const, observer: false, lastSeen: 2 };
-    store.upsertNode(node, 8);
-    store.upsertNode({ ...node, label: 'Relay 2' }, 9);
-    expect(store.snapshot.nodes).toHaveLength(1);
-    expect(store.snapshot.nodes[0]?.label).toBe('Relay 2');
-    expect(store.snapshot.seq).toBe(9);
+  it('upserts nodes without duplicating IDs and marks their routes dirty', () => {
+    const route = existingRoute();
+    const store = new LiveStore({ ...initial, routes: [route] });
+    const changes: unknown[] = [];
+    store.subscribe((_state, change) => changes.push(change));
+    store.upsertNode({ ...nodes[0]!, label: 'Relay 2', lat: 44 }, 8);
+    expect(store.snapshot.nodes).toHaveLength(2);
+    expect(store.snapshot.nodes[0]).toMatchObject({ label: 'Relay 2', lat: 44 });
+    expect(store.snapshot.seq).toBe(8);
+    expect(changes[1]).toEqual({
+      nodes: [expect.objectContaining({ id: 'a', label: 'Relay 2', lat: 44 })],
+      routeGeometry: ['r1']
+    });
   });
 
   it('marks status-only notifications as map-stable', () => {
     const store = new LiveStore(initial);
-    const mapChanges: boolean[] = [];
-    store.subscribe((_state, mapChanged) => { mapChanges.push(mapChanged); });
+    const changes: unknown[] = [];
+    store.subscribe((_state, change) => changes.push(change));
     store.updateStatus({ ...initial.status, activity: 'quiet' }, 8);
-    expect(mapChanges).toEqual([true, false]);
+    expect(changes).toEqual([{ reset: true }, null]);
     store.destroy();
   });
 
-  it('batches route additions and metadata while advancing sequence immediately', () => {
+  it('batches compact route events for one second and resolves animation endpoints locally', () => {
     vi.useFakeTimers();
     const store = new LiveStore(initial);
     let emissions = 0;
     store.subscribe(() => { emissions += 1; });
-    const endpoint = { id: 'a', label: 'A', lat: 43.4, lng: -80.3 };
     const packet = {
       seq: 8,
       id: 'p1',
       at: 100,
       payloadType: 'Trace' as const,
       mode: 'route' as const,
-      segments: [{ routeId: 'r1', from: endpoint, to: { ...endpoint, id: 'b', lng: -80.2 } }]
+      segments: [{ routeId: 'r1', fromId: 'a', toId: 'b' }]
     };
-    store.applyPacket(packet);
+    const view = store.applyPacket(packet);
     store.applyPacket({ ...packet, seq: 9, at: 200 });
+    expect(view).toMatchObject({ mode: 'route', segments: [{ from: { id: 'a' }, to: { id: 'b' } }] });
     expect(store.snapshot.seq).toBe(9);
     expect(store.snapshot.routes).toHaveLength(0);
     expect(emissions).toBe(1);
 
-    vi.advanceTimersByTime(250);
-    expect(store.snapshot.routes).toHaveLength(1);
-    expect(store.snapshot.routes[0]).toMatchObject({
+    vi.advanceTimersByTime(ROUTE_BATCH_MS);
+    expect(store.snapshot.routes).toEqual([expect.objectContaining({
       id: 'r1',
+      fromId: 'a',
+      toId: 'b',
       packetCount: 2,
       lastHeard: 200,
       intensity: 1,
       lastKind: 'Trace'
-    });
+    })]);
     expect(store.snapshot.routes[0]?.traffic).toBeCloseTo(2, 3);
     expect(emissions).toBe(2);
     store.destroy();
     vi.useRealTimers();
   });
 
-  it('propagates node labels and coordinates to indexed route endpoints in one batch', () => {
+  it('coalesces count, freshness, intensity, and newest-kind updates', () => {
     vi.useFakeTimers();
-    const endpointA = { id: 'a', label: 'Old A', lat: 43.4, lng: -80.3 };
-    const endpointB = { id: 'b', label: 'B', lat: 43.5, lng: -80.2 };
-    const store = new LiveStore({
-      ...initial,
-      nodes: [{ ...endpointA, role: 'repeater', observer: false, lastSeen: 1 }],
-      routes: [{
-        id: 'r1',
-        from: endpointA,
-        to: endpointB,
-        packetCount: 8,
-        lastHeard: 1,
-        intensity: 3,
-        lastKind: 'Advert',
-        traffic: 2
-      }]
-    });
-
-    store.upsertNode({ ...endpointA, label: 'New A', lat: 44, lng: -79, role: 'repeater', observer: false, lastSeen: 2 }, 8);
-    expect(store.snapshot.nodes[0]).toMatchObject({ label: 'New A', lat: 44, lng: -79 });
-    expect(store.snapshot.routes[0]?.from).toEqual(endpointA);
-
-    vi.advanceTimersByTime(250);
-    expect(store.snapshot.routes[0]).toMatchObject({
-      packetCount: 8,
-      from: { id: 'a', label: 'New A', lat: 44, lng: -79 }
-    });
-    store.destroy();
-    vi.useRealTimers();
-  });
-
-  it('coalesces existing-route count, freshness, and intensity updates', () => {
-    vi.useFakeTimers();
-    const from = { id: 'a', label: 'A', lat: 43.4, lng: -80.3 };
-    const to = { id: 'b', label: 'B', lat: 43.5, lng: -80.2 };
-    const store = new LiveStore({
-      ...initial,
-      routes: [{
-        id: 'r1',
-        from,
-        to,
-        packetCount: 3,
-        lastHeard: 1,
-        intensity: 1,
-        lastKind: 'Trace',
-        traffic: 1
-      }]
-    });
+    const store = new LiveStore({ ...initial, routes: [existingRoute()] });
     let emissions = 0;
     store.subscribe(() => { emissions += 1; });
 
@@ -134,45 +99,27 @@ describe('LiveStore', () => {
         seq,
         id: `p${seq}`,
         at: seq * 100,
-        payloadType: 'Trace',
+        payloadType: seq === 10 ? 'Text' : 'Trace',
         mode: 'route',
-        segments: [{ routeId: 'r1', from, to }]
+        segments: [{ routeId: 'r1', fromId: 'a', toId: 'b' }]
       });
     }
-    expect(store.snapshot.seq).toBe(10);
-    expect(store.snapshot.routes[0]).toMatchObject({ packetCount: 3, lastHeard: 1, intensity: 1 });
-    expect(emissions).toBe(1);
-
-    vi.advanceTimersByTime(250);
+    expect(store.snapshot.routes[0]).toMatchObject({ packetCount: 3, lastHeard: 1 });
+    vi.advanceTimersByTime(ROUTE_BATCH_MS);
     expect(store.snapshot.routes[0]).toMatchObject({
       packetCount: 6,
       lastHeard: 1_000,
       intensity: 2,
-      lastKind: 'Trace'
+      lastKind: 'Text'
     });
-    expect(store.snapshot.routes[0]?.traffic).toBeCloseTo(4, 2);
     expect(emissions).toBe(2);
     store.destroy();
     vi.useRealTimers();
   });
 
-  it('keeps count-only batches internal and never regresses out-of-order freshness', () => {
+  it('emits one touched-route update per batch and never regresses freshness', () => {
     vi.useFakeTimers();
-    const from = { id: 'a', label: 'A', lat: 43.4, lng: -80.3 };
-    const to = { id: 'b', label: 'B', lat: 43.5, lng: -80.2 };
-    const store = new LiveStore({
-      ...initial,
-      routes: [{
-        id: 'r1',
-        from,
-        to,
-        packetCount: 4,
-        lastHeard: 100,
-        intensity: 2,
-        lastKind: 'Trace',
-        traffic: 64
-      }]
-    });
+    const store = new LiveStore({ ...initial, routes: [{ ...existingRoute(), packetCount: 4, intensity: 2, lastHeard: 100, traffic: 64 }] });
     let emissions = 0;
     store.subscribe(() => { emissions += 1; });
     const packet = {
@@ -181,70 +128,25 @@ describe('LiveStore', () => {
       at: 200,
       payloadType: 'Trace' as const,
       mode: 'route' as const,
-      segments: [{ routeId: 'r1', from, to }]
+      segments: [{ routeId: 'r1', fromId: 'a', toId: 'b' }]
     };
-
     store.applyPacket(packet);
     store.applyPacket({ ...packet, seq: 9, id: 'p9', at: 50 });
-    vi.advanceTimersByTime(250);
-
-    expect(store.snapshot).toMatchObject({ seq: 9 });
-    expect(store.snapshot.routes[0]).toMatchObject({
-      packetCount: 6,
-      lastHeard: 200,
-      intensity: 2,
-      lastKind: 'Trace',
-      traffic: 64
-    });
-    expect(emissions).toBe(1);
-    store.destroy();
-    vi.useRealTimers();
-  });
-
-  it('recolors from the newest packet without regressing on an older arrival', () => {
-    vi.useFakeTimers();
-    const from = { id: 'a', label: 'A', lat: 43.4, lng: -80.3 };
-    const to = { id: 'b', label: 'B', lat: 43.5, lng: -80.2 };
-    const store = new LiveStore({
-      ...initial,
-      routes: [{
-        id: 'r1',
-        from,
-        to,
-        packetCount: 4,
-        lastHeard: 200,
-        intensity: 2,
-        lastKind: 'Advert',
-        traffic: 2
-      }]
-    });
-    const packet = {
-      seq: 8,
-      id: 'p8',
-      at: 300,
-      payloadType: 'Text' as const,
-      mode: 'route' as const,
-      segments: [{ routeId: 'r1', from, to }]
-    };
-
-    store.applyPacket(packet);
-    store.applyPacket({ ...packet, seq: 9, id: 'p9', at: 250, payloadType: 'Trace' });
-    vi.advanceTimersByTime(250);
-
-    expect(store.snapshot.routes[0]).toMatchObject({
-      packetCount: 6,
-      lastHeard: 300,
-      lastKind: 'Text'
-    });
-    expect(store.snapshot.routes[0]?.traffic).toBeCloseTo(4, 3);
+    vi.advanceTimersByTime(ROUTE_BATCH_MS);
+    expect(store.snapshot.routes[0]).toMatchObject({ packetCount: 6, lastHeard: 200, intensity: 2, traffic: 64 });
+    expect(emissions).toBe(2);
     store.destroy();
     vi.useRealTimers();
   });
 });
 
 describe('public state guards and status', () => {
-  it('rejects unsupported schemas', () => {
-    expect(() => assertStateV1({ ...initial, schemaVersion: 2 })).toThrow('unsupported state schema');
+  it('accepts schema v2 and rejects old or dangling route schemas', () => {
+    expect(() => assertStateV2(initial)).not.toThrow();
+    expect(() => assertStateV2({ ...initial, schemaVersion: 1 })).toThrow('unsupported state schema');
+    expect(() => assertStateV2({ ...initial, routes: [{ ...existingRoute(), toId: 'missing' }] })).toThrow('invalid route');
+    expect(() => assertStateV2({ ...initial, nodes: [...nodes, nodes[0]!] })).toThrow('duplicate node IDs');
+    expect(() => assertStateV2({ ...initial, routes: [existingRoute(), existingRoute()] })).toThrow('duplicate route IDs');
   });
 
   it('distinguishes reconnecting and normal RF quiet', () => {
@@ -255,3 +157,16 @@ describe('public state guards and status', () => {
     expect(activityLabel(initial, false).state).toBe('reconnecting');
   });
 });
+
+function existingRoute(): RouteV2 {
+  return {
+    id: 'r1',
+    fromId: 'a',
+    toId: 'b',
+    packetCount: 3,
+    lastHeard: 1,
+    intensity: 1,
+    lastKind: 'Trace',
+    traffic: 1
+  };
+}

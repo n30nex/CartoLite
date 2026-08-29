@@ -1,5 +1,5 @@
 import type maplibregl from 'maplibre-gl';
-import type { EndpointV1, ObserverPacketV1, PacketV1, RoutePacketV1, RouteSegmentV1 } from './types';
+import type { EndpointV2, ObserverPacketEventV2, PacketView, RoutePacketView, RouteSegmentView } from './types';
 import { payloadColor } from './trafficVisuals';
 
 export { payloadColor } from './trafficVisuals';
@@ -17,6 +17,9 @@ export const OBSERVER_PING_MS = 1200;
 export const RESIDUE_HOT_MS = 900;
 export const MAX_ACTIVE_EFFECTS = 32;
 export const MAX_RESIDUE = 240;
+export const LOW_POWER_MAX_ACTIVE_EFFECTS = 16;
+export const LOW_POWER_MAX_RESIDUE = 120;
+export const LOW_POWER_FRAME_MS = 1_000 / 30;
 
 const EARTH_RADIUS_KM = 6371.0088;
 const MIN_SEGMENT_KM = 0.025;
@@ -25,7 +28,7 @@ const EXTRA_HOP_MS = 110;
 const COMET_TAIL_PX = 46;
 
 interface ActiveRoute {
-  packet: RoutePacketV1;
+  packet: RoutePacketView;
   color: string;
   started: number;
   duration: number;
@@ -36,13 +39,13 @@ interface ActiveRoute {
 }
 
 interface ActiveObserver {
-  packet: ObserverPacketV1;
+  packet: ObserverPacketEventV2;
   color: string;
   started: number;
 }
 
 interface Residue {
-  segment: RouteSegmentV1;
+  segment: RouteSegmentView;
   color: string;
   addedAt: number;
 }
@@ -83,7 +86,7 @@ export function packetDuration(hops: number, totalDistanceKm?: number): number {
   return Math.round(Math.min(MAX_ROUTE_MS, distanceDuration + Math.max(0, hopCount - 1) * EXTRA_HOP_MS));
 }
 
-export function geographicDistanceKm(from: EndpointV1, to: EndpointV1): number {
+export function geographicDistanceKm(from: EndpointV2, to: EndpointV2): number {
   const latitudeA = degreesToRadians(from.lat);
   const latitudeB = degreesToRadians(to.lat);
   const latitudeDelta = latitudeB - latitudeA;
@@ -94,7 +97,7 @@ export function geographicDistanceKm(from: EndpointV1, to: EndpointV1): number {
   return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(Math.max(0, 1 - haversine)));
 }
 
-export function segmentTravelWeights(segments: readonly RouteSegmentV1[]): number[] {
+export function segmentTravelWeights(segments: readonly RouteSegmentView[]): number[] {
   if (segments.length === 0) return [];
   const distances = segments.map((segment) => {
     const distance = geographicDistanceKm(segment.from, segment.to);
@@ -104,11 +107,11 @@ export function segmentTravelWeights(segments: readonly RouteSegmentV1[]): numbe
   return distances.map((distance) => distance / total);
 }
 
-export function routeDistanceKm(segments: readonly RouteSegmentV1[]): number {
+export function routeDistanceKm(segments: readonly RouteSegmentView[]): number {
   return segments.reduce((total, segment) => total + geographicDistanceKm(segment.from, segment.to), 0);
 }
 
-export function routeDuration(segments: readonly RouteSegmentV1[]): number {
+export function routeDuration(segments: readonly RouteSegmentView[]): number {
   if (segments.length === 0) return 0;
   return packetDuration(segments.length, routeDistanceKm(segments));
 }
@@ -121,13 +124,27 @@ export function interpolateScreenPoint(from: ScreenPoint, to: ScreenPoint, progr
   };
 }
 
+export function segmentNearViewport(
+  from: ScreenPoint,
+  to: ScreenPoint,
+  width: number,
+  height: number,
+  margin = Math.max(width, height) * 0.25
+): boolean {
+  return Math.max(from.x, to.x) >= -margin
+    && Math.min(from.x, to.x) <= width + margin
+    && Math.max(from.y, to.y) >= -margin
+    && Math.min(from.y, to.y) <= height + margin;
+}
+
 export function shouldRefreshResidueCache(
   lastUpdatedAt: number,
   now: number,
   projectionDirty: boolean,
   contentDirty: boolean,
+  interval = RESIDUE_REDRAW_MS,
 ): boolean {
-  return projectionDirty || contentDirty || now - lastUpdatedAt >= RESIDUE_REDRAW_MS;
+  return projectionDirty || contentDirty || now - lastUpdatedAt >= interval;
 }
 
 export function routeMotion(weights: readonly number[], elapsed: number, duration: number): RouteMotion {
@@ -211,6 +228,7 @@ export class PacketAnimator {
   private readonly residueCanvas: HTMLCanvasElement;
   private readonly residueContext: CanvasRenderingContext2D;
   private readonly reducedMotionQuery: MediaQueryList;
+  private readonly lowPowerQuery: MediaQueryList;
   private activeRoutes: ActiveRoute[] = [];
   private activeObservers: ActiveObserver[] = [];
   private residue: Residue[] = [];
@@ -219,11 +237,13 @@ export class PacketAnimator {
   private residueTimer?: number;
   private paused = false;
   private reducedMotion: boolean;
+  private lowPower: boolean;
   private reducedModeStartedAt = Number.NEGATIVE_INFINITY;
   private residueProjectionDirty = true;
   private residueContentDirty = true;
   private residueCacheUpdatedAt = Number.NEGATIVE_INFINITY;
   private dpr = 1;
+  private lastDrawAt = Number.NEGATIVE_INFINITY;
 
   constructor(private readonly map: maplibregl.Map, private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext('2d');
@@ -234,19 +254,22 @@ export class PacketAnimator {
     if (!residueContext) throw new Error('Canvas2D residue cache is unavailable');
     this.residueContext = residueContext;
     this.reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    this.lowPowerQuery = window.matchMedia('(max-width: 620px), (pointer: coarse)');
     this.reducedMotion = this.reducedMotionQuery.matches;
+    this.lowPower = this.lowPowerQuery.matches;
     if (this.reducedMotion) this.reducedModeStartedAt = performance.now();
     this.updateMotionMode();
     this.draw = this.draw.bind(this);
     this.resize = this.resize.bind(this);
     this.reducedMotionQuery.addEventListener('change', this.handleReducedMotionChange);
+    this.lowPowerQuery.addEventListener('change', this.handleLowPowerChange);
     this.map.on('resize', this.resize);
     this.map.on('move', this.handleMapMove);
     this.resize();
   }
 
-  add(packet: PacketV1): void {
-    if (this.paused) return;
+  add(packet: PacketView): void {
+    if (this.paused || !this.packetNearViewport(packet)) return;
     const color = payloadColor(packet.payloadType);
     const started = performance.now();
     if (packet.mode === 'route') {
@@ -268,7 +291,7 @@ export class PacketAnimator {
         };
         route.completedSegments = packet.segments.length;
         for (const segment of packet.segments) this.residue.push({ segment, color, addedAt: started });
-        this.residue = capNewest(this.residue, MAX_RESIDUE);
+        this.residue = capNewest(this.residue, this.residueLimit());
         this.residueContentDirty = true;
       }
       this.activeRoutes.push(route);
@@ -301,13 +324,14 @@ export class PacketAnimator {
   destroy(): void {
     this.setPaused(true);
     this.reducedMotionQuery.removeEventListener('change', this.handleReducedMotionChange);
+    this.lowPowerQuery.removeEventListener('change', this.handleLowPowerChange);
     this.map.off('resize', this.resize);
     this.map.off('move', this.handleMapMove);
   }
 
   private resize(): void {
     const rect = this.canvas.getBoundingClientRect();
-    this.dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    this.dpr = Math.min(this.lowPower ? 1.25 : 1.5, window.devicePixelRatio || 1);
     this.canvas.width = Math.max(1, Math.floor(rect.width * this.dpr));
     this.canvas.height = Math.max(1, Math.floor(rect.height * this.dpr));
     this.residueCanvas.width = this.canvas.width;
@@ -338,6 +362,15 @@ export class PacketAnimator {
     this.requestFrame();
   };
 
+  private handleLowPowerChange = (event: MediaQueryListEvent): void => {
+    if (this.lowPower === event.matches) return;
+    this.lowPower = event.matches;
+    this.trimActiveEffects();
+    this.residue = capNewest(this.residue, this.residueLimit());
+    this.updateMotionMode();
+    this.resize();
+  };
+
   private handleMapMove = (): void => {
     this.residueProjectionDirty = true;
     this.requestFrame();
@@ -354,7 +387,8 @@ export class PacketAnimator {
     if (this.paused || this.residueTimer !== undefined || this.frameId !== 0) return;
     let delay = Number.POSITIVE_INFINITY;
     if (this.residue.length > 0) {
-      delay = Math.max(0, this.residueCacheUpdatedAt + RESIDUE_REDRAW_MS - now);
+      const redraw = this.lowPower ? RESIDUE_REDRAW_MS * 2 : RESIDUE_REDRAW_MS;
+      delay = Math.max(0, this.residueCacheUpdatedAt + redraw - now);
       for (const item of this.residue) delay = Math.min(delay, Math.max(0, item.addedAt + RESIDUE_MS - now));
     }
     if (this.reducedMotion) {
@@ -381,6 +415,11 @@ export class PacketAnimator {
   private draw(now: number): void {
     this.frameId = 0;
     if (this.paused) return;
+    if (!this.reducedMotion && this.lowPower && now - this.lastDrawAt < LOW_POWER_FRAME_MS) {
+      this.frameId = window.requestAnimationFrame(this.draw);
+      return;
+    }
+    this.lastDrawAt = now;
     this.clearCanvas();
     if (!this.reducedMotion) {
       for (const route of this.activeRoutes) this.completeRoute(route, now);
@@ -421,7 +460,7 @@ export class PacketAnimator {
       added = true;
     }
     if (added) {
-      this.residue = capNewest(this.residue, MAX_RESIDUE);
+      this.residue = capNewest(this.residue, this.residueLimit());
       this.residueContentDirty = true;
     }
   }
@@ -454,6 +493,7 @@ export class PacketAnimator {
       now,
       this.residueProjectionDirty,
       this.residueContentDirty,
+      this.lowPower ? RESIDUE_REDRAW_MS * 2 : RESIDUE_REDRAW_MS,
     )) return;
 
     if (this.residueProjectionDirty) this.projectedResidue.clear();
@@ -706,6 +746,7 @@ export class PacketAnimator {
       this.activeObservers,
       (route) => route.started,
       (observer) => observer.started,
+      this.lowPower ? LOW_POWER_MAX_ACTIVE_EFFECTS : MAX_ACTIVE_EFFECTS,
     );
     this.activeRoutes = kept.routes;
     this.activeObservers = kept.observers;
@@ -717,6 +758,27 @@ export class PacketAnimator {
 
   private updateMotionMode(): void {
     this.canvas.dataset.motionMode = this.reducedMotion ? 'static' : 'animated';
+    this.canvas.dataset.powerMode = this.lowPower ? 'low' : 'full';
+  }
+
+  private residueLimit(): number {
+    return this.lowPower ? LOW_POWER_MAX_RESIDUE : MAX_RESIDUE;
+  }
+
+  private packetNearViewport(packet: PacketView): boolean {
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    if (width <= 0 || height <= 0) return true;
+    if (packet.mode === 'observer') {
+      const point = this.point(packet.observer);
+      return segmentNearViewport(point, point, width, height);
+    }
+    return packet.segments.some((segment) => segmentNearViewport(
+      this.point(segment.from),
+      this.point(segment.to),
+      width,
+      height
+    ));
   }
 
   private clearCanvas(): void {
@@ -731,7 +793,7 @@ export class PacketAnimator {
     this.residueContext.clearRect(0, 0, width, height);
   }
 
-  private point(endpoint: EndpointV1): { x: number; y: number } {
+  private point(endpoint: EndpointV2): { x: number; y: number } {
     return this.map.project([endpoint.lng, endpoint.lat]);
   }
 }

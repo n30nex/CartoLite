@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { RouteV1 } from './types';
+import type { NodeV2, RouteV2 } from './types';
 import { NEIGHBOR_ROUTE_RECENT_MS, recentNeighborRoutes } from './routeFocus';
 import {
   activityHeatCollection,
@@ -18,6 +18,7 @@ import {
   canMoveLiveFollow,
   CLUSTER_HIGHLIGHT_LAYER_ID,
   darkStyle,
+  effectiveRouteWindowMS,
   HEATMAP_LAYER_ID,
   isRouteInspectable,
   isPointInSafeArea,
@@ -37,6 +38,7 @@ import {
   routeCollection,
   routeColorExpression,
   routeVisualProperties,
+  routeWindowLabel,
   SELECTED_NODE_OUTER_LAYER_ID,
   SELECTED_NODE_LAYER_ID,
   selectedNodeFilter,
@@ -47,6 +49,15 @@ import { PACKET_KIND_COLORS, ROUTE_MAX_AGE_MS } from './trafficVisuals';
 describe('darkStyle', () => {
   it('uses local fonts without an external glyph dependency', () => {
     expect(darkStyle().glyphs).toBeUndefined();
+  });
+
+  it('adds the encoded CARTO key to every raster tile URL', () => {
+    const source = darkStyle('test key').sources['carto'];
+    expect(source).toMatchObject({
+      tiles: ['a', 'b', 'c', 'd'].map(
+        (subdomain) => `https://${subdomain}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=test%20key`
+      )
+    });
   });
 });
 
@@ -167,7 +178,7 @@ describe('optional map layers', () => {
 describe('activity heatmap data', () => {
   it('deduplicates route endpoints and accumulates repeated activity', () => {
     const now = 1_900_000_000_000;
-    const collection = activityHeatCollection([
+    const collection = heatCollectionFor([
       route('a-b', 'a', 'b', now),
       route('a-c', 'a', 'c', now)
     ], now);
@@ -180,12 +191,14 @@ describe('activity heatmap data', () => {
   it('counts a self route once and excludes endpoints with invalid coordinates', () => {
     const now = 1_900_000_000_000;
     const invalid = route('invalid-valid', 'invalid', 'valid', now);
-    invalid.from.lat = 91;
-    const collection = activityHeatCollection([
+    const routes = [
       route('self', 'self', 'self', now),
       route('pair', 'pair-a', 'pair-b', now),
       invalid
-    ], now);
+    ];
+    const nodeMap = nodesFor(routes);
+    nodeMap.set('invalid', { ...nodeMap.get('invalid')!, lat: 91 });
+    const collection = activityHeatCollection(routes, nodeMap, now);
 
     expect(heatWeight(collection, 'self')).toBe(heatWeight(collection, 'pair-a'));
     expect(collection.features.some((feature) => feature.id === 'invalid')).toBe(false);
@@ -197,7 +210,7 @@ describe('activity heatmap data', () => {
     const fresh = route('fresh', 'fresh-a', 'fresh-b', now);
     const boundary = route('boundary', 'boundary-a', 'boundary-b', now - ROUTE_MAX_AGE_MS);
     const expired = route('expired', 'expired-a', 'expired-b', now - ROUTE_MAX_AGE_MS - 1);
-    const collection = activityHeatCollection([fresh, boundary, expired], now);
+    const collection = heatCollectionFor([fresh, boundary, expired], now);
 
     for (const feature of collection.features) {
       expect(Number(feature.properties?.weight)).toBeGreaterThanOrEqual(0);
@@ -210,12 +223,21 @@ describe('activity heatmap data', () => {
 });
 
 describe('stable route visual data', () => {
+  it('uses progressively wider automatic route windows as users zoom in', () => {
+    expect(effectiveRouteWindowMS('auto', 4)).toBe(15 * 60_000);
+    expect(effectiveRouteWindowMS('auto', 6)).toBe(60 * 60_000);
+    expect(effectiveRouteWindowMS('auto', 8)).toBe(6 * 60 * 60_000);
+    expect(effectiveRouteWindowMS('auto', 11)).toBe(ROUTE_MAX_AGE_MS);
+    expect(routeWindowLabel('auto', 4)).toBe('Auto · 15m');
+    expect(routeWindowLabel('24h', 4)).toBe('24h');
+  });
+
   it('keeps the exact 24-hour boundary, expires older routes, and assigns trail colors', () => {
     const now = 1_900_000_000_000;
     const text = route('text', 'text-a', 'text-b', now, 'Text', 8);
     const boundary = route('boundary', 'boundary-a', 'boundary-b', now - ROUTE_MAX_AGE_MS, 'Trace', 4);
     const expired = route('expired', 'expired-a', 'expired-b', now - ROUTE_MAX_AGE_MS - 1, 'Advert', 16);
-    const collection = routeCollection([text, boundary, expired], now);
+    const collection = routeCollectionFor([text, boundary, expired], now);
 
     expect(collection.features.map((feature) => feature.id)).toEqual(['text', 'boundary']);
     expect(collection.features.find((feature) => feature.id === 'text')?.properties).toMatchObject({
@@ -233,7 +255,7 @@ describe('stable route visual data', () => {
     const now = 1_900_000_000_000;
     const quiet = route('quiet', 'quiet-a', 'quiet-b', now, 'Advert', 1);
     const busy = route('busy', 'busy-a', 'busy-b', now, 'ACK', 16);
-    const collection = routeCollection([quiet, busy], now);
+    const collection = routeCollectionFor([quiet, busy], now);
     const quietProperties = collection.features.find((feature) => feature.id === 'quiet')?.properties;
     const busyProperties = collection.features.find((feature) => feature.id === 'busy')?.properties;
 
@@ -288,7 +310,7 @@ describe('node neighbor focus', () => {
 
   it('keeps both route directions at the 24-hour boundary and excludes stale or unrelated edges', () => {
     const now = 1_900_000_000_000;
-    const routes: RouteV1[] = [
+    const routes: RouteV2[] = [
       route('a-b', 'a', 'b', now),
       route('c-a', 'c', 'a', now - NEIGHBOR_ROUTE_RECENT_MS),
       route('a-d-stale', 'a', 'd', now - NEIGHBOR_ROUTE_RECENT_MS - 1),
@@ -434,19 +456,40 @@ function route(
   from: string,
   to: string,
   lastHeard: number,
-  lastKind: RouteV1['lastKind'] = 'Other',
+  lastKind: RouteV2['lastKind'] = 'Other',
   traffic = 1
-): RouteV1 {
+): RouteV2 {
   return {
     id,
-    from: { id: from, label: from.toUpperCase(), lat: 43.45, lng: -80.35 },
-    to: { id: to, label: to.toUpperCase(), lat: 43.5, lng: -80.2 },
+    fromId: from,
+    toId: to,
     packetCount: 1,
     lastHeard,
     intensity: 1,
     lastKind,
     traffic
   };
+}
+
+function nodesFor(routes: readonly RouteV2[]): Map<string, NodeV2> {
+  const ids = [...new Set(routes.flatMap((item) => [item.fromId, item.toId]))].sort();
+  return new Map(ids.map((id, index) => [id, {
+    id,
+    label: id.toUpperCase(),
+    lat: 43.45 + index * 0.01,
+    lng: -80.35 + index * 0.01,
+    role: 'repeater' as const,
+    observer: false,
+    lastSeen: 1_900_000_000_000
+  }]));
+}
+
+function heatCollectionFor(routes: readonly RouteV2[], now: number): ReturnType<typeof activityHeatCollection> {
+  return activityHeatCollection(routes, nodesFor(routes), now);
+}
+
+function routeCollectionFor(routes: readonly RouteV2[], now: number): ReturnType<typeof routeCollection> {
+  return routeCollection(routes, nodesFor(routes), now);
 }
 
 function heatWeight(collection: ReturnType<typeof activityHeatCollection>, id: string): number {

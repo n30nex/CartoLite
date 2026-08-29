@@ -47,3 +47,18 @@ func TestHubResetsWrongBootAndExpiredCursor(t *testing.T) {
 	}
 	current.cancel()
 }
+
+func TestHubClientCountTracksLiveSubscriptions(t *testing.T) {
+	hub := NewHub("boot")
+	if count := hub.ClientCount(); count != 0 {
+		t.Fatalf("initial client count = %d", count)
+	}
+	subscription := hub.Subscribe("boot", 0, false)
+	if !subscription.accepted || hub.ClientCount() != 1 {
+		t.Fatalf("live client count = %d", hub.ClientCount())
+	}
+	subscription.cancel()
+	if count := hub.ClientCount(); count != 0 {
+		t.Fatalf("client count after cancel = %d", count)
+	}
+}

@@ -1,19 +1,19 @@
-# Public API v1
+# Public API v2
 
-All endpoints are public and intentionally sanitized. Responses use `Cache-Control: no-store` where state could become stale.
+All endpoints are public and intentionally sanitized. State responses use `Cache-Control: no-store`.
 
 ## Endpoints
 
 - `GET /healthz` reports process liveness and build identity.
-- `GET /readyz` is successful only when static assets and checkpoint state are healthy, MQTT is connected/subscribed, and the ingest queue reports no drops. Normal RF silence remains ready.
-- `GET /api/state` returns the authoritative `StateV1` snapshot.
-- `GET /api/events?bootId=<boot>&after=<seq>` is a same-origin `text/event-stream` with 15-second keepalives. It replays a bounded sequence window before switching to live events; `Last-Event-ID` is honored on native reconnects. An expired cursor or changed boot receives `reset` and must rehydrate from `/api/state`.
+- `GET /readyz` succeeds only when checkpoint state is healthy, MQTT is connected and subscribed, the ingest queue is healthy, and no packets have been dropped. Normal RF silence remains ready.
+- `GET /api/state` returns the authoritative `StateV2` snapshot.
+- `GET /api/events?bootId=<boot>&after=<seq>` is a same-origin `text/event-stream` with 15-second keepalives. It replays a bounded sequence window before switching to live events; `Last-Event-ID` is honored on native reconnects. An expired cursor, changed boot, or retention-pruned topology receives `reset` and must rehydrate from `/api/state`.
 
 ## State schema
 
 ```ts
-type StateV1 = {
-  schemaVersion: 1;
+type StateV2 = {
+  schemaVersion: 2;
   bootId: string;
   seq: number;
   serverTime: number;
@@ -25,12 +25,12 @@ type StateV1 = {
     version: string;
     gitSha: string;
   };
-  map: { center: [-80.35, 43.45]; zoom: 8.25 };
-  nodes: NodeV1[];
-  routes: RouteV1[];
+  map: { center: [-96, 56]; zoom: 3.4 };
+  nodes: NodeV2[];
+  routes: RouteV2[];
 };
 
-type NodeV1 = {
+type NodeV2 = {
   id: string;
   label: string;
   role: "repeater" | "companion" | "room_server" | "sensor" | "unknown";
@@ -40,12 +40,10 @@ type NodeV1 = {
   lastSeen: number;
 };
 
-type EndpointV1 = { id: string; label: string; lat: number; lng: number };
-
-type RouteV1 = {
+type RouteV2 = {
   id: string;
-  from: EndpointV1;
-  to: EndpointV1;
+  fromId: string;
+  toId: string;
   packetCount: number;
   lastHeard: number;
   intensity: 0 | 1 | 2 | 3 | 4;
@@ -54,10 +52,27 @@ type RouteV1 = {
 };
 ```
 
-`lastKind` is the single sanitized kind from the newest packet observed on the route. `traffic` is a bounded activity score measured at `lastHeard`; clients decay it with a 15-minute half-life. It is not packet history or a per-kind counter. Routes older than 24 hours are omitted from the public snapshot.
+Every `fromId` and `toId` references one node in the same snapshot. Endpoint labels and coordinates are not duplicated on routes. `lastKind` is the single sanitized kind from the newest packet observed on the route. `traffic` is a bounded activity score measured at `lastHeard`; clients decay it with a 15-minute half-life. It is not packet history or a per-kind counter. Routes older than 24 hours are omitted.
 
-SSE event names are `hello`, `node`, `packet`, `status`, and `reset`; state-changing events carry the increasing sequence as `id`. `hello` deliberately has no SSE ID so a disconnect cannot skip its following replay. Packet events contain either ordered sanitized route segments or one observer point and a safe traffic kind. They never include message content.
+## Event stream
+
+Event names are `hello`, `node`, `packet`, `status`, and `reset`. State-changing events carry the increasing sequence as their SSE `id`; `hello` deliberately has no SSE ID so a disconnect cannot skip its following replay.
+
+Route packet events use the same normalized identifiers:
+
+```ts
+type RoutePacketEventV2 = {
+  seq: number;
+  id: string;
+  at: number;
+  payloadType: "Advert" | "Trace" | "Text" | "ACK" | "Control" | "Other";
+  mode: "route";
+  segments: Array<{ routeId: string; fromId: string; toId: string }>;
+};
+```
+
+Observer packet events contain one sanitized `{ id, label, lat, lng }` point instead of `segments`. No event contains message content, public keys, raw paths, packet hashes, credentials, or resolver details.
 
 ## Compatibility
 
-Clients must reject unknown `schemaVersion` values. Additive fields may appear within v1. Removing or changing an existing field requires a new schema version and explicit client compatibility handling.
+Schema v2 intentionally replaces the embedded `route.from` and `route.to` objects from v1. Clients must reject unknown `schemaVersion` values. Additive fields may appear within v2; removing or changing an existing field requires another schema version.

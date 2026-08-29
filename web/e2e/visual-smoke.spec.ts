@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { DESTINATION_BLOOM_MS, RESIDUE_MS, RESIDUE_REDRAW_MS, routeDuration } from '../src/packetAnimator';
 import { NEIGHBOR_ROUTE_RECENT_MS } from '../src/routeFocus';
-import type { StateV1 } from '../src/types';
+import type { StateV2 } from '../src/types';
 
 test('renders the live route map and privacy-safe state', async ({ page }, testInfo) => {
   const mapStyleErrors = captureMapStyleErrors(page);
@@ -21,15 +21,32 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   expect(mapStyleErrors, 'MapLibre should accept every installed layer expression').toEqual([]);
   await expect(page.locator('#packet-canvas')).toBeVisible();
   await expect(page.locator('#status-text')).not.toHaveText('Starting…');
+  const routeWindow = page.locator('#route-window');
+  await expect(routeWindow).toBeVisible();
+  await expect(routeWindow).toHaveValue('auto');
+  const aboutDialog = page.locator('#about-dialog');
+  await page.locator('#about-button').click();
+  await expect(aboutDialog).toBeVisible();
+  await expect(aboutDialog).toContainText('No public keys, packet payloads, message text, raw paths, or visitor analytics');
+  await page.locator('#about-close').click();
+  await expect(aboutDialog).toBeHidden();
   const nodeLegend = page.locator('#legend-items');
   await expect(nodeLegend).toContainText('Repeater');
   await expect(nodeLegend).toContainText('Companion');
   await expect(nodeLegend).toContainText('Room');
   await expect(nodeLegend).not.toContainText('RF route');
   const routeLegend = page.locator('#route-legend');
-  await expect(routeLegend).toBeVisible();
+  await expect(routeLegend).toBeHidden();
   await expect(routeLegend.locator('.route-legend-item')).toHaveCount(5);
   if (testInfo.project.name === 'mobile') {
+    const targetSizes = await page.locator('#about-button, .control-button, #route-window, #legend-toggle').evaluateAll((elements) => elements.map((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { width: bounds.width, height: bounds.height };
+    }));
+    for (const size of targetSizes) {
+      expect(size.width, 'mobile control target width').toBeGreaterThanOrEqual(44);
+      expect(size.height, 'mobile control target height').toBeGreaterThanOrEqual(44);
+    }
     await expect(page.locator('#legend-toggle')).toBeVisible();
     await expect(page.locator('#legend')).toHaveAttribute('data-collapsed', 'true');
     await expect(page.locator('#legend-toggle')).toHaveAttribute('aria-expanded', 'false');
@@ -44,15 +61,15 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   }
   const routesButton = page.locator('#routes-button');
   await expect(routesButton).toBeVisible();
-  await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
-  await expect(routesButton).toHaveAttribute('title', 'Hide routes');
-  await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
+  await expect(routesButton).toHaveAttribute('aria-pressed', 'false');
+  await expect(routesButton).toHaveAttribute('title', 'Show routes');
+  await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
   const heatmapButton = page.locator('#heatmap-button');
   await expect(heatmapButton).toBeVisible();
   await expect(heatmapButton).toHaveAttribute('aria-label', 'Heatmap');
-  await expect(heatmapButton).toHaveAttribute('aria-pressed', 'false');
-  await expect(heatmapButton).toHaveAttribute('title', 'Show heatmap');
-  await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'false');
+  await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(heatmapButton).toHaveAttribute('title', 'Hide heatmap');
+  await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
   const regionsButton = page.locator('#regions-button');
   await expect(regionsButton).toBeVisible();
   await expect(regionsButton).toHaveAttribute('aria-label', 'Regions');
@@ -62,17 +79,15 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'false');
   expect(regionAssetRequests, 'regional GeoJSON should stay lazy while the layer is off').toEqual([]);
 
-  await heatmapButton.click();
-  await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
-  await expect(heatmapButton).toHaveAttribute('title', 'Hide heatmap');
-  await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
+  await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(routeLegend).toBeVisible();
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'false');
   await expect(routesButton).toHaveAttribute('title', 'Show routes');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
-  await expect(routeLegend).toBeVisible();
+  await expect(routeLegend).toBeHidden();
   await expect(routeLegend.locator('.route-legend-item')).toHaveCount(5);
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
@@ -109,7 +124,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await heatmapButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'false');
   expect(mapStyleErrors, 'route styling should remain MapLibre-valid after data and layer visibility changes').toEqual([]);
-  expect(state.schemaVersion).toBe(1);
+  expect(state.schemaVersion).toBe(2);
 
   const serialized = JSON.stringify(state).toLowerCase();
   for (const forbidden of ['packet_hash', 'raw_payload', 'raw_path', 'public_key', 'observer_public_key', 'resolver_reason', 'message_text']) {
@@ -126,9 +141,9 @@ test('keeps the map primary with reduced motion and releases live follow on drag
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-motion-mode', 'static');
   await expect(page.locator('#follow-button')).toBeVisible();
   await expect(page.locator('#routes-button')).toBeVisible();
-  await expect(page.locator('#routes-button')).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('#routes-button').click();
   await expect(page.locator('#routes-button')).toHaveAttribute('aria-pressed', 'false');
+  await page.locator('#routes-button').click();
+  await expect(page.locator('#routes-button')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#reset-button')).toBeVisible();
   await page.locator('#follow-button').click();
   await expect(page.locator('#follow-button')).toHaveAttribute('aria-pressed', 'true');
@@ -162,8 +177,8 @@ test('keeps a recent packet trail after stable routes are hidden', async ({ page
   const now = Date.now();
   const from = { id: 'a', label: 'Alpha', lat: 43.45, lng: -80.42 };
   const to = { id: 'b', label: 'Bravo', lat: 43.5, lng: -80.28 };
-  const state: StateV1 = {
-    schemaVersion: 1,
+  const state: StateV2 = {
+    schemaVersion: 2,
     bootId: 'trail-smoke',
     seq: 0,
     serverTime: now,
@@ -173,7 +188,7 @@ test('keeps a recent packet trail after stable routes are hidden', async ({ page
       { ...from, role: 'repeater', observer: false, lastSeen: now },
       { ...to, role: 'companion', observer: false, lastSeen: now }
     ],
-    routes: [{ id: 'route-a-b', from, to, packetCount: 1, lastHeard: now, intensity: 1, lastKind: 'Text', traffic: 1 }]
+    routes: [{ id: 'route-a-b', fromId: from.id, toId: to.id, packetCount: 1, lastHeard: now, intensity: 1, lastKind: 'Text', traffic: 1 }]
   };
   const packet = {
     seq: 1,
@@ -181,7 +196,7 @@ test('keeps a recent packet trail after stable routes are hidden', async ({ page
     at: now,
     payloadType: 'Text',
     mode: 'route' as const,
-    segments: [{ routeId: 'route-a-b', from, to }]
+    segments: [{ routeId: 'route-a-b', fromId: from.id, toId: to.id }]
   };
 
   await page.route('**/api/state', (route) => route.fulfill({ json: state }));
@@ -198,11 +213,10 @@ test('keeps a recent packet trail after stable routes are hidden', async ({ page
   await page.goto('/');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   await expect.poll(() => eventStreamRequested, { message: 'mock event stream should receive the query-bearing SSE request' }).toBe(true);
-  await page.locator('#routes-button').click();
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
   const packetCanvas = page.locator('#packet-canvas');
   await expect.poll(() => canvasHasPixels(packetCanvas), { timeout: 5_000 }).toBe(true);
-  const afterglowWindow = routeDuration(packet.segments) + DESTINATION_BLOOM_MS + 600;
+  const afterglowWindow = routeDuration([{ routeId: 'route-a-b', from, to }]) + DESTINATION_BLOOM_MS + 600;
   await page.waitForTimeout(afterglowWindow);
   await expect.poll(() => canvasHasPixels(packetCanvas), { message: '15-second trail should outlive the moving comet and afterglow', timeout: 2_000 }).toBe(true);
   await page.waitForTimeout(RESIDUE_MS + RESIDUE_REDRAW_MS + 600);
@@ -217,8 +231,8 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   const bravo = { id: 'b', label: 'Bravo', lng: -80.1, lat: 43.45 };
   const charlie = { id: 'c', label: 'Charlie', lng: -80.35, lat: 43.6 };
   const delta = { id: 'd', label: 'Delta', lng: -80.6, lat: 43.3 };
-  const state: StateV1 = {
-    schemaVersion: 1,
+  const state: StateV2 = {
+    schemaVersion: 2,
     bootId: 'neighbor-smoke',
     seq: 0,
     serverTime: now,
@@ -231,10 +245,10 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
       { ...delta, role: 'sensor', observer: false, lastSeen: now }
     ],
     routes: [
-      { id: 'a-b', from: alpha, to: bravo, packetCount: 12, lastHeard: now, intensity: 3, lastKind: 'Text', traffic: 12 },
-      { id: 'a-c', from: alpha, to: charlie, packetCount: 7, lastHeard: now - NEIGHBOR_ROUTE_RECENT_MS + 60 * 60_000, intensity: 2, lastKind: 'Trace', traffic: 7 },
-      { id: 'a-d', from: alpha, to: delta, packetCount: 3, lastHeard: now - NEIGHBOR_ROUTE_RECENT_MS - 60 * 60_000, intensity: 1, lastKind: 'Advert', traffic: 3 },
-      { id: 'b-c', from: bravo, to: charlie, packetCount: 5, lastHeard: now, intensity: 2, lastKind: 'ACK', traffic: 5 }
+      { id: 'a-b', fromId: alpha.id, toId: bravo.id, packetCount: 12, lastHeard: now, intensity: 3, lastKind: 'Text', traffic: 12 },
+      { id: 'a-c', fromId: alpha.id, toId: charlie.id, packetCount: 7, lastHeard: now - NEIGHBOR_ROUTE_RECENT_MS + 60 * 60_000, intensity: 2, lastKind: 'Trace', traffic: 7 },
+      { id: 'a-d', fromId: alpha.id, toId: delta.id, packetCount: 3, lastHeard: now - NEIGHBOR_ROUTE_RECENT_MS - 60 * 60_000, intensity: 1, lastKind: 'Advert', traffic: 3 },
+      { id: 'b-c', fromId: bravo.id, toId: charlie.id, packetCount: 5, lastHeard: now, intensity: 2, lastKind: 'ACK', traffic: 5 }
     ]
   };
 
@@ -244,6 +258,9 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
     contentType: 'text/event-stream',
     body: `retry: 60000\n\nevent: hello\ndata: ${JSON.stringify({ seq: 0, bootId: state.bootId })}\n\n`
   }));
+  await page.addInitScript(({ key, view }) => {
+    window.localStorage.setItem(key, JSON.stringify(view));
+  }, { key: 'cartolite:view:v2', view: { center, zoom: state.map.zoom } });
 
   await page.goto('/');
   const map = page.locator('#map');
@@ -251,6 +268,9 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   const tooltip = page.locator('#tooltip');
   const focusChip = page.locator('#focus-chip');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
+  const routesButton = page.locator('#routes-button');
+  await routesButton.click();
+  await expect(map).toHaveAttribute('data-routes-visible', 'true');
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
   if (!box) return;
@@ -285,7 +305,6 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
     await expect(tooltip).toBeHidden();
   }
 
-  const routesButton = page.locator('#routes-button');
   await routesButton.click();
   await expect(map).toHaveAttribute('data-routes-visible', 'false');
   await expect(map).toHaveAttribute('data-selected-node-id', 'a');
