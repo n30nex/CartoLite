@@ -33,7 +33,7 @@ const ACTIVITY_HEAT_SOURCE_ID = 'activity-heat-source';
 const REGION_SOURCE_ID = 'meshmapper-canada-regions';
 export const HEATMAP_LAYER_ID = 'activity-heat';
 export const REGION_LAYER_IDS = ['region-outline', 'region-labels'] as const;
-export const ROUTE_LAYER_IDS = ['route-glow', 'routes'] as const;
+const ROUTE_LAYER_IDS = ['route-glow', 'routes'] as const;
 export const ROUTE_HIT_LAYER_ID = 'route-hit';
 export const NODE_HIT_LAYER_ID = 'node-hit';
 export const ROUTE_FILTER_LAYER_IDS = [...ROUTE_LAYER_IDS, ROUTE_HIT_LAYER_ID] as const;
@@ -469,26 +469,41 @@ export class LiveMap {
   setRoutesVisible(visible: boolean): void {
     this.routesVisible = visible;
     this.container.dataset.routesVisible = String(visible);
-    if (!visible && this.routeHydrating) {
+    const source = this.map.getSource('routes') as GeoJSONSource | undefined;
+    if (!visible) {
       this.routeHydrationEpoch += 1;
       this.routeHydrating = false;
       this.routeDataDirty = true;
+      this.routeFeatureIDs.clear();
+      if (source) {
+        void source.updateData({ removeAll: true }, true).catch((error: unknown) => {
+          console.warn('Route source clear failed:', error instanceof Error ? error.message : error);
+          this.container.dataset.renderState = 'idle';
+        });
+      }
     }
-    const needsHydration = visible && this.routeDataDirty && Boolean(this.map.getSource('routes'));
-    const stableApplied = applyRouteLayerVisibility(this.map, visible);
-    const hitApplied = applyRouteHitLayerVisibility(this.map, visible && this.selectedNodeID !== null);
-    const neighborsApplied = applyNeighborRingVisibility(this.map, visible && this.selectedNodeID !== null);
+    const needsHydration = visible && this.routeDataDirty && Boolean(source);
+    const hitApplied = this.selectedNodeID !== null && applyRouteHitLayerVisibility(this.map, visible);
+    const neighborsApplied = this.selectedNodeID !== null && applyNeighborRingVisibility(this.map, visible);
     if (needsHydration) this.hydrateRouteSource();
     if (!visible) this.clearRouteInspection();
     if (!visible) this.map.getCanvas().style.cursor = '';
-    if (!needsHydration && (stableApplied || hitApplied || neighborsApplied)) this.markRendering();
+    if (!needsHydration && (Boolean(source) || hitApplied || neighborsApplied)) this.markRendering(visible ? undefined : 'routes');
   }
 
   setHeatmapVisible(visible: boolean): void {
     this.heatmapVisible = visible;
     this.container.dataset.heatmapVisible = String(visible);
-    if (visible && this.heatDataDirty && this.map.getSource(ACTIVITY_HEAT_SOURCE_ID)) this.refreshHeatSource();
-    if (applyHeatmapLayerVisibility(this.map, visible)) this.markRendering();
+    const source = this.map.getSource(ACTIVITY_HEAT_SOURCE_ID) as GeoJSONSource | undefined;
+    if (!source) return;
+    if (visible && this.heatDataDirty) {
+      this.refreshHeatSource();
+    } else if (!visible) {
+      source.setData(EMPTY_POINTS);
+      this.heatFeatureIDs.clear();
+      this.heatDataDirty = true;
+    }
+    this.markRendering();
   }
 
   setRouteWindow(window: RouteWindow): void {
@@ -505,9 +520,16 @@ export class LiveMap {
   setRegionsVisible(visible: boolean): void {
     this.regionsVisible = visible;
     this.container.dataset.regionsVisible = String(visible);
-    if (visible) this.ensureRegionsData();
-    const applied = applyRegionLayerVisibility(this.map, visible);
-    if (applied) this.markRendering();
+    if (visible) {
+      if (this.regionsLoaded) {
+        if (applyRegionLayerVisibility(this.map, true)) this.markRendering();
+        return;
+      }
+      this.container.dataset.renderState = 'rendering';
+      this.ensureRegionsData();
+      return;
+    }
+    if (applyRegionLayerVisibility(this.map, false)) this.markRendering();
   }
 
   destroy(): void {
@@ -553,7 +575,6 @@ export class LiveMap {
       id: HEATMAP_LAYER_ID,
       type: 'heatmap',
       source: ACTIVITY_HEAT_SOURCE_ID,
-      layout: { visibility: 'none' },
       paint: {
         'heatmap-weight': [
           'interpolate', ['linear'], ['number', ['get', 'weight'], 0],
@@ -581,7 +602,7 @@ export class LiveMap {
       id: REGION_LAYER_IDS[0],
       type: 'line',
       source: REGION_SOURCE_ID,
-      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': '#69d1ca',
         'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.45, 6, 0.7, 10, 1.1, 14, 1.35],
@@ -652,11 +673,8 @@ export class LiveMap {
     });
     applyRouteSelectionFilter(this.map, this.selectedNodeID);
     applyRouteFocusAppearance(this.map, this.selectedNodeID !== null);
-    applyRouteLayerVisibility(this.map, this.routesVisible);
     applyRouteHitLayerVisibility(this.map, this.routesVisible && this.selectedNodeID !== null);
     applyRouteHoverFilter(this.map, null);
-    applyHeatmapLayerVisibility(this.map, this.heatmapVisible);
-    applyRegionLayerVisibility(this.map, this.regionsVisible);
     if (this.regionsVisible) this.ensureRegionsData();
 
     this.map.addLayer({
@@ -665,7 +683,6 @@ export class LiveMap {
       source: REGION_SOURCE_ID,
       minzoom: 5,
       layout: {
-        visibility: 'none',
         'text-field': ['get', 'code'],
         'text-font': LOCAL_FONTS,
         'text-size': ['interpolate', ['linear'], ['zoom'], 5, 8, 9, 9.2, 13, 10.5],
@@ -682,8 +699,6 @@ export class LiveMap {
         'text-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.42, 8, 0.68, 12, 0.82]
       }
     });
-    applyRegionLayerVisibility(this.map, this.regionsVisible);
-
     this.map.addSource('nodes', {
       type: 'geojson',
       data: EMPTY_POINTS,
@@ -925,9 +940,11 @@ export class LiveMap {
       .then(() => {
         this.regionsLoaded = true;
         this.container.dataset.regionsLoaded = 'true';
+        if (this.regionsVisible) this.markRendering();
       })
       .catch((error: unknown) => {
         console.warn('Region boundary load failed:', error instanceof Error ? error.message : error);
+        this.container.dataset.renderState = 'idle';
       })
       .finally(() => {
         this.regionsLoad = undefined;
@@ -1161,14 +1178,6 @@ type FocusMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setPaintPropert
 type InteractiveLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setLayoutProperty'>;
 type LayerFilter = Parameters<maplibregl.Map['setFilter']>[1];
 type ActiveLayerFilter = Exclude<LayerFilter, null | undefined>;
-
-export function applyRouteLayerVisibility(map: RouteLayerMap, visible: boolean): boolean {
-  return applyLayerVisibility(map, ROUTE_LAYER_IDS, visible);
-}
-
-export function applyHeatmapLayerVisibility(map: RouteLayerMap, visible: boolean): boolean {
-  return applyLayerVisibility(map, [HEATMAP_LAYER_ID], visible);
-}
 
 export function applyRegionLayerVisibility(map: RouteLayerMap, visible: boolean): boolean {
   return applyLayerVisibility(map, REGION_LAYER_IDS, visible);

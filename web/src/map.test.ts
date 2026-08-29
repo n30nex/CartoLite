@@ -5,14 +5,12 @@ import {
   activityHeatCollection,
   applyClusterHighlightFilter,
   applyHeatmapFocus,
-  applyHeatmapLayerVisibility,
   applyNodeFocus,
   applyNeighborRingVisibility,
   applyRegionLayerVisibility,
   applyRouteFocusAppearance,
   applyRouteHoverFilter,
   applyRouteHitLayerVisibility,
-  applyRouteLayerVisibility,
   applyRouteSelectionFilter,
   applySelectedNodeFilter,
   canMoveLiveFollow,
@@ -33,7 +31,6 @@ import {
   ROUTE_FILTER_LAYER_IDS,
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
-  ROUTE_LAYER_IDS,
   ROUTE_RENDER_BUDGET,
   REGION_LAYER_IDS,
   routeCollection,
@@ -49,31 +46,6 @@ import {
 import { PACKET_KIND_COLORS, ROUTE_MAX_AGE_MS } from './trafficVisuals';
 
 describe('route layer visibility', () => {
-  it.each([
-    [true, 'visible'],
-    [false, 'none']
-  ] as const)('applies visible=%s to both stable route layers', (visible, expected) => {
-    const setLayoutProperty = vi.fn();
-    const map = {
-      getLayer: vi.fn(() => ({})),
-      setLayoutProperty
-    } as unknown as Parameters<typeof applyRouteLayerVisibility>[0];
-
-    expect(applyRouteLayerVisibility(map, visible)).toBe(true);
-    expect(setLayoutProperty.mock.calls).toEqual(ROUTE_LAYER_IDS.map((layerID) => [layerID, 'visibility', expected]));
-  });
-
-  it('stores pre-load intent safely by skipping layers that are not installed yet', () => {
-    const setLayoutProperty = vi.fn();
-    const map = {
-      getLayer: vi.fn(() => undefined),
-      setLayoutProperty
-    } as unknown as Parameters<typeof applyRouteLayerVisibility>[0];
-
-    expect(applyRouteLayerVisibility(map, false)).toBe(false);
-    expect(setLayoutProperty).not.toHaveBeenCalled();
-  });
-
   it('shows the wide route hit target only while neighbor routes are interactive', () => {
     const setLayoutProperty = vi.fn();
     const map = {
@@ -120,20 +92,6 @@ describe('route layer visibility', () => {
 });
 
 describe('optional map layers', () => {
-  it.each([
-    [true, 'visible'],
-    [false, 'none']
-  ] as const)('applies visible=%s to the heatmap independently', (visible, expected) => {
-    const setLayoutProperty = vi.fn();
-    const map = {
-      getLayer: vi.fn(() => ({})),
-      setLayoutProperty
-    } as unknown as Parameters<typeof applyHeatmapLayerVisibility>[0];
-
-    expect(applyHeatmapLayerVisibility(map, visible)).toBe(true);
-    expect(setLayoutProperty).toHaveBeenCalledWith(HEATMAP_LAYER_ID, 'visibility', expected);
-  });
-
   it.each([
     [true, 'visible'],
     [false, 'none']
