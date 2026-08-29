@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.3 - 2026-08-29
+
+### Changed
+
+- Raise live-hop output by about 22 dB so the route music is clearly audible on typical laptop and phone speakers while retaining density limiting and compression.
+- Pulse the Sound control only when an in-view live hop actually schedules a note, making silence from an idle viewport easy to distinguish from muted output.
+
+### Fixed
+
+- Extend the browser gate to prove that visible synthetic traffic reaches the active sound path instead of checking only that Web Audio can be enabled.
+
 ## 0.4.2 - 2026-08-29
 
 - Keep the refreshed 34-region overlay responsive over a live 4,000-node / 7,000-route topology by rendering boundaries and labels without the nearly invisible polygon fill.

@@ -33,6 +33,7 @@ const SAVED_VIEW_KEY = 'cartolite:view:v2';
 
 let legendExpanded = false;
 let lastTrafficPulseAt = -Infinity;
+let soundPulseTimer: number | undefined;
 
 legendToggle.addEventListener('click', () => {
   legendExpanded = !legendExpanded;
@@ -142,7 +143,7 @@ async function start(): Promise<void> {
         lastUpdate.textContent = formatUpdate(event.at);
         if (!packet) return;
         liveAnimator.add(packet);
-        routeSonifier.play(packet);
+        if (routeSonifier.play(packet) > 0) pulseSoundChrome();
         pulseTrafficChrome();
         if (liveFollow && liveMap.shouldFollow(packet)) liveMap.follow(packetDestination(packet));
       },
@@ -168,7 +169,12 @@ async function start(): Promise<void> {
       const enabled = await routeSonifier.setEnabled(!routeSonifier.isEnabled());
       soundButton.setAttribute('aria-pressed', String(enabled));
       soundButton.classList.toggle('selected', enabled);
-      soundButton.title = enabled ? 'Turn off route sounds' : 'Turn on route sounds';
+      soundButton.title = enabled ? 'Sound on — visible live hops only' : 'Turn on route sounds';
+      if (!enabled) {
+        if (soundPulseTimer !== undefined) window.clearTimeout(soundPulseTimer);
+        soundPulseTimer = undefined;
+        soundButton.classList.remove('sounding');
+      }
     });
     resetButton.addEventListener('click', () => {
       setLiveFollow(false);
@@ -207,6 +213,15 @@ function pulseTrafficChrome(): void {
   lastTrafficPulseAt = now;
   topbar.classList.add('traffic-pulse');
   window.setTimeout(() => topbar.classList.remove('traffic-pulse'), 720);
+}
+
+function pulseSoundChrome(): void {
+  if (soundPulseTimer !== undefined) return;
+  soundButton.classList.add('sounding');
+  soundPulseTimer = window.setTimeout(() => {
+    soundButton.classList.remove('sounding');
+    soundPulseTimer = undefined;
+  }, 720);
 }
 
 function packetDestination(packet: PacketView): EndpointV2 {

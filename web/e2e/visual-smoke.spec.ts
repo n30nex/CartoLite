@@ -85,7 +85,8 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(soundButton).toHaveAttribute('title', 'Turn on route sounds');
   await soundButton.click();
   await expect(soundButton).toHaveAttribute('aria-pressed', 'true');
-  await expect(soundButton).toHaveAttribute('title', 'Turn off route sounds');
+  await expect(soundButton).toHaveAttribute('title', 'Sound on — visible live hops only');
+  await expect(soundButton).toHaveClass(/sounding/, { timeout: 15_000 });
   await soundButton.click();
   await expect(soundButton).toHaveAttribute('aria-pressed', 'false');
   await expect(soundButton).toHaveAttribute('title', 'Turn on route sounds');

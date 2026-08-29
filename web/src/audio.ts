@@ -3,7 +3,9 @@ import { routeDuration, segmentNearViewport, segmentTravelWeights } from './pack
 import type { PacketView } from './types';
 import type { PacketKind } from './trafficVisuals';
 
-const MASTER_LEVEL = 0.18;
+const MASTER_LEVEL = 0.82;
+const VOICE_LEVEL = 0.15;
+const MIN_VOICE_LEVEL = 0.03;
 const MIN_GAIN = 0.0001;
 const LOOKAHEAD_SECONDS = 0.025;
 
@@ -119,18 +121,19 @@ export class RouteSonifier {
     this.setMasterLevel(this.enabled && !paused ? MASTER_LEVEL : MIN_GAIN);
   }
 
-  play(packet: PacketView): void {
+  play(packet: PacketView): number {
     const context = this.context;
-    if (!this.enabled || this.paused || !context || context.state !== 'running' || !this.master) return;
+    if (!this.enabled || this.paused || !context || context.state !== 'running' || !this.master) return 0;
     const notes = routeSoundPlan(
       packet,
       this.map,
       this.viewport.clientWidth,
       this.viewport.clientHeight,
     );
-    if (notes.length === 0) return;
+    if (notes.length === 0) return 0;
     const density = 1 / Math.sqrt(1 + this.active.size / 10);
     for (const note of notes) this.schedule(note, density);
+    return notes.length;
   }
 
   destroy(): void {
@@ -146,11 +149,11 @@ export class RouteSonifier {
     const master = context.createGain();
     master.gain.value = MIN_GAIN;
     const compressor = context.createDynamicsCompressor();
-    compressor.threshold.value = -24;
-    compressor.knee.value = 18;
-    compressor.ratio.value = 8;
-    compressor.attack.value = 0.004;
-    compressor.release.value = 0.24;
+    compressor.threshold.value = -18;
+    compressor.knee.value = 12;
+    compressor.ratio.value = 4;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.2;
     master.connect(compressor).connect(context.destination);
     this.context = context;
     this.master = master;
@@ -169,7 +172,7 @@ export class RouteSonifier {
     const panner = context.createStereoPanner();
     panner.pan.setValueAtTime(note.pan, starts);
     const envelope = context.createGain();
-    const peak = Math.max(0.012, 0.052 * density);
+    const peak = Math.max(MIN_VOICE_LEVEL, VOICE_LEVEL * density);
     envelope.gain.setValueAtTime(MIN_GAIN, starts);
     envelope.gain.exponentialRampToValueAtTime(peak, starts + 0.012);
     envelope.gain.exponentialRampToValueAtTime(Math.max(MIN_GAIN, peak * 0.32), starts + note.durationMS / 2_400);
