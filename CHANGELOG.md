@@ -23,6 +23,7 @@
 ### Security
 
 - Add a restrictive Permissions Policy and one-year HSTS response policy.
+- Build with Go 1.25.13 and `golang.org/x/net` 0.56.0 to include the current upstream security fixes.
 
 ## 0.3.1 - 2026-08-27
 
