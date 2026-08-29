@@ -14,6 +14,7 @@ const statusText = required<HTMLElement>('status-text');
 const trafficMeter = required<HTMLElement>('traffic-meter');
 const topbar = required<HTMLElement>('topbar');
 const mapElement = required<HTMLElement>('map');
+const mapGrade = required<HTMLElement>('map-grade');
 const fatal = required<HTMLElement>('fatal');
 const followButton = required<HTMLButtonElement>('follow-button');
 const routesButton = required<HTMLButtonElement>('routes-button');
@@ -50,6 +51,7 @@ let scheduledNoteCount = 0;
 let activeViewClass: ViewClass = viewClass();
 let trafficWakeTimer: number | undefined;
 let recentTraffic: number[] = [];
+let auroraPulseCount = 0;
 
 function setLayersOpen(open: boolean): void {
   layersDisclosure.toggleAttribute('open', open);
@@ -313,7 +315,6 @@ function pulseTrafficChrome(payloadType: string | undefined): void {
         : recentTraffic.length >= 3 ? 2 : 1;
   trafficMeter.dataset.level = String(level);
   appElement.dataset.trafficKind = normalizePacketKind(payloadType).toLowerCase();
-  appElement.classList.add('traffic-awake');
   if (trafficWakeTimer !== undefined) window.clearTimeout(trafficWakeTimer);
   trafficWakeTimer = window.setTimeout(() => {
     trafficWakeTimer = undefined;
@@ -324,9 +325,15 @@ function pulseTrafficChrome(payloadType: string | undefined): void {
   if (now - lastTrafficPulseAt >= 620) {
     lastTrafficPulseAt = now;
     topbar.classList.remove('traffic-pulse');
-    void topbar.offsetWidth;
+    appElement.classList.remove('traffic-awake');
+    void mapGrade.offsetWidth;
     topbar.classList.add('traffic-pulse');
+    appElement.classList.add('traffic-awake');
+    auroraPulseCount += 1;
+    mapGrade.dataset.pulses = String(auroraPulseCount);
     window.setTimeout(() => topbar.classList.remove('traffic-pulse'), 720);
+  } else {
+    appElement.classList.add('traffic-awake');
   }
 }
 

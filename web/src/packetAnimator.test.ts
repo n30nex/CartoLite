@@ -13,6 +13,7 @@ import {
   MIN_ROUTE_MS,
   NODE_WAKE_MS,
   nodeWakeLife,
+  nodeWakeRadius,
   OBSERVER_PING_MS,
   observerRadius,
   PacketAnimator,
@@ -185,6 +186,8 @@ describe('packet animation limits', () => {
     expect(nodeWakeLife(0)).toBe(1);
     expect(nodeWakeLife(NODE_WAKE_MS / 2)).toBeGreaterThan(0);
     expect(nodeWakeLife(NODE_WAKE_MS)).toBe(0);
+    expect(nodeWakeRadius(0, 'ripple', true)).toBe(nodeWakeRadius(NODE_WAKE_MS / 2, 'ripple', true));
+    expect(nodeWakeRadius(NODE_WAKE_MS / 2, 'ripple')).toBeGreaterThan(nodeWakeRadius(0, 'ripple'));
   });
 
   it('caps only lingering decoration to its bounded budget', () => {
@@ -322,6 +325,7 @@ describe('PacketAnimator motion preference lifecycle', () => {
       removeEventListener: vi.fn(),
     } as unknown as MediaQueryList;
     vi.stubGlobal('matchMedia', vi.fn(() => media));
+    vi.stubGlobal('devicePixelRatio', 2);
     vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
     vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
     const context = {
@@ -353,6 +357,7 @@ describe('PacketAnimator motion preference lifecycle', () => {
     const state = animator as unknown as { activeRoutes: unknown[] };
     expect(state.activeRoutes).toHaveLength(40);
     expect(canvas.dataset.qualityMode).toBe('low');
+    expect(canvas.dataset.pixelRatio).toBe('1.25');
     animator.destroy();
   });
 });

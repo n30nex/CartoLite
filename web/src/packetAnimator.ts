@@ -261,6 +261,12 @@ export function nodeWakeLife(age: number): number {
   return Math.pow(1 - clamp(Math.max(0, age) / NODE_WAKE_MS), 2.4);
 }
 
+export function nodeWakeRadius(age: number, signature: PacketSignature, reducedMotion = false): number {
+  if (reducedMotion) return 10;
+  const life = nodeWakeLife(age);
+  return 7 + (1 - life) * (signature === 'ripple' ? 24 : 15);
+}
+
 export function residueLife(age: number): number {
   const progress = clamp(Math.max(0, age) / RESIDUE_MS);
   return Math.pow(1 - progress, 2.15);
@@ -308,6 +314,7 @@ export class PacketAnimator {
   private dpr = 1;
   private lastDrawAt = Number.NEGATIVE_INFINITY;
   private scheduledWakeCount = 0;
+  private appliedQuality?: VisualQuality;
 
   constructor(private readonly map: maplibregl.Map, private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext('2d');
@@ -409,7 +416,8 @@ export class PacketAnimator {
 
   private resize(): void {
     const rect = this.canvas.getBoundingClientRect();
-    this.dpr = Math.min(this.lowPower ? 1.25 : 1.5, window.devicePixelRatio || 1);
+    this.dpr = Math.min(this.qualityMode() === 'low' ? 1.25 : 1.5, window.devicePixelRatio || 1);
+    this.canvas.dataset.pixelRatio = String(this.dpr);
     this.canvas.width = Math.max(1, Math.floor(rect.width * this.dpr));
     this.canvas.height = Math.max(1, Math.floor(rect.height * this.dpr));
     this.residueCanvas.width = this.canvas.width;
@@ -447,7 +455,6 @@ export class PacketAnimator {
     this.residue = capNewest(this.residue, this.residueLimit());
     this.nodeWakes = capNewest(this.nodeWakes, this.nodeWakeLimit());
     this.updateMotionMode();
-    this.resize();
   };
 
   private handleMapMove = (): void => {
@@ -587,7 +594,7 @@ export class PacketAnimator {
     const life = nodeWakeLife(now - item.addedAt);
     if (life <= 0) return;
     const point = this.point(item.endpoint);
-    const radius = 7 + (1 - life) * (item.signature === 'ripple' ? 24 : 15);
+    const radius = nodeWakeRadius(now - item.addedAt, item.signature, this.reducedMotion);
     context.strokeStyle = withAlpha(item.color, life * (item.signature === 'double' ? 0.6 : 0.38));
     context.lineWidth = item.signature === 'double' ? 1.5 : 1;
     context.beginPath();
@@ -943,11 +950,15 @@ export class PacketAnimator {
   }
 
   private updateMotionMode(): void {
+    const quality = this.qualityMode();
+    const qualityChanged = this.appliedQuality !== undefined && this.appliedQuality !== quality;
+    this.appliedQuality = quality;
     this.canvas.dataset.motionMode = this.reducedMotion ? 'static' : 'animated';
     this.canvas.dataset.powerMode = this.lowPower ? 'low' : 'full';
-    this.canvas.dataset.qualityMode = this.qualityMode();
+    this.canvas.dataset.qualityMode = quality;
     this.canvas.dataset.activeRoutes = String(this.activeRoutes.length);
     this.canvas.dataset.nodeWakes = String(this.nodeWakes.length);
+    if (qualityChanged) this.resize();
   }
 
   private residueLimit(): number {
