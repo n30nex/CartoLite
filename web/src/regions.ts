@@ -6,8 +6,8 @@ export const EXPECTED_REGION_CODES = [
   'YVR', 'YWG', 'YWS', 'YXU', 'YXX', 'YYB', 'YYC', 'YYJ', 'YYY', 'YYZ'
 ] as const;
 
-export const REGION_LINE_PIECE_VERTEX_LIMIT = 192;
-export const REGION_WORKER_MESSAGE_VERTEX_LIMIT = 768;
+export const REGION_LINE_PIECE_VERTEX_LIMIT = 512;
+export const REGION_WORKER_MESSAGE_VERTEX_LIMIT = 2_048;
 
 type RegionGeometry = Polygon | MultiPolygon;
 type RegionFeature = Feature<RegionGeometry>;

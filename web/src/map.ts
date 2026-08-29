@@ -37,11 +37,9 @@ export type RouteWindow = 'auto' | '15m' | '1h' | '6h' | '24h';
 const EMPTY_POINTS: FeatureCollection<Point> = { type: 'FeatureCollection', features: [] };
 const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', features: [] };
 const ACTIVITY_HEAT_SOURCE_ID = 'activity-heat-source';
-const REGION_LABEL_SOURCE_ID = 'meshmapper-canada-region-labels';
+const REGION_ATTRIBUTION_SOURCE_ID = 'meshmapper-canada-regions';
 const ROUTE_DETAIL_SOURCE_ID = 'route-details';
 export const HEATMAP_LAYER_ID = 'activity-heat';
-export const REGION_LABEL_LAYER_ID = 'region-labels';
-export const REGION_LAYER_IDS = [REGION_LABEL_LAYER_ID] as const;
 export const ROUTE_HIT_LAYER_ID = 'route-hit';
 export const NODE_HIT_LAYER_ID = 'node-hit';
 export const ROUTE_FILTER_LAYER_IDS = [ROUTE_HIT_LAYER_ID] as const;
@@ -492,15 +490,11 @@ export class LiveMap {
     this.container.dataset.regionsVisible = String(visible);
     this.regionCanvas.setVisible(visible);
     if (visible) {
-      if (this.regionsLoaded) {
-        if (applyRegionLayerVisibility(this.map, true)) this.markRendering();
-        return;
-      }
+      if (this.regionsLoaded) return;
       this.container.dataset.renderState = 'rendering';
       this.ensureRegionsData();
       return;
     }
-    if (applyRegionLayerVisibility(this.map, false)) this.markRendering();
   }
 
   destroy(): void {
@@ -534,7 +528,7 @@ export class LiveMap {
   }
 
   private installLayers(): void {
-    this.map.addSource(REGION_LABEL_SOURCE_ID, {
+    this.map.addSource(REGION_ATTRIBUTION_SOURCE_ID, {
       type: 'geojson',
       data: EMPTY_POINTS,
       maxzoom: 12,
@@ -611,28 +605,6 @@ export class LiveMap {
     applyRouteHoverFilter(this.map, null);
     if (this.regionsVisible) this.ensureRegionsData();
 
-    this.map.addLayer({
-      id: REGION_LABEL_LAYER_ID,
-      type: 'symbol',
-      source: REGION_LABEL_SOURCE_ID,
-      minzoom: 5,
-      layout: {
-        'text-field': ['get', 'code'],
-        'text-font': LOCAL_FONTS,
-        'text-size': ['interpolate', ['linear'], ['zoom'], 5, 8, 9, 9.2, 13, 10.5],
-        'text-letter-spacing': 0.13,
-        'text-padding': 8,
-        'text-allow-overlap': false,
-        'text-ignore-placement': false
-      },
-      paint: {
-        'text-color': '#8ec5c1',
-        'text-halo-color': '#02070b',
-        'text-halo-width': 1.2,
-        'text-halo-blur': 0.25,
-        'text-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.42, 8, 0.68, 12, 0.82]
-      }
-    });
     this.map.addSource('nodes', {
       type: 'geojson',
       data: EMPTY_POINTS,
@@ -868,7 +840,7 @@ export class LiveMap {
 
   private ensureRegionsData(): void {
     if (this.regionsLoaded || this.regionsLoad) return;
-    if (!this.map.getSource(REGION_LABEL_SOURCE_ID)) return;
+    if (!this.map.getSource(REGION_ATTRIBUTION_SOURCE_ID)) return;
     this.regionsLoad = this.loadRegionsData()
       .then(() => {
         this.regionsLoaded = true;
@@ -885,8 +857,6 @@ export class LiveMap {
   }
 
   private loadRegionsData(): Promise<void> {
-    const labelSource = this.map.getSource(REGION_LABEL_SOURCE_ID) as GeoJSONSource | undefined;
-    if (!labelSource) return Promise.reject(new Error('regional label source is unavailable'));
     const worker = new Worker(new URL('./regionWorker.ts', import.meta.url), {
       type: 'module',
       name: 'cartolite-regions'
@@ -919,15 +889,11 @@ export class LiveMap {
         }
         if (settled) return;
         settled = true;
-        worker.terminate();
         if (!labels) {
           reject(new Error('regional worker returned no labels'));
           return;
         }
-        void Promise.all([
-          labelSource.setData(labels),
-          this.regionCanvas.setPieces(pieces)
-        ]).then(() => resolve()).catch(reject);
+        void this.regionCanvas.setData(pieces, labels).then(() => resolve()).catch(reject);
       };
       worker.postMessage({ url: canadaRegionsURL });
     });
@@ -1158,10 +1124,6 @@ type FocusMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setPaintPropert
 type InteractiveLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setLayoutProperty'>;
 type LayerFilter = Parameters<maplibregl.Map['setFilter']>[1];
 type ActiveLayerFilter = Exclude<LayerFilter, null | undefined>;
-
-export function applyRegionLayerVisibility(map: RouteLayerMap, visible: boolean): boolean {
-  return applyLayerVisibility(map, REGION_LAYER_IDS, visible);
-}
 
 function applyLayerVisibility(map: RouteLayerMap, layerIDs: readonly string[], visible: boolean): boolean {
   let applied = false;

@@ -5,7 +5,7 @@ CartoLite is a compact, privacy-safe live map of high-confidence MeshCore Canada
 ## Runtime shape
 
 - One static Go binary subscribes to MeshCore MQTT, validates routes, maintains bounded in-memory state, serves normalized public schema v2 and SSE, and embeds the frontend.
-- One vanilla TypeScript page uses MapLibre GL JS for vector geography, clustered nodes, bounded heat, regional labels, and exact selected-route interaction. Dedicated Canvas2D layers keep exact regional boundaries, the pre-rendered stable route lattice, and transient packet motion responsive.
+- One vanilla TypeScript page uses MapLibre GL JS for vector geography, clustered nodes, bounded heat, and exact selected-route interaction. Dedicated Canvas2D layers keep exact regional boundaries and labels, the pre-rendered stable route lattice, and transient packet motion responsive.
 - One internal `/data/state-v1.json` checkpoint preserves current topology across restarts. Routes expire after 24 hours and unreferenced nodes after 30 days; it is not packet history.
 - One non-root, read-only, `linux/amd64` container is published to `ghcr.io/n30nex/cartolite`.
 

@@ -12,6 +12,7 @@ interface RegionWorkerRequest {
 interface RegionWorkerScope {
   onmessage: ((event: MessageEvent<RegionWorkerRequest>) => void) | null;
   postMessage(message: RegionWorkerOutput): void;
+  close(): void;
 }
 
 const scope = globalThis as unknown as RegionWorkerScope;
@@ -40,6 +41,7 @@ async function loadRegions(url: string): Promise<void> {
     }
     if (batch.length > 0) scope.postMessage({ type: 'pieces', pieces: batch });
     scope.postMessage({ type: 'done' });
+    scope.close();
   } catch (error) {
     scope.postMessage({
       type: 'error',

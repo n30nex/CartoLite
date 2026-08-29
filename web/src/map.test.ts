@@ -7,7 +7,6 @@ import {
   applyHeatmapFocus,
   applyNodeFocus,
   applyNeighborRingVisibility,
-  applyRegionLayerVisibility,
   applyRouteHoverFilter,
   applyRouteHitLayerVisibility,
   applyRouteSelectionFilter,
@@ -31,7 +30,6 @@ import {
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
   ROUTE_RENDER_BUDGET,
-  REGION_LAYER_IDS,
   routeCollection,
   routeColorExpression,
   routeLatticeRoutes,
@@ -78,20 +76,6 @@ describe('route layer visibility', () => {
 });
 
 describe('optional map layers', () => {
-  it.each([
-    [true, 'visible'],
-    [false, 'none']
-  ] as const)('applies visible=%s to every regional layer', (visible, expected) => {
-    const setLayoutProperty = vi.fn();
-    const map = {
-      getLayer: vi.fn(() => ({})),
-      setLayoutProperty
-    } as unknown as Parameters<typeof applyRegionLayerVisibility>[0];
-
-    expect(applyRegionLayerVisibility(map, visible)).toBe(true);
-    expect(setLayoutProperty.mock.calls).toEqual(REGION_LAYER_IDS.map((layerID) => [layerID, 'visibility', expected]));
-  });
-
   it('filters heat to the selected node neighborhood and clears on deselect', () => {
     const setFilter = vi.fn();
     const map = {
