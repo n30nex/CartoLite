@@ -9,9 +9,9 @@ const VIEW_STORAGE_PREFIX = 'cartolite:view:v3';
 
 export function viewClass(
   viewportWidth = window.innerWidth,
-  coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false,
+  touchCapable = navigator.maxTouchPoints > 0,
 ): ViewClass {
-  return viewportWidth <= 620 || coarsePointer ? 'mobile' : 'desktop';
+  return viewportWidth <= 620 || touchCapable ? 'mobile' : 'desktop';
 }
 
 export function viewStorageKey(kind: ViewClass): string {

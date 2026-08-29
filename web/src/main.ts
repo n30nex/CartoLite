@@ -46,6 +46,7 @@ let soundPulseTimer: number | undefined;
 let scheduledNoteCount = 0;
 let activeViewClass: ViewClass = viewClass();
 
+document.documentElement.dataset.viewClass = activeViewClass;
 layersDisclosure.open = activeViewClass === 'desktop';
 
 legendToggle.addEventListener('click', () => {
@@ -175,6 +176,7 @@ async function start(): Promise<void> {
         const next = viewClass();
         if (next === activeViewClass) return;
         activeViewClass = next;
+        document.documentElement.dataset.viewClass = next;
         layersDisclosure.open = next === 'desktop';
         const restored = loadSavedView(localStorage, next);
         if (restored) {

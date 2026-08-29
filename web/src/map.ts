@@ -49,6 +49,7 @@ const NODE_CORE_LAYER_ID = 'node-core';
 const NODE_LABEL_LAYER_ID = 'node-labels';
 const NODE_BASE_FILTER = ['!', ['has', 'point_count']] as ActiveLayerFilter;
 const LOCAL_FONTS = ['Open Sans Regular'];
+const ROUTE_HYDRATION_BATCH_SIZE = 200;
 
 export interface LiveMapFocus {
   label: string;
@@ -88,6 +89,8 @@ export class LiveMap {
   private heatEpoch = 0;
   private routeBaseline = 1;
   private routeDataDirty = true;
+  private routeHydrating = false;
+  private routeHydrationEpoch = 0;
   private heatDataDirty = true;
   private routeWindow: RouteWindow = 'auto';
   private routesVisible = true;
@@ -179,7 +182,7 @@ export class LiveMap {
       for (const endpointID of this.updateHeatIndex(routeIDs)) heatNodeIDs.add(endpointID);
     }
     if (routeFeatureIDs.size > 0) {
-      if (this.routesVisible) changed = this.updateRouteFeatures([...routeFeatureIDs]) || changed;
+      if (this.routesVisible && !this.routeHydrating) changed = this.updateRouteFeatures([...routeFeatureIDs]) || changed;
       else this.routeDataDirty = true;
     }
     if (heatNodeIDs.size > 0) {
@@ -205,7 +208,7 @@ export class LiveMap {
 
     this.routeBaseline = routeTrafficBaseline(state.routes, now);
     this.routeDataDirty = true;
-    if (this.routesVisible) this.refreshRouteSource(now);
+    if (this.routesVisible) this.hydrateRouteSource(now);
 
     this.rebuildHeatIndex(now);
     this.heatDataDirty = true;
@@ -239,14 +242,55 @@ export class LiveMap {
     return changed;
   }
 
-  private refreshRouteSource(now = Date.now()): void {
+  private hydrateRouteSource(now = Date.now()): void {
+    const source = this.map.getSource('routes') as GeoJSONSource | undefined;
+    if (!source) return;
+    const hydrationEpoch = ++this.routeHydrationEpoch;
     const routes = [...this.routesByID.values()];
     this.routeBaseline = routeTrafficBaseline(routes, now);
-    const collection = routeCollection(routes, this.nodesByID, now, this.effectiveRouteAgeMS());
-    (this.map.getSource('routes') as GeoJSONSource).setData(collection);
-    this.routeFeatureIDs = new Set(collection.features.map((feature) => String(feature.id)));
+    const maxAge = this.effectiveRouteAgeMS();
+    this.routeHydrating = true;
     this.routeDataDirty = false;
-    this.emitRouteWindowChange();
+    this.routeFeatureIDs.clear();
+    this.markRendering();
+
+    const active = (): boolean => hydrationEpoch === this.routeHydrationEpoch
+      && this.routesVisible
+      && Boolean(this.map.getSource('routes'));
+    const hydrate = async (): Promise<void> => {
+      await source.updateData({ removeAll: true }, true);
+      if (!active()) return;
+
+      for (let offset = 0; offset < routes.length; offset += ROUTE_HYDRATION_BATCH_SIZE) {
+        const additions: Feature<LineString>[] = [];
+        const end = Math.min(routes.length, offset + ROUTE_HYDRATION_BATCH_SIZE);
+        for (let index = offset; index < end; index += 1) {
+          const feature = routeFeature(routes[index], this.nodesByID, now, this.routeBaseline, maxAge);
+          if (!feature) continue;
+          additions.push(feature);
+          this.routeFeatureIDs.add(String(feature.id));
+        }
+        if (additions.length > 0) await source.updateData({ add: additions }, true);
+        if (!active()) return;
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      }
+
+      this.routeHydrating = false;
+      if (this.routeDataDirty) {
+        this.hydrateRouteSource();
+        return;
+      }
+      this.emitRouteWindowChange();
+      this.markRendering();
+    };
+
+    void hydrate().catch((error: unknown) => {
+      if (hydrationEpoch !== this.routeHydrationEpoch) return;
+      this.routeHydrating = false;
+      this.routeDataDirty = true;
+      console.error('Route hydration failed:', error instanceof Error ? error.message : error);
+      this.markRendering();
+    });
   }
 
   private rebuildHeatIndex(now = Date.now()): void {
@@ -413,13 +457,19 @@ export class LiveMap {
   setRoutesVisible(visible: boolean): void {
     this.routesVisible = visible;
     this.container.dataset.routesVisible = String(visible);
-    if (visible && this.routeDataDirty && this.map.getSource('routes')) this.refreshRouteSource();
+    if (!visible && this.routeHydrating) {
+      this.routeHydrationEpoch += 1;
+      this.routeHydrating = false;
+      this.routeDataDirty = true;
+    }
+    const needsHydration = visible && this.routeDataDirty && Boolean(this.map.getSource('routes'));
     const stableApplied = applyRouteLayerVisibility(this.map, visible);
     const hitApplied = applyRouteHitLayerVisibility(this.map, visible && this.selectedNodeID !== null);
     const neighborsApplied = applyNeighborRingVisibility(this.map, visible && this.selectedNodeID !== null);
+    if (needsHydration) this.hydrateRouteSource();
     if (!visible) this.clearRouteInspection();
     if (!visible) this.map.getCanvas().style.cursor = '';
-    if (stableApplied || hitApplied || neighborsApplied) this.markRendering();
+    if (!needsHydration && (stableApplied || hitApplied || neighborsApplied)) this.markRendering();
   }
 
   setHeatmapVisible(visible: boolean): void {
@@ -434,8 +484,7 @@ export class LiveMap {
     this.routeWindow = window;
     this.routeDataDirty = true;
     if (this.routesVisible && this.map.getSource('routes')) {
-      this.refreshRouteSource();
-      this.markRendering();
+      this.hydrateRouteSource();
     } else {
       this.emitRouteWindowChange();
     }
@@ -450,6 +499,8 @@ export class LiveMap {
   }
 
   destroy(): void {
+    this.routeHydrationEpoch += 1;
+    this.routeHydrating = false;
     window.clearInterval(this.freshnessTimer);
     if (this.clusterFlashTimer !== undefined) window.clearTimeout(this.clusterFlashTimer);
     this.map.off('zoomend', this.handleZoomEnd);
@@ -460,8 +511,7 @@ export class LiveMap {
     if (this.routeWindow !== 'auto') return;
     this.routeDataDirty = true;
     if (this.routesVisible && this.map.getSource('routes')) {
-      this.refreshRouteSource();
-      this.markRendering();
+      this.hydrateRouteSource();
     } else {
       this.emitRouteWindowChange();
     }
@@ -875,7 +925,7 @@ export class LiveMap {
     const epoch = ++this.renderEpoch;
     this.container.dataset.renderState = 'rendering';
     this.map.once('idle', () => {
-      if (epoch === this.renderEpoch) this.container.dataset.renderState = 'idle';
+      if (epoch === this.renderEpoch && !this.routeHydrating) this.container.dataset.renderState = 'idle';
     });
   }
 
@@ -934,7 +984,7 @@ export class LiveMap {
     this.selectedNodeLabel = nodeID ? label : '';
     this.container.dataset.selectedNodeId = nodeID ?? '';
     this.routeDataDirty = true;
-    if (this.routesVisible && this.map.getSource('routes')) this.refreshRouteSource();
+    if (this.routesVisible && this.map.getSource('routes')) this.hydrateRouteSource();
     this.updateFocusData();
     this.applyFocusState();
     if (nodeID === null && this.tooltip.dataset.kind === 'route') this.hideTooltip();
