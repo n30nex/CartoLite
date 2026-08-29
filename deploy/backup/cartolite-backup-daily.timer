@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily CartoLite checkpoint backup
+
+[Timer]
+OnCalendar=*-*-* 03:17:00 America/Toronto
+Persistent=true
+Unit=cartolite-backup@daily.service
+
+[Install]
+WantedBy=timers.target

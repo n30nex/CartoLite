@@ -49,7 +49,7 @@ func TestSecurityHeadersExcludeExternalGlyphOrigins(t *testing.T) {
 	testHandler(t, true).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	csp := response.Header().Get("Content-Security-Policy")
 	if !strings.Contains(csp, "https://*.basemaps.cartocdn.com") {
-		t.Fatalf("CSP does not allow the configured raster map origin: %q", csp)
+		t.Fatalf("CSP does not allow the configured vector map origin: %q", csp)
 	}
 	for _, origin := range []string{"https://demotiles.maplibre.org", "https://fonts.openmaptiles.org"} {
 		if strings.Contains(csp, origin) {
@@ -75,6 +75,12 @@ func TestMissingFrontendAssetReturnsNotFound(t *testing.T) {
 func TestWebManifestUsesInstallableContentType(t *testing.T) {
 	if contentType := staticContentType("site.webmanifest"); contentType != "application/manifest+json" {
 		t.Fatalf("unexpected web manifest content type: %q", contentType)
+	}
+}
+
+func TestRegionGeoJSONUsesGeographicContentType(t *testing.T) {
+	if contentType := staticContentType("assets/meshmapper-canada-regions.abc123.geojson"); contentType != "application/geo+json" {
+		t.Fatalf("unexpected region GeoJSON content type: %q", contentType)
 	}
 }
 

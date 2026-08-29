@@ -7,7 +7,7 @@
 - a persistent Docker volume for `/data`
 - a TLS edge or reverse proxy for public use
 
-Published images receive the browser-visible CARTO raster key at build time from the `CARTO_BASEMAP_API_KEY` GitHub Actions secret. CARTO requires direct browser tile requests with this key in the URL, so it is a publishable project key rather than a server credential. Keep the value out of source, logs, Compose, and runtime `.env` files; use it only for this map and monitor its request allowance.
+Published images receive the browser-visible CARTO vector project key at build time from the `CARTO_BASEMAP_API_KEY` GitHub Actions secret. The custom style requests CARTO TileJSON, vector PBF tiles, and glyph PBFs; it contains no raster source or PNG fallback. The key is intentionally visible to browsers but must remain out of source, logs, Compose, and runtime `.env` files. The main-branch workflow verifies all three vector resources before publishing an image.
 
 ## Install
 
@@ -26,8 +26,8 @@ The production defaults publish `0.0.0.0:80` for an edge proxy and `127.0.0.1:39
 
 1. Record the current `CARTOLITE_IMAGE` digest and copy the named `cartolite-data` volume using your normal encrypted backup process.
 2. Set `CARTOLITE_IMAGE` to the new digest from the GitHub release manifest.
-3. Run `docker compose pull && docker compose up -d`.
-4. Verify `/healthz`, `/readyz`, schema v2 at `/api/state`, a live SSE packet, the desktop and mobile browser map, the HTTP-to-HTTPS redirect, and HSTS.
+3. Run `docker compose pull cartolite && docker compose up -d --no-deps cartolite` so no unrelated container is recreated.
+4. Verify `/healthz`, `/readyz`, schema v2 at `/api/state`, a live SSE packet, the desktop and phone portrait/landscape browser map, successful CARTO TileJSON/PBF/glyph requests, no raster basemap request, the HTTP-to-HTTPS redirect, and HSTS.
 
 ## Roll back
 
@@ -47,6 +47,6 @@ If any check fails before cleanup, stop CartoLite, restart the old service, and 
 
 ## Operations
 
-`healthz` answers whether the process lives. `readyz` answers whether it is safe to serve current data. A disconnected broker, corrupt checkpoint, subscription failure, queue drops, or missing frontend assets must fail readiness. A connected but quiet RF feed remains ready and reports `activity: quiet`.
+`healthz` answers whether the process lives. `readyz` answers whether it is safe to serve current data. A disconnected broker, corrupt checkpoint, subscription failure, queue drops, or missing frontend assets must fail readiness. A connected but quiet RF feed remains ready and reports `activity: quiet`. See [operations](operations.md) for the Pi watchdog, DigitalOcean Spaces/restic schedule, Cloudflare region cache rule, and the v0.5.0 cutover/rollback proof.
 
 Dirty public snapshots are capped at one per second. Dirty durable state is written no more than once every five minutes and on clean shutdown; packet volume must not trigger extra checkpoints. Each checkpoint removes routes older than 24 hours and nodes unreferenced for more than 30 days. The process logs a bounded operational summary every five minutes with ingest count, sequence, queue depth, drops, SSE clients, public counts, snapshot bytes, checkpoint bytes and duration, and cumulative pruning counts. Alert on failed readiness, any drops, restart growth, checkpoint failures, or an unexpected rise in checkpoint size or duration.

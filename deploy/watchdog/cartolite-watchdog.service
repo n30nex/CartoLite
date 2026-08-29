@@ -1,0 +1,26 @@
+[Unit]
+Description=CartoLite public health and readiness watchdog
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+EnvironmentFile=/etc/cartolite-watch.env
+StateDirectory=cartolite-watch
+StateDirectoryMode=0700
+ExecStart=/usr/bin/python3 /usr/local/lib/cartolite/cartolite_watchdog.py --state /var/lib/cartolite-watch/state.json
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

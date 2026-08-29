@@ -17,7 +17,6 @@ import {
   applySelectedNodeFilter,
   canMoveLiveFollow,
   CLUSTER_HIGHLIGHT_LAYER_ID,
-  darkStyle,
   effectiveRouteWindowMS,
   HEATMAP_LAYER_ID,
   isRouteInspectable,
@@ -45,21 +44,6 @@ import {
   tooltipPosition
 } from './map';
 import { PACKET_KIND_COLORS, ROUTE_MAX_AGE_MS } from './trafficVisuals';
-
-describe('darkStyle', () => {
-  it('uses local fonts without an external glyph dependency', () => {
-    expect(darkStyle().glyphs).toBeUndefined();
-  });
-
-  it('adds the encoded CARTO key to every raster tile URL', () => {
-    const source = darkStyle('test key').sources['carto'];
-    expect(source).toMatchObject({
-      tiles: ['a', 'b', 'c', 'd'].map(
-        (subdomain) => `https://${subdomain}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=test%20key`
-      )
-    });
-  });
-});
 
 describe('route layer visibility', () => {
   it.each([

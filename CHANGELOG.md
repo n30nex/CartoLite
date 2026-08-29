@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.0 - 2026-08-29
+
+### Added
+
+- Add a calm, minimal CARTO vector basemap with land, water, waterways, national and regional boundaries, roads, and place labels; the runtime contains no raster source or PNG fallback.
+- Add an anchored Sound panel with explicit On, Off, and Tap to Resume states, a visitor-local 0–100% volume control defaulting to 80%, and an activity lamp that pulses only when notes are scheduled.
+- Add compact phone Layers disclosure for Routes, Heatmap, Regions, and the route-age window, including portrait and landscape browser coverage with 44-pixel targets.
+- Add a Python standard-library Pi watchdog with three-failure alerting, two-success recovery, unexpected boot-ID detection, sanitized Discord messages, and systemd hardening.
+- Add root-only restic operations for private DigitalOcean Spaces: daily checkpoint and deployment-manifest backups, 30/8/12 retention, weekly metadata checks, and monthly full-data restore/checksum verification.
+- Add an idempotent Cloudflare Rulesets helper that makes only the content-hashed MeshMapper GeoJSON eligible for one-year edge caching.
+
+### Changed
+
+- Give every visible route hop one warm pentatonic articulation with viewport panning, adaptive burst envelopes, and short native Web Audio ambience; no visible hop is discarded.
+- Store desktop and mobile map views separately and return home when a restored view contains no node active in the last 24 hours.
+- Strengthen selected-node focus and preserve cyan/amber traffic colour during bursts by removing additive white saturation from packet bloom and residue.
+- Refresh the exact unsimplified 34-region MeshMapper snapshot on 2026-08-29 and validate its metadata, code set, geometry, checksum, lazy loading, MIME type, and attribution.
+- Extend CI with vector authorization, phone landscape, oscillator-count, no-raster, stale-view, operations transition, region checksum, and sub-100 ms layer-interaction gates.
+
+### Security
+
+- Keep the CARTO project key in the existing BuildKit secret path and verify TileJSON, vector PBF, and glyph authorization without logging the key.
+- Keep Discord, Spaces, restic, Cloudflare, MQTT, and API credentials outside Git and command arguments in root-only environment/password files.
+
 ## 0.4.3 - 2026-08-29
 
 ### Changed

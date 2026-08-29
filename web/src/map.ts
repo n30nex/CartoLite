@@ -2,11 +2,11 @@ import maplibregl, {
   type ExpressionSpecification,
   type GeoJSONSource,
   type GeoJSONSourceDiff,
-  type MapMouseEvent,
-  type StyleSpecification
+  type MapMouseEvent
 } from 'maplibre-gl';
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import canadaRegionsURL from './assets/meshmapper-canada-regions.geojson?url';
+import { cartoVectorRequestURL, cartoVectorStyle } from './basemap';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
 import type { MapChanges } from './state';
 import {
@@ -40,6 +40,7 @@ export const ROUTE_FILTER_LAYER_IDS = [...ROUTE_LAYER_IDS, ROUTE_HIT_LAYER_ID] a
 export const SELECTED_NODE_LAYER_ID = 'selected-node';
 export const SELECTED_NODE_OUTER_LAYER_ID = 'selected-node-outer';
 export const NEIGHBOR_NODE_LAYER_ID = 'neighbor-nodes';
+export const MESHMAP_ATTRIBUTION = 'Canadian regions &copy; <a href="https://meshmapper.net/">MeshMapper</a>, used with permission';
 export const ROUTE_HOVER_LAYER_IDS = ['route-hover-glow', 'route-hover-core'] as const;
 export const CLUSTER_HIGHLIGHT_LAYER_ID = 'cluster-highlight';
 const NODE_GLOW_LAYER_ID = 'nodes-glow';
@@ -47,8 +48,7 @@ const NODE_LAYER_ID = 'nodes';
 const NODE_CORE_LAYER_ID = 'node-core';
 const NODE_LABEL_LAYER_ID = 'node-labels';
 const NODE_BASE_FILTER = ['!', ['has', 'point_count']] as ActiveLayerFilter;
-const LOCAL_FONTS = ['Noto Sans', 'Segoe UI', 'Arial', 'Noto Color Emoji', 'Segoe UI Emoji', 'Apple Color Emoji'];
-const CARTO_BASEMAP_API_KEY = import.meta.env.VITE_CARTO_BASEMAP_API_KEY?.trim() ?? '';
+const LOCAL_FONTS = ['Open Sans Regular'];
 
 export interface LiveMapFocus {
   label: string;
@@ -125,7 +125,7 @@ export class LiveMap {
     this.container.dataset.hoveredRouteId = '';
     this.map = new maplibregl.Map({
       container: this.container,
-      style: darkStyle(),
+      style: cartoVectorStyle(),
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
       minZoom: 3,
@@ -137,7 +137,8 @@ export class LiveMap {
       cooperativeGestures: false,
       reduceMotion: this.reducedMotion,
       renderWorldCopies: false,
-      maxBounds: [[-142, 38], [-48, 84]]
+      maxBounds: [[-142, 38], [-48, 84]],
+      transformRequest: (url) => ({ url: cartoVectorRequestURL(url) })
     });
     this.map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
     this.map.on('load', () => this.installLayers());
@@ -362,6 +363,21 @@ export class LiveMap {
     this.map.fitBounds(bounds, options);
   }
 
+  restore(center: [number, number], zoom: number, nodes: readonly NodeV2[]): boolean {
+    this.lastFollowMoveAt = 0;
+    this.map.jumpTo({ center, zoom, bearing: 0, pitch: 0 });
+    if (this.hasCurrentActivity(nodes)) return true;
+    this.home(nodes);
+    return false;
+  }
+
+  hasCurrentActivity(nodes: readonly NodeV2[], now = Date.now()): boolean {
+    const bounds = this.map.getBounds();
+    return nodes.some((node) => validEndpoint(node)
+      && Math.max(0, now - node.lastSeen) <= ACTIVE_NODE_WINDOW_MS
+      && bounds.contains([node.lng, node.lat]));
+  }
+
   view(): { center: [number, number]; zoom: number } {
     const center = this.map.getCenter();
     return { center: [center.lng, center.lat], zoom: this.map.getZoom() };
@@ -466,7 +482,7 @@ export class LiveMap {
       maxzoom: 12,
       buffer: 32,
       tolerance: 0.75,
-      attribution: 'Canadian regions &copy; <a href="https://meshmapper.net/">MeshMapper</a>, used with permission'
+      attribution: MESHMAP_ATTRIBUTION
     });
 
     this.map.addSource(ACTIVITY_HEAT_SOURCE_ID, { type: 'geojson', data: EMPTY_POINTS, maxzoom: 14 });
@@ -708,10 +724,10 @@ export class LiveMap {
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 10, 10, 14, 14, 18],
         'circle-color': 'rgba(0,0,0,0)',
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 1.1,
-        'circle-stroke-opacity': 0.48,
-        'circle-blur': 0.45
+        'circle-stroke-color': '#f2bd55',
+        'circle-stroke-width': 2.4,
+        'circle-stroke-opacity': 0.62,
+        'circle-blur': 0.7
       }
     });
     this.map.addLayer({
@@ -722,9 +738,9 @@ export class LiveMap {
       filter: selectedNodeFilter(this.selectedNodeID),
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 7.2, 10, 10.2, 14, 13.5],
-        'circle-color': 'rgba(0,0,0,0)',
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 2.2,
+        'circle-color': 'rgba(242,189,85,0.12)',
+        'circle-stroke-color': '#fff0b8',
+        'circle-stroke-width': 2.7,
         'circle-stroke-opacity': 0.96
       }
     });
@@ -1410,32 +1426,6 @@ function nodeGlowOpacity(focused: boolean, focusIDs: readonly string[]): Express
     9, atZoom(0.2),
     13, atZoom(0.28)
   ];
-}
-
-export function darkStyle(apiKey = CARTO_BASEMAP_API_KEY): StyleSpecification {
-  const keyQuery = apiKey.trim() ? `?key=${encodeURIComponent(apiKey.trim())}` : '';
-  return {
-    version: 8,
-    name: 'CartoLite Dark',
-    sources: {
-      carto: {
-        type: 'raster',
-        tiles: [
-          `https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png${keyQuery}`,
-          `https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png${keyQuery}`,
-          `https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png${keyQuery}`,
-          `https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png${keyQuery}`
-        ],
-        tileSize: 256,
-        maxzoom: 20,
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-      }
-    },
-    layers: [
-      { id: 'background', type: 'background', paint: { 'background-color': '#03070b' } },
-      { id: 'carto', type: 'raster', source: 'carto', paint: { 'raster-opacity': 0.74, 'raster-saturation': -0.52, 'raster-contrast': 0.08 } }
-    ]
-  };
 }
 
 function nodeCollection(nodes: readonly NodeV2[], now = Date.now()): FeatureCollection<Point> {

@@ -1,9 +1,10 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles.css';
 import { fetchState, LiveFeed } from './api';
-import { RouteSonifier } from './audio';
+import { RouteSonifier, type SoundStatus } from './audio';
 import { LiveMap, type LiveMapFocus, type RouteWindow } from './map';
 import { PacketAnimator } from './packetAnimator';
+import { loadSavedView, saveView, viewClass, type ViewClass } from './preferences';
 import { activityLabel, LiveStore } from './state';
 import { PACKET_KIND_COLORS, ROUTE_LEGEND_ITEMS } from './trafficVisuals';
 import type { EndpointV2, PacketView } from './types';
@@ -11,12 +12,22 @@ import type { EndpointV2, PacketView } from './types';
 const statusElement = required<HTMLElement>('status');
 const statusText = required<HTMLElement>('status-text');
 const topbar = required<HTMLElement>('topbar');
+const mapElement = required<HTMLElement>('map');
 const fatal = required<HTMLElement>('fatal');
 const followButton = required<HTMLButtonElement>('follow-button');
 const routesButton = required<HTMLButtonElement>('routes-button');
 const heatmapButton = required<HTMLButtonElement>('heatmap-button');
 const regionsButton = required<HTMLButtonElement>('regions-button');
 const soundButton = required<HTMLButtonElement>('sound-button');
+const soundControl = required<HTMLElement>('sound-button').parentElement as HTMLElement;
+const soundPanel = required<HTMLElement>('sound-panel');
+const soundState = required<HTMLElement>('sound-state');
+const soundPanelState = required<HTMLElement>('sound-panel-state');
+const soundToggle = required<HTMLButtonElement>('sound-toggle');
+const soundVolume = required<HTMLInputElement>('sound-volume');
+const soundVolumeOutput = required<HTMLOutputElement>('sound-volume-output');
+const soundActivity = required<HTMLElement>('sound-activity');
+const layersDisclosure = required<HTMLDetailsElement>('layers-disclosure');
 const resetButton = required<HTMLButtonElement>('reset-button');
 const legend = required<HTMLElement>('legend');
 const legendToggle = required<HTMLButtonElement>('legend-toggle');
@@ -29,11 +40,13 @@ const aboutDialog = required<HTMLDialogElement>('about-dialog');
 const aboutClose = required<HTMLButtonElement>('about-close');
 const lastUpdate = required<HTMLElement>('last-update');
 
-const SAVED_VIEW_KEY = 'cartolite:view:v2';
-
 let legendExpanded = false;
 let lastTrafficPulseAt = -Infinity;
 let soundPulseTimer: number | undefined;
+let scheduledNoteCount = 0;
+let activeViewClass: ViewClass = viewClass();
+
+layersDisclosure.open = activeViewClass === 'desktop';
 
 legendToggle.addEventListener('click', () => {
   legendExpanded = !legendExpanded;
@@ -48,6 +61,20 @@ aboutClose.addEventListener('click', () => aboutDialog.close());
 aboutDialog.addEventListener('click', (event) => {
   if (event.target === aboutDialog) aboutDialog.close();
 });
+layersDisclosure.addEventListener('toggle', () => {
+  if (layersDisclosure.open && activeViewClass === 'mobile') closeSoundPanel();
+});
+document.addEventListener('pointerdown', (event) => {
+  const target = event.target;
+  if (!(target instanceof Node)) return;
+  if (!soundControl.contains(target)) closeSoundPanel();
+  if (activeViewClass === 'mobile' && !layersDisclosure.contains(target)) layersDisclosure.open = false;
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  closeSoundPanel();
+  if (activeViewClass === 'mobile') layersDisclosure.open = false;
+});
 
 void start();
 
@@ -60,7 +87,7 @@ async function start(): Promise<void> {
   try {
     // Construct MapLibre before the state request so the basemap can paint while
     // the initial snapshot is in flight.
-    const liveMap = new LiveMap(required<HTMLElement>('map'), required<HTMLElement>('tooltip'), {
+    const liveMap = new LiveMap(mapElement, required<HTMLElement>('tooltip'), {
       onFocusChange: updateFocusChrome,
       onRouteWindowChange(label) {
         const option = routeWindow.querySelector<HTMLOptionElement>('option[value="auto"]');
@@ -73,9 +100,15 @@ async function start(): Promise<void> {
     animator = liveAnimator;
     const routeSonifier = new RouteSonifier(liveMap.map, packetCanvas);
     sonifier = routeSonifier;
+    soundVolume.value = String(Math.round(routeSonifier.getVolume() * 100));
+    soundVolumeOutput.value = `${soundVolume.value}%`;
+    routeSonifier.setStatusListener((status) => updateSoundChrome(status, routeSonifier.getVolume()));
     if (!routeSonifier.supported()) {
       soundButton.disabled = true;
+      soundToggle.disabled = true;
       soundButton.title = 'Route sounds are unavailable in this browser';
+      soundState.textContent = 'Unavailable';
+      soundPanelState.textContent = 'Unavailable';
     }
     wireLayerToggle(routesButton, false, 'routes', (visible) => {
       liveMap.setRoutesVisible(visible);
@@ -122,12 +155,37 @@ async function start(): Promise<void> {
       if (changes) liveMap.render(state, changes);
       updateStatus();
     });
-    const savedView = loadSavedView();
-    if (savedView) liveMap.reset(savedView.center, savedView.zoom);
-    else liveMap.home(initial.nodes);
+    const savedView = loadSavedView(localStorage, activeViewClass);
+    if (savedView) {
+      mapElement.dataset.viewSource = liveMap.restore(savedView.center, savedView.zoom, initial.nodes)
+        ? 'saved'
+        : 'home-no-activity';
+    } else {
+      mapElement.dataset.viewSource = 'home';
+      liveMap.home(initial.nodes);
+    }
 
     liveMap.map.on('moveend', () => {
-      if (!liveFollow) saveView(liveMap.view());
+      if (!liveFollow) saveView(localStorage, activeViewClass, liveMap.view());
+    });
+    let resizeTimer: number | undefined;
+    window.addEventListener('resize', () => {
+      if (resizeTimer !== undefined) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        const next = viewClass();
+        if (next === activeViewClass) return;
+        activeViewClass = next;
+        layersDisclosure.open = next === 'desktop';
+        const restored = loadSavedView(localStorage, next);
+        if (restored) {
+          mapElement.dataset.viewSource = liveMap.restore(restored.center, restored.zoom, liveStore.snapshot.nodes)
+            ? 'saved'
+            : 'home-no-activity';
+        } else {
+          mapElement.dataset.viewSource = 'home';
+          liveMap.home(liveStore.snapshot.nodes);
+        }
+      }, 160);
     });
 
     const liveFeed = new LiveFeed(initial, {
@@ -143,7 +201,8 @@ async function start(): Promise<void> {
         lastUpdate.textContent = formatUpdate(event.at);
         if (!packet) return;
         liveAnimator.add(packet);
-        if (routeSonifier.play(packet) > 0) pulseSoundChrome();
+        const scheduled = routeSonifier.play(packet);
+        if (scheduled > 0) pulseSoundChrome(scheduled);
         pulseTrafficChrome();
         if (liveFollow && liveMap.shouldFollow(packet)) liveMap.follow(packetDestination(packet));
       },
@@ -165,16 +224,25 @@ async function start(): Promise<void> {
     followButton.addEventListener('click', () => {
       setLiveFollow(!liveFollow);
     });
-    soundButton.addEventListener('click', async () => {
-      const enabled = await routeSonifier.setEnabled(!routeSonifier.isEnabled());
-      soundButton.setAttribute('aria-pressed', String(enabled));
-      soundButton.classList.toggle('selected', enabled);
-      soundButton.title = enabled ? 'Sound on — visible live hops only' : 'Turn on route sounds';
-      if (!enabled) {
+    soundButton.addEventListener('click', () => {
+      const opening = soundPanel.hidden;
+      soundPanel.hidden = !opening;
+      soundButton.setAttribute('aria-expanded', String(opening));
+      if (opening && activeViewClass === 'mobile') layersDisclosure.open = false;
+    });
+    soundToggle.addEventListener('click', async () => {
+      const enabled = await routeSonifier.setEnabled(routeSonifier.status() !== 'on');
+      if (!enabled && routeSonifier.status() === 'off') {
         if (soundPulseTimer !== undefined) window.clearTimeout(soundPulseTimer);
         soundPulseTimer = undefined;
         soundButton.classList.remove('sounding');
+        soundActivity.classList.remove('active');
       }
+    });
+    soundVolume.addEventListener('input', () => {
+      const percent = Math.max(0, Math.min(100, Number(soundVolume.value)));
+      routeSonifier.setVolume(percent / 100);
+      soundVolumeOutput.value = `${Math.round(percent)}%`;
     });
     resetButton.addEventListener('click', () => {
       setLiveFollow(false);
@@ -215,13 +283,41 @@ function pulseTrafficChrome(): void {
   window.setTimeout(() => topbar.classList.remove('traffic-pulse'), 720);
 }
 
-function pulseSoundChrome(): void {
+function pulseSoundChrome(notes: number): void {
+  scheduledNoteCount += notes;
+  soundActivity.dataset.scheduled = String(scheduledNoteCount);
   if (soundPulseTimer !== undefined) return;
   soundButton.classList.add('sounding');
+  soundActivity.classList.add('active');
   soundPulseTimer = window.setTimeout(() => {
     soundButton.classList.remove('sounding');
+    soundActivity.classList.remove('active');
     soundPulseTimer = undefined;
   }, 720);
+}
+
+function updateSoundChrome(status: SoundStatus, volume: number): void {
+  const label = status === 'on' ? 'On' : status === 'resume' ? 'Tap to Resume' : 'Off';
+  const percent = Math.round(volume * 100);
+  soundState.textContent = label;
+  soundPanelState.textContent = label;
+  soundButton.dataset.soundState = status;
+  soundPanel.dataset.soundState = status;
+  soundButton.setAttribute('aria-pressed', String(status === 'on'));
+  soundButton.classList.toggle('selected', status === 'on');
+  soundButton.title = status === 'on'
+    ? `Sound on — ${percent}% · visible live hops only`
+    : status === 'resume'
+      ? `Tap to resume sound — ${percent}%`
+      : `Sound off — ${percent}%`;
+  soundToggle.textContent = status === 'on' ? 'Turn sound off' : status === 'resume' ? 'Tap to Resume' : 'Turn sound on';
+  soundVolume.value = String(percent);
+  soundVolumeOutput.value = `${percent}%`;
+}
+
+function closeSoundPanel(): void {
+  soundPanel.hidden = true;
+  soundButton.setAttribute('aria-expanded', 'false');
 }
 
 function packetDestination(packet: PacketView): EndpointV2 {
@@ -229,28 +325,6 @@ function packetDestination(packet: PacketView): EndpointV2 {
   return packet.segments[packet.segments.length - 1]?.to ?? packet.segments[0]?.from ?? {
     id: 'default', label: '', lat: 56, lng: -96
   };
-}
-
-function loadSavedView(): { center: [number, number]; zoom: number } | null {
-  try {
-    const value = JSON.parse(localStorage.getItem(SAVED_VIEW_KEY) ?? 'null') as { center?: unknown; zoom?: unknown } | null;
-    if (!value || !Array.isArray(value.center) || value.center.length !== 2 || typeof value.zoom !== 'number') return null;
-    const lng = Number(value.center[0]);
-    const lat = Number(value.center[1]);
-    const zoom = Number(value.zoom);
-    if (!Number.isFinite(lng) || !Number.isFinite(lat) || lng < -142 || lng > -48 || lat < 38 || lat > 84 || zoom < 3 || zoom > 16) return null;
-    return { center: [lng, lat], zoom };
-  } catch {
-    return null;
-  }
-}
-
-function saveView(view: { center: [number, number]; zoom: number }): void {
-  try {
-    localStorage.setItem(SAVED_VIEW_KEY, JSON.stringify(view));
-  } catch {
-    // Local persistence is optional; private browsing may reject it.
-  }
 }
 
 function formatUpdate(timestamp: number): string {

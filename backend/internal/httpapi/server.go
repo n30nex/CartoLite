@@ -187,8 +187,11 @@ func (s *Server) frontend(w http.ResponseWriter, r *http.Request) {
 }
 
 func staticContentType(name string) string {
-	if path.Ext(name) == ".webmanifest" {
+	switch path.Ext(name) {
+	case ".webmanifest":
 		return "application/manifest+json"
+	case ".geojson":
+		return "application/geo+json"
 	}
 	return mime.TypeByExtension(path.Ext(name))
 }

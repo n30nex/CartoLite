@@ -25,25 +25,34 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await page.goto('/');
   await expect(page.locator('#status')).toHaveAttribute('title', '4000 nodes · 7000 routes', { timeout: 10_000 });
   await expect(page.locator('#map .maplibregl-canvas')).toBeVisible();
-  await expect(page.locator('#packet-canvas')).toHaveAttribute('data-power-mode', testInfo.project.name === 'mobile' ? 'low' : 'full');
+  await expect(page.locator('#packet-canvas')).toHaveAttribute('data-power-mode', testInfo.project.name.startsWith('mobile') ? 'low' : 'full');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(Date.now() - started, 'large topology should hydrate inside the first-view budget').toBeLessThan(10_000);
+  await installLongTaskObserver(page);
 
   const heatmapButton = page.locator('#heatmap-button');
+  if (testInfo.project.name.startsWith('mobile')) {
+    await page.locator('#layers-summary').click();
+    await expect(page.locator('#layers-disclosure')).toHaveAttribute('open', '');
+  }
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
   const routesButton = page.locator('#routes-button');
+  await resetLongTasks(page);
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+  expect(await maximumLongTask(page), 'enabling Routes must not block the main thread for 100 ms').toBeLessThan(100);
 
   const regionStarted = Date.now();
   const regionsButton = page.locator('#regions-button');
+  await resetLongTasks(page);
   await regionsButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true', { timeout: 10_000 });
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(Date.now() - regionStarted, 'regional overlay should become interactive inside its load budget').toBeLessThan(10_000);
+  expect(await maximumLongTask(page), 'enabling Regions must not block the main thread for 100 ms').toBeLessThan(100);
 
   const eventLoopWindow = await page.evaluate(() => new Promise<number>((resolve) => {
     const start = performance.now();
@@ -97,4 +106,27 @@ function scaleState(): StateV2 {
     nodes,
     routes
   };
+}
+
+async function installLongTaskObserver(page: import('@playwright/test').Page): Promise<void> {
+  await page.evaluate(() => {
+    const state = { durations: [] as number[] };
+    Object.defineProperty(window, '__cartoliteLongTasks', { configurable: true, value: state });
+    if (!PerformanceObserver.supportedEntryTypes.includes('longtask')) return;
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) state.durations.push(entry.duration);
+    }).observe({ type: 'longtask', buffered: false });
+  });
+}
+
+async function resetLongTasks(page: import('@playwright/test').Page): Promise<void> {
+  await page.evaluate(() => {
+    (window as unknown as { __cartoliteLongTasks: { durations: number[] } }).__cartoliteLongTasks.durations = [];
+  });
+}
+
+async function maximumLongTask(page: import('@playwright/test').Page): Promise<number> {
+  return page.evaluate(() => Math.max(0, ...(window as unknown as {
+    __cartoliteLongTasks: { durations: number[] };
+  }).__cartoliteLongTasks.durations));
 }

@@ -1,0 +1,24 @@
+[Unit]
+Description=CartoLite restic %i operation
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/cartolite-backup.env
+StateDirectory=cartolite-backup
+StateDirectoryMode=0700
+CacheDirectory=cartolite-backup
+CacheDirectoryMode=0700
+ExecStart=/usr/bin/python3 /usr/local/lib/cartolite/cartolite_backup.py %i
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ReadWritePaths=/var/lib/cartolite-backup /var/cache/cartolite-backup
