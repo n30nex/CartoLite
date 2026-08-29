@@ -23,6 +23,8 @@ const EXPECTED_CODES = [
   'YQF',
   'YQL',
   'YQQ',
+  'YQT',
+  'YQY',
   'YSE',
   'YTA',
   'YTF',
@@ -31,9 +33,12 @@ const EXPECTED_CODES = [
   'YVR',
   'YWG',
   'YWS',
+  'YXU',
   'YXX',
+  'YYB',
   'YYC',
   'YYJ',
+  'YYY',
   'YYZ',
 ]
 

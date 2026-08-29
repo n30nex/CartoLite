@@ -1,6 +1,7 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles.css';
 import { fetchState, LiveFeed } from './api';
+import { RouteSonifier } from './audio';
 import { LiveMap, type LiveMapFocus, type RouteWindow } from './map';
 import { PacketAnimator } from './packetAnimator';
 import { activityLabel, LiveStore } from './state';
@@ -15,6 +16,7 @@ const followButton = required<HTMLButtonElement>('follow-button');
 const routesButton = required<HTMLButtonElement>('routes-button');
 const heatmapButton = required<HTMLButtonElement>('heatmap-button');
 const regionsButton = required<HTMLButtonElement>('regions-button');
+const soundButton = required<HTMLButtonElement>('sound-button');
 const resetButton = required<HTMLButtonElement>('reset-button');
 const legend = required<HTMLElement>('legend');
 const legendToggle = required<HTMLButtonElement>('legend-toggle');
@@ -51,6 +53,7 @@ void start();
 async function start(): Promise<void> {
   let mapView: LiveMap | undefined;
   let animator: PacketAnimator | undefined;
+  let sonifier: RouteSonifier | undefined;
   let store: LiveStore | undefined;
   let feed: LiveFeed | undefined;
   try {
@@ -64,8 +67,15 @@ async function start(): Promise<void> {
       }
     });
     mapView = liveMap;
-    const liveAnimator = new PacketAnimator(liveMap.map, required<HTMLCanvasElement>('packet-canvas'));
+    const packetCanvas = required<HTMLCanvasElement>('packet-canvas');
+    const liveAnimator = new PacketAnimator(liveMap.map, packetCanvas);
     animator = liveAnimator;
+    const routeSonifier = new RouteSonifier(liveMap.map, packetCanvas);
+    sonifier = routeSonifier;
+    if (!routeSonifier.supported()) {
+      soundButton.disabled = true;
+      soundButton.title = 'Route sounds are unavailable in this browser';
+    }
     wireLayerToggle(routesButton, false, 'routes', (visible) => {
       liveMap.setRoutesVisible(visible);
       routeLegend.hidden = !visible;
@@ -73,11 +83,15 @@ async function start(): Promise<void> {
     wireLayerToggle(heatmapButton, true, 'heatmap', (visible) => liveMap.setHeatmapVisible(visible));
     wireLayerToggle(regionsButton, false, 'regions', (visible) => liveMap.setRegionsVisible(visible));
     routeWindow.addEventListener('change', () => liveMap.setRouteWindow(routeWindow.value as RouteWindow));
-    document.addEventListener('visibilitychange', () => animator?.setPaused(document.hidden));
+    document.addEventListener('visibilitychange', () => {
+      animator?.setPaused(document.hidden);
+      sonifier?.setPaused(document.hidden);
+    });
     window.addEventListener('beforeunload', () => {
       feed?.stop();
       store?.destroy();
       animator?.destroy();
+      sonifier?.destroy();
       mapView?.destroy();
     }, { once: true });
 
@@ -128,6 +142,7 @@ async function start(): Promise<void> {
         lastUpdate.textContent = formatUpdate(event.at);
         if (!packet) return;
         liveAnimator.add(packet);
+        routeSonifier.play(packet);
         pulseTrafficChrome();
         if (liveFollow && liveMap.shouldFollow(packet)) liveMap.follow(packetDestination(packet));
       },
@@ -149,6 +164,12 @@ async function start(): Promise<void> {
     followButton.addEventListener('click', () => {
       setLiveFollow(!liveFollow);
     });
+    soundButton.addEventListener('click', async () => {
+      const enabled = await routeSonifier.setEnabled(!routeSonifier.isEnabled());
+      soundButton.setAttribute('aria-pressed', String(enabled));
+      soundButton.classList.toggle('selected', enabled);
+      soundButton.title = enabled ? 'Turn off route sounds' : 'Turn on route sounds';
+    });
     resetButton.addEventListener('click', () => {
       setLiveFollow(false);
       liveMap.home(liveStore.snapshot.nodes);
@@ -158,6 +179,7 @@ async function start(): Promise<void> {
     feed?.stop();
     store?.destroy();
     animator?.destroy();
+    sonifier?.destroy();
     mapView?.destroy();
     statusElement.dataset.state = 'offline';
     statusText.textContent = 'Unavailable';

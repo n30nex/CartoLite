@@ -72,6 +72,12 @@ func TestMissingFrontendAssetReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestWebManifestUsesInstallableContentType(t *testing.T) {
+	if contentType := staticContentType("site.webmanifest"); contentType != "application/manifest+json" {
+		t.Fatalf("unexpected web manifest content type: %q", contentType)
+	}
+}
+
 func TestSSERejectsCrossOrigin(t *testing.T) {
 	handler := testHandler(t, true)
 	request := httptest.NewRequest(http.MethodGet, "/api/events", nil)

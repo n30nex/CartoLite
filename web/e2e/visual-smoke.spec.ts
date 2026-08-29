@@ -78,6 +78,17 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'false');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'false');
   expect(regionAssetRequests, 'regional GeoJSON should stay lazy while the layer is off').toEqual([]);
+  const soundButton = page.locator('#sound-button');
+  await expect(soundButton).toBeVisible();
+  await expect(soundButton).toHaveAttribute('aria-label', 'Sound');
+  await expect(soundButton).toHaveAttribute('aria-pressed', 'false');
+  await expect(soundButton).toHaveAttribute('title', 'Turn on route sounds');
+  await soundButton.click();
+  await expect(soundButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(soundButton).toHaveAttribute('title', 'Turn off route sounds');
+  await soundButton.click();
+  await expect(soundButton).toHaveAttribute('aria-pressed', 'false');
+  await expect(soundButton).toHaveAttribute('title', 'Turn on route sounds');
 
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');

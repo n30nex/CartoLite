@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.1 - 2026-08-28
+
+### Added
+
+- Add opt-in, visitor-local route sonification using the native Web Audio API: every live hop crossing the exact viewport plays one soft pentatonic note, aligned with the on-screen animation and panned across the current view; off-screen hops and observer-only traffic stay silent.
+
+### Changed
+
+- Refresh the authorized MeshMapper Canada snapshot from 29 to all 34 current regions, including Bas-St-Laurent-Gaspésie, Cape Breton Island, London, North Bay, and Thunder Bay, while retaining exact-code validation and lazy loading.
+- Raise the separately measured lazy region-asset budget to cover the larger unsimplified source geometry without weakening the initial JavaScript and CSS budget.
+
+### Fixed
+
+- Serve the install manifest as `application/manifest+json` instead of relying on host MIME defaults.
+
 ## 0.4.0 - 2026-08-28
 
 ### Added
