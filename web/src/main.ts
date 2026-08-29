@@ -170,7 +170,11 @@ async function start(): Promise<void> {
       soundButton.setAttribute('aria-pressed', String(enabled));
       soundButton.classList.toggle('selected', enabled);
       soundButton.title = enabled ? 'Sound on — visible live hops only' : 'Turn on route sounds';
-      if (!enabled) soundButton.classList.remove('sounding');
+      if (!enabled) {
+        if (soundPulseTimer !== undefined) window.clearTimeout(soundPulseTimer);
+        soundPulseTimer = undefined;
+        soundButton.classList.remove('sounding');
+      }
     });
     resetButton.addEventListener('click', () => {
       setLiveFollow(false);
@@ -212,8 +216,8 @@ function pulseTrafficChrome(): void {
 }
 
 function pulseSoundChrome(): void {
+  if (soundPulseTimer !== undefined) return;
   soundButton.classList.add('sounding');
-  if (soundPulseTimer !== undefined) window.clearTimeout(soundPulseTimer);
   soundPulseTimer = window.setTimeout(() => {
     soundButton.classList.remove('sounding');
     soundPulseTimer = undefined;
