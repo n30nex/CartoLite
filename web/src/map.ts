@@ -794,8 +794,8 @@ export class LiveMap {
         'text-opacity': [
           'interpolate', ['linear'], ['zoom'],
           DETAIL_ZOOM, ['*', ['get', 'opacity'], 0.42],
-          8.3, ['*', ['get', 'opacity'], 0.82],
-          10, ['get', 'opacity']
+          9.5, ['*', ['get', 'opacity'], 0.82],
+          11, ['get', 'opacity']
         ]
       }
     });
