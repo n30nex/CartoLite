@@ -2,7 +2,7 @@ import maplibregl from 'maplibre-gl';
 import type { Position } from 'geojson';
 import type { RegionLinePiece } from './regions';
 
-export const REGION_CANVAS_DRAW_BATCH_VERTICES = 1_024;
+export const REGION_CANVAS_DRAW_BATCH_VERTICES = 192;
 
 interface RegionStyle {
   width: number;

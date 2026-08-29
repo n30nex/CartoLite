@@ -4,7 +4,7 @@ import { REGION_CANVAS_DRAW_BATCH_VERTICES, regionStyle } from './regionCanvas';
 describe('region canvas rendering', () => {
   it('keeps boundary projection work bounded per animation frame', () => {
     expect(REGION_CANVAS_DRAW_BATCH_VERTICES).toBeGreaterThan(0);
-    expect(REGION_CANVAS_DRAW_BATCH_VERTICES).toBeLessThanOrEqual(1_024);
+    expect(REGION_CANVAS_DRAW_BATCH_VERTICES).toBeLessThanOrEqual(192);
   });
 
   it('keeps the observatory boundary style restrained across zoom levels', () => {
