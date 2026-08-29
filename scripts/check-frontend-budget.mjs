@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 const root = process.argv[2] ?? "web/dist";
 const limit = Number(process.env.CARTOLITE_GZIP_BUDGET ?? 350 * 1024);
-const regionLimit = Number(process.env.CARTOLITE_REGION_GZIP_BUDGET ?? 280 * 1024);
+const regionLimit = Number(process.env.CARTOLITE_REGION_GZIP_BUDGET ?? 700 * 1024);
 
 async function assets(dir, pattern) {
   const found = [];

@@ -177,13 +177,20 @@ func (s *Server) frontend(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.Header().Set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400")
 	}
-	if contentType := mime.TypeByExtension(path.Ext(name)); contentType != "" {
+	if contentType := staticContentType(name); contentType != "" {
 		w.Header().Set("Content-Type", contentType)
 	}
 	w.WriteHeader(http.StatusOK)
 	if r.Method != http.MethodHead {
 		_, _ = w.Write(body)
 	}
+}
+
+func staticContentType(name string) string {
+	if path.Ext(name) == ".webmanifest" {
+		return "application/manifest+json"
+	}
+	return mime.TypeByExtension(path.Ext(name))
 }
 
 func sameOrigin(r *http.Request) bool {
