@@ -379,6 +379,7 @@ button { font: inherit; }
   font-weight: 700;
   line-height: 1;
 }
+:root[data-view-class="mobile"] .legend[data-focused="true"] .legend-toggle { display: none; }
 :root[data-view-class="mobile"] .legend-items { min-height: 44px; gap: 9px; padding: 0 10px; font-size: 12px; }
 :root[data-view-class="mobile"] .legend-items span { gap: 4px; }
 :root[data-view-class="mobile"] .legend[data-collapsed="true"] .legend-items { display: none; }

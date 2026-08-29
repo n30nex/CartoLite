@@ -15,11 +15,11 @@ describe('viewport preferences', () => {
     expect(loadSavedView(localStorage, 'mobile')).toEqual(mobile);
   });
 
-  it('classifies portrait and landscape phones as mobile by width', () => {
-    expect(viewClass(390, false)).toBe('mobile');
-    expect(viewClass(620, false)).toBe('mobile');
-    expect(viewClass(844, true)).toBe('mobile');
-    expect(viewClass(621, false)).toBe('desktop');
+  it('classifies portrait and landscape phones by their short edge', () => {
+    expect(viewClass(390, 844)).toBe('mobile');
+    expect(viewClass(620, 900)).toBe('mobile');
+    expect(viewClass(844, 390)).toBe('mobile');
+    expect(viewClass(1280, 720)).toBe('desktop');
   });
 
   it('fails closed on malformed or out-of-bounds saved views', () => {

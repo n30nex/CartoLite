@@ -103,13 +103,17 @@ jobs:
         run: |
           echo "version=$(tr -d '\r\n' < VERSION)" >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - name: Require CARTO basemap key for publishable builds
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Require CARTO basemap key for trusted release candidates
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         env:
           CARTO_BASEMAP_API_KEY: ${{ secrets.CARTO_BASEMAP_API_KEY }}
         run: test -n "$CARTO_BASEMAP_API_KEY"
       - name: Verify CARTO vector authorization
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         env:
           CARTO_BASEMAP_API_KEY: ${{ secrets.CARTO_BASEMAP_API_KEY }}
         run: node scripts/check-carto-vector.mjs

@@ -257,24 +257,23 @@ export class LiveMap {
     const active = (): boolean => hydrationEpoch === this.routeHydrationEpoch
       && this.routesVisible
       && Boolean(this.map.getSource('routes'));
-    const hydrate = async (): Promise<void> => {
-      await source.updateData({ removeAll: true }, true);
+    source.updateData({ removeAll: true });
+    let offset = 0;
+    const addBatch = (): void => {
       if (!active()) return;
-
-      for (let offset = 0; offset < routes.length; offset += ROUTE_HYDRATION_BATCH_SIZE) {
-        const additions: Feature<LineString>[] = [];
-        const end = Math.min(routes.length, offset + ROUTE_HYDRATION_BATCH_SIZE);
-        for (let index = offset; index < end; index += 1) {
-          const feature = routeFeature(routes[index], this.nodesByID, now, this.routeBaseline, maxAge);
-          if (!feature) continue;
-          additions.push(feature);
-          this.routeFeatureIDs.add(String(feature.id));
-        }
-        if (additions.length > 0) await source.updateData({ add: additions }, true);
-        if (!active()) return;
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      const additions: Feature<LineString>[] = [];
+      const end = Math.min(routes.length, offset + ROUTE_HYDRATION_BATCH_SIZE);
+      for (; offset < end; offset += 1) {
+        const feature = routeFeature(routes[offset], this.nodesByID, now, this.routeBaseline, maxAge);
+        if (!feature) continue;
+        additions.push(feature);
+        this.routeFeatureIDs.add(String(feature.id));
       }
-
+      if (additions.length > 0) source.updateData({ add: additions });
+      if (offset < routes.length) {
+        window.requestAnimationFrame(addBatch);
+        return;
+      }
       this.routeHydrating = false;
       if (this.routeDataDirty) {
         this.hydrateRouteSource();
@@ -283,14 +282,7 @@ export class LiveMap {
       this.emitRouteWindowChange();
       this.markRendering();
     };
-
-    void hydrate().catch((error: unknown) => {
-      if (hydrationEpoch !== this.routeHydrationEpoch) return;
-      this.routeHydrating = false;
-      this.routeDataDirty = true;
-      console.error('Route hydration failed:', error instanceof Error ? error.message : error);
-      this.markRendering();
-    });
+    window.requestAnimationFrame(addBatch);
   }
 
   private rebuildHeatIndex(now = Date.now()): void {
