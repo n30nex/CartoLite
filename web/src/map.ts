@@ -8,14 +8,13 @@ import type {
   Feature,
   FeatureCollection,
   LineString,
-  MultiLineString,
-  Point,
-  Position
+  Point
 } from 'geojson';
 import canadaRegionsURL from './assets/meshmapper-canada-regions.geojson?url';
 import { cartoVectorRequestURL, cartoVectorStyle } from './basemap';
 import { REGION_BOUNDARY_SOURCE_COUNT, regionSourceCollections } from './regions';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
+import { RouteLatticeCanvas, type LatticeRoute } from './routeLattice';
 import type { MapChanges } from './state';
 import {
   decayedRouteTraffic,
@@ -36,7 +35,6 @@ export type RouteWindow = 'auto' | '15m' | '1h' | '6h' | '24h';
 
 const EMPTY_POINTS: FeatureCollection<Point> = { type: 'FeatureCollection', features: [] };
 const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', features: [] };
-const EMPTY_ROUTE_BUCKETS: FeatureCollection<MultiLineString> = { type: 'FeatureCollection', features: [] };
 const EMPTY_FEATURES: FeatureCollection = { type: 'FeatureCollection', features: [] };
 const ACTIVITY_HEAT_SOURCE_ID = 'activity-heat-source';
 const REGION_SOURCE_ID = 'meshmapper-canada-regions';
@@ -45,16 +43,13 @@ const REGION_BOUNDARY_SOURCE_IDS = Array.from(
   { length: REGION_BOUNDARY_SOURCE_COUNT },
   (_, index) => index === 0 ? REGION_SOURCE_ID : `${REGION_SOURCE_ID}-${index + 1}`
 );
-const ROUTE_SOURCE_ID = 'routes';
 const ROUTE_DETAIL_SOURCE_ID = 'route-details';
-const ROUTES_VISIBLE_GLOBAL_STATE = 'routes-visible';
 export const HEATMAP_LAYER_ID = 'activity-heat';
 export const REGION_OUTLINE_LAYER_IDS = REGION_BOUNDARY_SOURCE_IDS.map(
   (_, index) => index === 0 ? 'region-outline' : `region-outline-${index + 1}`
 );
 export const REGION_LABEL_LAYER_ID = 'region-labels';
 export const REGION_LAYER_IDS = [...REGION_OUTLINE_LAYER_IDS, REGION_LABEL_LAYER_ID] as const;
-const ROUTE_LAYER_IDS = ['route-glow', 'routes'] as const;
 export const ROUTE_HIT_LAYER_ID = 'route-hit';
 export const NODE_HIT_LAYER_ID = 'node-hit';
 export const ROUTE_FILTER_LAYER_IDS = [ROUTE_HIT_LAYER_ID] as const;
@@ -72,7 +67,6 @@ const NODE_BASE_FILTER = ['!', ['has', 'point_count']] as ActiveLayerFilter;
 const LOCAL_FONTS = ['Open Sans Regular'];
 export const ROUTE_RENDER_BUDGET = 700;
 export const HEAT_RENDER_BUDGET = 600;
-export const ROUTE_STYLE_BUCKET_LIMIT = 100;
 
 export interface LiveMapFocus {
   label: string;
@@ -80,6 +74,7 @@ export interface LiveMapFocus {
 }
 
 export interface LiveMapOptions {
+  routeCanvas: HTMLCanvasElement;
   onFocusChange?: (focus: LiveMapFocus | null) => void;
   onRouteWindowChange?: (label: string) => void;
 }
@@ -131,13 +126,14 @@ export class LiveMap {
   private lastFocusSignature: string | undefined;
   private lastFollowMoveAt = 0;
   private readonly reducedMotion = prefersReducedMotion();
+  private readonly routeLattice: RouteLatticeCanvas;
   private freshnessTimer: number;
   private renderEpoch = 0;
 
   constructor(
     private readonly container: HTMLElement,
     private readonly tooltip: HTMLElement,
-    private readonly options: LiveMapOptions = {}
+    private readonly options: LiveMapOptions
   ) {
     this.container.dataset.renderState = 'loading';
     this.container.dataset.routesVisible = 'true';
@@ -164,6 +160,7 @@ export class LiveMap {
       maxBounds: [[-142, 38], [-48, 84]],
       transformRequest: (url) => ({ url: cartoVectorRequestURL(url) })
     });
+    this.routeLattice = new RouteLatticeCanvas(this.map, options.routeCanvas);
     this.map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
     this.map.on('load', () => this.installLayers());
     this.map.on('zoomend', this.handleZoomEnd);
@@ -204,7 +201,7 @@ export class LiveMap {
     }
     if (routeFeatureIDs.size > 0) {
       this.routeDataDirty = true;
-      if (!this.routeHydrating && this.map.getSource(ROUTE_SOURCE_ID)) this.hydrateRouteSource();
+      if (!this.routeHydrating && this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) this.hydrateRouteSource();
     }
     if (heatNodeIDs.size > 0) {
       if (this.heatmapVisible) changed = this.updateHeatFeatures([...heatNodeIDs]) || changed;
@@ -250,9 +247,8 @@ export class LiveMap {
   }
 
   private hydrateRouteSource(now = Date.now()): void {
-    const source = this.map.getSource(ROUTE_SOURCE_ID) as GeoJSONSource | undefined;
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
-    if (!source || !detailSource) return;
+    if (!detailSource) return;
     const hydrationEpoch = ++this.routeHydrationEpoch;
     const maxAge = this.effectiveRouteAgeMS();
     const allRoutes = [...this.routesByID.values()];
@@ -261,7 +257,7 @@ export class LiveMap {
       ? recentNeighborRoutes(allRoutes, this.selectedNodeID, now)
       : allRoutes;
     const routes = routeRenderCandidates(eligibleRoutes, now, maxAge, this.selectedNodeID);
-    const visual = routeBucketCollection(routes, this.nodesByID, now, routeBaseline, maxAge);
+    const visual = routeLatticeRoutes(routes, this.nodesByID, now, routeBaseline, maxAge);
     const details = this.selectedNodeID
       ? routeCollection(routes, this.nodesByID, now, maxAge, routeBaseline)
       : EMPTY_LINES;
@@ -270,7 +266,6 @@ export class LiveMap {
     this.markRendering();
 
     const active = (): boolean => hydrationEpoch === this.routeHydrationEpoch
-      && Boolean(this.map.getSource(ROUTE_SOURCE_ID))
       && Boolean(this.map.getSource(ROUTE_DETAIL_SOURCE_ID));
     const fail = (error: unknown): void => {
       if (!active()) return;
@@ -287,9 +282,12 @@ export class LiveMap {
         return;
       }
       this.emitRouteWindowChange();
-      this.markRendering(ROUTE_SOURCE_ID);
+      this.markRendering();
     };
-    void Promise.all([source.setData(visual), detailSource.setData(details)])
+    void Promise.all([
+      this.routeLattice.setRoutes(visual, this.selectedNodeID !== null),
+      detailSource.setData(details)
+    ])
       .then(finish)
       .catch(fail);
   }
@@ -457,17 +455,15 @@ export class LiveMap {
   setRoutesVisible(visible: boolean): void {
     this.routesVisible = visible;
     this.container.dataset.routesVisible = String(visible);
-    if (this.map.getLayer(ROUTE_LAYER_IDS[0])) {
-      this.map.setGlobalStateProperty(ROUTES_VISIBLE_GLOBAL_STATE, visible);
-    }
-    const source = this.map.getSource(ROUTE_SOURCE_ID) as GeoJSONSource | undefined;
-    const needsHydration = visible && this.routeDataDirty && Boolean(source);
+    this.routeLattice.setVisible(visible);
+    const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
+    const needsHydration = visible && this.routeDataDirty && Boolean(detailSource);
     const hitApplied = this.selectedNodeID !== null && applyRouteHitLayerVisibility(this.map, visible);
     const neighborsApplied = this.selectedNodeID !== null && applyNeighborRingVisibility(this.map, visible);
     if (needsHydration) this.hydrateRouteSource();
     if (!visible) this.clearRouteInspection();
     if (!visible) this.map.getCanvas().style.cursor = '';
-    if (!needsHydration && (Boolean(source) || hitApplied || neighborsApplied)) this.markRendering();
+    if (!needsHydration && (Boolean(detailSource) || hitApplied || neighborsApplied)) this.markRendering();
   }
 
   setHeatmapVisible(visible: boolean): void {
@@ -489,7 +485,7 @@ export class LiveMap {
     if (this.routeWindow === window) return;
     this.routeWindow = window;
     this.routeDataDirty = true;
-    if (this.map.getSource(ROUTE_SOURCE_ID)) {
+    if (this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) {
       this.hydrateRouteSource();
     } else {
       this.emitRouteWindowChange();
@@ -518,13 +514,14 @@ export class LiveMap {
     window.clearInterval(this.freshnessTimer);
     if (this.clusterFlashTimer !== undefined) window.clearTimeout(this.clusterFlashTimer);
     this.map.off('zoomend', this.handleZoomEnd);
+    this.routeLattice.destroy();
     this.map.remove();
   }
 
   private handleZoomEnd = (): void => {
     if (this.routeWindow !== 'auto') return;
     this.routeDataDirty = true;
-    if (this.map.getSource(ROUTE_SOURCE_ID)) {
+    if (this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) {
       this.hydrateRouteSource();
     } else {
       this.emitRouteWindowChange();
@@ -596,31 +593,7 @@ export class LiveMap {
       });
     }
 
-    this.map.setGlobalStateProperty(ROUTES_VISIBLE_GLOBAL_STATE, this.routesVisible);
-    this.map.addSource(ROUTE_SOURCE_ID, { type: 'geojson', data: EMPTY_ROUTE_BUCKETS, maxzoom: 14 });
     this.map.addSource(ROUTE_DETAIL_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 14 });
-    this.map.addLayer({
-      id: 'route-glow',
-      type: 'line',
-      source: ROUTE_SOURCE_ID,
-      paint: {
-        'line-color': routeColorExpression(),
-        'line-width': routeGlowWidth(false),
-        'line-opacity': routeGlowOpacity(false),
-        'line-blur': 2.6
-      }
-    });
-    this.map.addLayer({
-      id: 'routes',
-      type: 'line',
-      source: ROUTE_SOURCE_ID,
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: {
-        'line-color': routeColorExpression(),
-        'line-width': routeCoreWidth(false),
-        'line-opacity': routeCoreOpacity(false)
-      }
-    });
     this.map.addLayer({
       id: ROUTE_HOVER_LAYER_IDS[0],
       type: 'line',
@@ -658,7 +631,6 @@ export class LiveMap {
       }
     });
     applyRouteSelectionFilter(this.map, this.selectedNodeID);
-    applyRouteFocusAppearance(this.map, this.selectedNodeID !== null);
     applyRouteHitLayerVisibility(this.map, this.routesVisible && this.selectedNodeID !== null);
     applyRouteHoverFilter(this.map, null);
     if (this.regionsVisible) this.ensureRegionsData();
@@ -1033,7 +1005,7 @@ export class LiveMap {
     this.selectedNodeLabel = nodeID ? label : '';
     this.container.dataset.selectedNodeId = nodeID ?? '';
     this.routeDataDirty = true;
-    if (this.map.getSource(ROUTE_SOURCE_ID)) this.hydrateRouteSource();
+    if (this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) this.hydrateRouteSource();
     this.updateFocusData();
     this.applyFocusState();
     if (nodeID === null && this.tooltip.dataset.kind === 'route') this.hideTooltip();
@@ -1062,7 +1034,6 @@ export class LiveMap {
   private applyFocusState(): void {
     const focusIDs = this.selectedNodeID ? [this.selectedNodeID, ...this.neighborNodeIDs] : [];
     applyRouteSelectionFilter(this.map, this.selectedNodeID);
-    applyRouteFocusAppearance(this.map, this.selectedNodeID !== null);
     applySelectedNodeFilter(this.map, this.selectedNodeID);
     applyNodeFocus(this.map, this.selectedNodeID, focusIDs, this.neighborNodeIDs);
     applyHeatmapFocus(this.map, focusIDs);
@@ -1174,7 +1145,6 @@ export class LiveMap {
 
 type RouteLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setLayoutProperty'>;
 type RouteFilterMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter'>;
-type PaintMap = Pick<maplibregl.Map, 'getLayer' | 'setPaintProperty'>;
 type FocusMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setPaintProperty' | 'setLayoutProperty'>;
 type InteractiveLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setLayoutProperty'>;
 type LayerFilter = Parameters<maplibregl.Map['setFilter']>[1];
@@ -1222,21 +1192,6 @@ export function applySelectedNodeFilter(map: RouteFilterMap, selectedNodeID: str
   for (const layerID of [SELECTED_NODE_OUTER_LAYER_ID, SELECTED_NODE_LAYER_ID]) {
     if (!map.getLayer(layerID)) continue;
     map.setFilter(layerID, selectedNodeFilter(selectedNodeID));
-    applied = true;
-  }
-  return applied;
-}
-
-export function applyRouteFocusAppearance(map: PaintMap, focused: boolean): boolean {
-  let applied = false;
-  if (map.getLayer('route-glow')) {
-    map.setPaintProperty('route-glow', 'line-width', routeGlowWidth(focused));
-    map.setPaintProperty('route-glow', 'line-opacity', routeGlowOpacity(focused));
-    applied = true;
-  }
-  if (map.getLayer('routes')) {
-    map.setPaintProperty('routes', 'line-width', routeCoreWidth(focused));
-    map.setPaintProperty('routes', 'line-opacity', routeCoreOpacity(focused));
     applied = true;
   }
   return applied;
@@ -1451,52 +1406,6 @@ export function prefersReducedMotion(): boolean {
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-function routeZoomOpacity(scale: number): ExpressionSpecification {
-  const gated = (factor: number): ExpressionSpecification => [
-    'case',
-    ['==', ['global-state', ROUTES_VISIBLE_GLOBAL_STATE], true],
-    ['*', ['get', 'opacity'], factor],
-    0
-  ];
-  return [
-    'interpolate', ['linear'], ['zoom'],
-    3, gated(0.1 * scale),
-    5, gated(0.24 * scale),
-    7, gated(0.58 * scale),
-    9, gated(scale)
-  ];
-}
-
-function routeGlowOpacity(focused: boolean): ExpressionSpecification {
-  return routeZoomOpacity(focused ? 0.52 : 0.16);
-}
-
-function routeCoreOpacity(focused: boolean): ExpressionSpecification {
-  return routeZoomOpacity(focused ? 1 : 0.72);
-}
-
-function routeGlowWidth(focused: boolean): ExpressionSpecification {
-  const boost = focused ? 1.36 : 1;
-  return [
-    'interpolate', ['linear'], ['zoom'],
-    3, 0.65,
-    7, ['*', ['get', 'glowWidth'], 0.68 * boost],
-    10, ['*', ['get', 'glowWidth'], boost],
-    14, ['*', ['get', 'glowWidth'], 1.18 * boost]
-  ];
-}
-
-function routeCoreWidth(focused: boolean): ExpressionSpecification {
-  const boost = focused ? 1.18 : 1;
-  return [
-    'interpolate', ['linear'], ['zoom'],
-    3, 0.3,
-    7, ['*', ['get', 'width'], 0.7 * boost],
-    10, ['*', ['get', 'width'], boost],
-    14, ['*', ['get', 'width'], 1.15 * boost]
-  ];
-}
-
 function focusMembership(focusIDs: readonly string[]): ExpressionSpecification {
   return ['in', ['get', 'id'], ['literal', [...focusIDs]]];
 }
@@ -1615,58 +1524,31 @@ export function routeRenderCandidates(
     .slice(0, ROUTE_RENDER_BUDGET);
 }
 
-interface RouteStyleBucket {
-  color: string;
-  width: number;
-  glowWidth: number;
-  opacity: number;
-}
-
-interface MutableRouteBucket extends RouteStyleBucket {
-  coordinates: Position[][];
-}
-
-const ROUTE_TRAFFIC_STYLE_BUCKETS = [
-  { maximum: 0.25, width: 0.72, glowWidth: 1.9 },
-  { maximum: 0.5, width: 0.95, glowWidth: 2.35 },
-  { maximum: 0.75, width: 1.2, glowWidth: 2.85 },
-  { maximum: 1, width: 1.5, glowWidth: 3.4 }
-] as const;
-const ROUTE_OPACITY_STYLE_BUCKETS = [0.1, 0.26, 0.42, 0.66, 0.94] as const;
-
-export function routeBucketCollection(
+export function routeLatticeRoutes(
   routes: readonly RouteV2[],
   nodes: ReadonlyMap<string, NodeV2>,
   now = Date.now(),
   trafficBaseline = routeTrafficBaseline(routes, now),
   maxAge = ROUTE_MAX_AGE_MS
-): FeatureCollection<MultiLineString> {
-  const buckets = new Map<string, MutableRouteBucket>();
+): LatticeRoute[] {
+  const lattice: LatticeRoute[] = [];
   for (const route of routes) {
     if (Math.max(0, now - route.lastHeard) > maxAge) continue;
     const from = nodes.get(route.fromId);
     const to = nodes.get(route.toId);
     if (!from || !to || !validEndpoint(from) || !validEndpoint(to)) continue;
-    const style = routeStyleBucket(route, now, trafficBaseline);
-    const key = `${style.color}:${style.width}:${style.opacity}`;
-    const bucket = buckets.get(key) ?? { ...style, coordinates: [] };
-    bucket.coordinates.push([[from.lng, from.lat], [to.lng, to.lat]]);
-    buckets.set(key, bucket);
+    const visual = routeVisualProperties(route, now, trafficBaseline);
+    lattice.push({
+      id: route.id,
+      from: [from.lng, from.lat],
+      to: [to.lng, to.lat],
+      color: payloadColor(route.lastKind),
+      width: visual.width,
+      glowWidth: visual.glowWidth,
+      opacity: visual.opacity
+    });
   }
-  return {
-    type: 'FeatureCollection',
-    features: [...buckets.entries()].map(([key, bucket]) => ({
-      type: 'Feature',
-      id: `route-bucket-${key}`,
-      geometry: { type: 'MultiLineString', coordinates: bucket.coordinates },
-      properties: {
-        color: bucket.color,
-        width: bucket.width,
-        glowWidth: bucket.glowWidth,
-        opacity: bucket.opacity
-      }
-    }))
-  };
+  return lattice;
 }
 
 export function routeCollection(
@@ -1681,25 +1563,6 @@ export function routeCollection(
     features: routes
       .map((route) => routeFeature(route, nodes, now, trafficBaseline, maxAge))
       .filter((feature): feature is Feature<LineString> => feature !== undefined)
-  };
-}
-
-function routeStyleBucket(
-  route: Pick<RouteV2, 'traffic' | 'lastHeard' | 'lastKind'>,
-  now: number,
-  trafficBaseline: number
-): RouteStyleBucket {
-  const visual = routeVisualProperties(route, now, trafficBaseline);
-  const traffic = ROUTE_TRAFFIC_STYLE_BUCKETS.find((bucket) => visual.trafficLevel <= bucket.maximum)
-    ?? ROUTE_TRAFFIC_STYLE_BUCKETS[ROUTE_TRAFFIC_STYLE_BUCKETS.length - 1]!;
-  const opacity = ROUTE_OPACITY_STYLE_BUCKETS.reduce((closest, candidate) => (
-    Math.abs(candidate - visual.opacity) < Math.abs(closest - visual.opacity) ? candidate : closest
-  ));
-  return {
-    color: payloadColor(route.lastKind),
-    width: traffic.width,
-    glowWidth: traffic.glowWidth,
-    opacity
   };
 }
 

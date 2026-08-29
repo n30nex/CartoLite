@@ -36,6 +36,8 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect.poll(() => cartoResponses.vector, { message: 'CARTO vector PBF tiles should load' }).toBeGreaterThan(0);
   await expect.poll(() => cartoResponses.glyph, { message: 'CARTO glyph PBFs should load' }).toBeGreaterThan(0);
   expect(rasterRequests, 'the vector-only release must not request a raster basemap').toEqual([]);
+  const routeCanvas = page.locator('#route-canvas');
+  await expect(routeCanvas).toBeHidden();
   await expect(page.locator('#packet-canvas')).toBeVisible();
   await expect(page.locator('#status-text')).not.toHaveText('Starting…');
   const routeWindow = page.locator('#route-window');
@@ -151,12 +153,16 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(routeLegend).toBeVisible();
+  await expect(routeCanvas).toBeVisible();
+  await expect.poll(() => routeCanvas.getAttribute('data-rendered-routes').then(Number)).toBeGreaterThan(0);
+  expect(await canvasHasPixels(routeCanvas), 'stable route lattice should paint on its dedicated canvas').toBe(true);
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   if (mobile) await openLayers(page);
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'false');
   await expect(routesButton).toHaveAttribute('title', 'Show routes');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
+  await expect(routeCanvas).toBeHidden();
   await expect(routeLegend).toBeHidden();
   await expect(routeLegend.locator('.route-legend-item')).toHaveCount(5);
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
@@ -170,6 +176,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
+  await expect(routeCanvas).toBeVisible();
 
   const regionResponsePromise = page.waitForResponse((assetResponse) => isRegionAssetURL(assetResponse.url()));
   await regionsButton.click();

@@ -16,9 +16,9 @@
 - Give every visible route hop one warm pentatonic articulation with viewport panning, adaptive burst envelopes, and short native Web Audio ambience; no visible hop is discarded.
 - Store desktop and mobile map views separately and return home when a restored view contains no node active in the last 24 hours.
 - Strengthen selected-node focus and preserve cyan/amber traffic colour during bursts by removing additive white saturation from packet bloom and residue.
-- Keep the historical Routes overlay responsive by rendering at most the 700 freshest routes in the chosen window, grouped into at most 100 style-preserving `MultiLineString` buckets and prewarmed while hidden; selected-node routes retain a separate exact hit-test source, and live packet animation and sound remain uncapped.
+- Keep the historical Routes overlay responsive by pre-rendering at most the 700 freshest routes in the chosen window into a dedicated Canvas2D bitmap in frame-bounded batches; selected-node routes retain a separate exact MapLibre hit-test source, and live packet animation and sound remain uncapped.
 - Keep the national heat summary calm and responsive by rendering the 600 strongest active-node weights while preserving the complete topology and live event stream.
-- Toggle the prewarmed Routes lattice through MapLibre global paint state, toggle Heatmap through its bounded GeoJSON source, and keep the first Regions reveal data-driven so primary interactions avoid bulk source ingestion or a full style recompile.
+- Toggle the prewarmed Routes lattice by revealing its finished canvas bitmap, toggle Heatmap through its bounded GeoJSON source, and keep the first Regions reveal data-driven so primary interactions avoid bulk source ingestion or a full style recompile.
 - Refresh the exact unsimplified 34-region MeshMapper snapshot on 2026-08-29 and validate its metadata, code set, geometry, checksum, lazy loading, MIME type, and attribution; stage the unchanged boundary edges across eight balanced MapLibre sources so the 46,449-vertex overlay does not land in one main-thread task.
 - Extend CI with vector authorization, phone landscape, oscillator-count, no-raster, stale-view, operations transition, region checksum, and sub-100 ms layer-interaction gates.
 

@@ -8,7 +8,6 @@ import {
   applyNodeFocus,
   applyNeighborRingVisibility,
   applyRegionLayerVisibility,
-  applyRouteFocusAppearance,
   applyRouteHoverFilter,
   applyRouteHitLayerVisibility,
   applyRouteSelectionFilter,
@@ -32,11 +31,10 @@ import {
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
   ROUTE_RENDER_BUDGET,
-  ROUTE_STYLE_BUCKET_LIMIT,
   REGION_LAYER_IDS,
-  routeBucketCollection,
   routeCollection,
   routeColorExpression,
+  routeLatticeRoutes,
   routeRenderCandidates,
   routeVisualProperties,
   routeWindowLabel,
@@ -76,22 +74,6 @@ describe('route layer visibility', () => {
       [NEIGHBOR_NODE_LAYER_ID, 'visibility', 'visible'],
       [NEIGHBOR_NODE_LAYER_ID, 'visibility', 'none']
     ]);
-  });
-
-  it('changes focus emphasis without overwriting packet-driven route colors', () => {
-    const setPaintProperty = vi.fn();
-    const map = {
-      getLayer: vi.fn(() => ({})),
-      setPaintProperty
-    } as unknown as Parameters<typeof applyRouteFocusAppearance>[0];
-
-    expect(applyRouteFocusAppearance(map, true)).toBe(true);
-    expect(applyRouteFocusAppearance(map, false)).toBe(true);
-    expect(setPaintProperty).toHaveBeenCalledWith('route-glow', 'line-width', expect.any(Array));
-    expect(setPaintProperty).toHaveBeenCalledWith('routes', 'line-opacity', expect.any(Array));
-    expect(setPaintProperty.mock.calls.some((call) => call[1] === 'line-color')).toBe(false);
-    expect(JSON.stringify(setPaintProperty.mock.calls)).toContain('global-state');
-    expect(JSON.stringify(setPaintProperty.mock.calls)).toContain('routes-visible');
   });
 });
 
@@ -188,7 +170,7 @@ describe('activity heatmap data', () => {
 });
 
 describe('stable route visual data', () => {
-  it('groups the stable lattice into bounded style buckets without dropping geometry', () => {
+  it('preserves every candidate and its exact geometry for the canvas lattice', () => {
     const now = 1_900_000_000_000;
     const kinds: readonly RouteV2['lastKind'][] = ['Advert', 'Trace', 'Text', 'ACK', 'Control', 'Other'];
     const routes = Array.from({ length: ROUTE_RENDER_BUDGET }, (_, index) => route(
@@ -200,18 +182,17 @@ describe('stable route visual data', () => {
       1 + index % 64
     ));
 
-    const collection = routeBucketCollection(routes, nodesFor(routes), now);
-    const segmentCount = collection.features.reduce((total, feature) => total + feature.geometry.coordinates.length, 0);
+    const lattice = routeLatticeRoutes(routes, nodesFor(routes), now);
 
-    expect(collection.features.length).toBeLessThanOrEqual(ROUTE_STYLE_BUCKET_LIMIT);
-    expect(segmentCount).toBe(routes.length);
-    expect(collection.features.every((feature) => feature.geometry.type === 'MultiLineString')).toBe(true);
-    expect(collection.features.every(({ properties }) => (
-      properties !== null
-      && typeof properties.color === 'string'
-      && Number(properties.width) >= 0.68
-      && Number(properties.glowWidth) <= 3.4
-      && Number(properties.opacity) <= 1
+    expect(lattice).toHaveLength(routes.length);
+    expect(lattice.map((item) => item.id)).toEqual(routes.map((item) => item.id));
+    expect(lattice.every((item) => (
+      item.from.length === 2
+      && item.to.length === 2
+      && typeof item.color === 'string'
+      && item.width >= 0.68
+      && item.glowWidth <= 3.4
+      && item.opacity <= 1
     ))).toBe(true);
   });
 

@@ -28,6 +28,12 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-power-mode', testInfo.project.name.startsWith('mobile') ? 'low' : 'full');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(Date.now() - started, 'large topology should hydrate inside the first-view budget').toBeLessThan(10_000);
+  const routeCanvas = page.locator('#route-canvas');
+  await expect(routeCanvas).toBeHidden();
+  await expect.poll(() => routeCanvas.getAttribute('data-rendered-routes').then(Number), {
+    message: 'the hidden stable route lattice should be pre-rendered before interaction'
+  }).toBeGreaterThan(0);
+  expect(await canvasHasPixels(routeCanvas), 'the pre-rendered route lattice should contain visible route pixels').toBe(true);
   await installLongTaskObserver(page);
 
   const heatmapButton = page.locator('#heatmap-button');
@@ -42,6 +48,7 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
+  await expect(routeCanvas).toBeVisible();
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(await maximumLongTask(page), 'enabling Routes must not block the main thread for 100 ms').toBeLessThan(100);
 
@@ -135,4 +142,17 @@ async function maximumLongTask(page: import('@playwright/test').Page): Promise<n
   return page.evaluate(() => Math.max(0, ...(window as unknown as {
     __cartoliteLongTasks: { durations: number[] };
   }).__cartoliteLongTasks.durations));
+}
+
+async function canvasHasPixels(canvas: import('@playwright/test').Locator): Promise<boolean> {
+  return canvas.evaluate((node) => {
+    const element = node as HTMLCanvasElement;
+    const context = element.getContext('2d');
+    if (!context || element.width === 0 || element.height === 0) return false;
+    const pixels = context.getImageData(0, 0, element.width, element.height).data;
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] !== 0) return true;
+    }
+    return false;
+  });
 }
