@@ -49,6 +49,12 @@ class WatchdogTransitions(unittest.TestCase):
         self.assertEqual(self.run_checks(response(boot="boot-b"), response(), 3), [])
         self.assertEqual(self.run_checks(response(boot="boot-c"), response(), 1), ["boot-change"])
 
+    def test_health_failure_preserves_last_known_sha(self):
+        unreachable = {"ok": False, "status": "URLError", "data": {}}
+        self.state, alerts = evaluate(self.state, unreachable, unreachable)
+        self.assertEqual(alerts, [])
+        self.assertEqual(self.state["gitSha"], "a" * 12)
+
 
 if __name__ == "__main__":
     unittest.main()

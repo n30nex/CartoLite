@@ -218,14 +218,14 @@ def main() -> int:
     parser.add_argument("--app-env", type=Path, default=Path(os.environ.get("CARTOLITE_APP_ENV", DEFAULT_APP_ENV)))
     parser.add_argument("--work", type=Path, default=Path(os.environ.get("CARTOLITE_BACKUP_WORK", DEFAULT_WORK)))
     args = parser.parse_args()
-    validate_environment()
-    args.work.mkdir(parents=True, exist_ok=True)
-    os.chmod(args.work, 0o700)
-    lock_path = args.work / "operation.lock"
     identity = public_identity(args.app_env)
-    with lock_path.open("a+") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        try:
+    try:
+        validate_environment()
+        args.work.mkdir(parents=True, exist_ok=True)
+        os.chmod(args.work, 0o700)
+        lock_path = args.work / "operation.lock"
+        with lock_path.open("a+") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
             if args.mode == "init":
                 initialize_repository()
                 result: Any = "initialized"
@@ -236,11 +236,11 @@ def main() -> int:
                 result = "metadata-check-passed"
             else:
                 result = {"restoredSha256": monthly(args.work)}
-        except Exception:
-            try:
-                send_failure(os.environ.get("DISCORD_WEBHOOK_URL", "").strip(), args.mode, identity)
-            finally:
-                raise
+    except Exception:
+        try:
+            send_failure(os.environ.get("DISCORD_WEBHOOK_URL", "").strip(), args.mode, identity)
+        finally:
+            raise
     print(json.dumps({"mode": args.mode, "result": result}, separators=(",", ":"), sort_keys=True))
     return 0
 

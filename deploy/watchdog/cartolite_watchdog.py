@@ -148,7 +148,7 @@ def alert_content(
         f"CartoLite {labels[event]}",
         f"timestamp: {datetime.now(timezone.utc).isoformat(timespec='seconds')}",
         f"status: {status}",
-        f"version/SHA: {clean_text(state.get('version'), 40)}/{clean_sha(state.get('gitSha'))}",
+        f"version/SHA: {clean_text(state.get('version'), 40)}/{clean_sha(state.get('gitSha')) or 'unknown'}",
         f"readiness: {json.dumps(sanitized, separators=(',', ':'), sort_keys=True)}",
     ])
 
@@ -201,7 +201,7 @@ def clean_text(value: Any, limit: int) -> str:
 
 def clean_sha(value: Any) -> str:
     text = str(value or "").strip().lower()
-    return text[:12] if text and all(character in "0123456789abcdef" for character in text) else "unknown"
+    return text[:12] if text and all(character in "0123456789abcdef" for character in text) else ""
 
 
 def safe_integer(value: Any) -> int:
