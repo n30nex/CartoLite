@@ -541,7 +541,7 @@ async function audioConstructionCount(page: Page): Promise<number> {
 
 async function openLayers(page: Page): Promise<void> {
   const disclosure = page.locator('#layers-disclosure');
-  if (!await disclosure.evaluate((element) => (element as HTMLDetailsElement).open)) {
+  if (!await disclosure.evaluate((element) => element.hasAttribute('open'))) {
     await page.locator('#layers-summary').click();
   }
   await expect(disclosure).toHaveAttribute('open', '');

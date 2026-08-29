@@ -27,8 +27,9 @@ const soundToggle = required<HTMLButtonElement>('sound-toggle');
 const soundVolume = required<HTMLInputElement>('sound-volume');
 const soundVolumeOutput = required<HTMLOutputElement>('sound-volume-output');
 const soundActivity = required<HTMLElement>('sound-activity');
-const layersDisclosure = required<HTMLDetailsElement>('layers-disclosure');
-const layersSummary = required<HTMLElement>('layers-summary');
+const layersDisclosure = required<HTMLElement>('layers-disclosure');
+const layersSummary = required<HTMLButtonElement>('layers-summary');
+const layersPanel = required<HTMLElement>('layers-panel');
 const resetButton = required<HTMLButtonElement>('reset-button');
 const legend = required<HTMLElement>('legend');
 const legendToggle = required<HTMLButtonElement>('legend-toggle');
@@ -47,8 +48,14 @@ let soundPulseTimer: number | undefined;
 let scheduledNoteCount = 0;
 let activeViewClass: ViewClass = viewClass();
 
+function setLayersOpen(open: boolean): void {
+  layersDisclosure.toggleAttribute('open', open);
+  layersSummary.setAttribute('aria-expanded', String(open));
+  layersPanel.hidden = activeViewClass === 'mobile' && !open;
+}
+
 document.documentElement.dataset.viewClass = activeViewClass;
-layersDisclosure.open = activeViewClass === 'desktop';
+setLayersOpen(activeViewClass === 'desktop');
 layersSummary.hidden = activeViewClass === 'desktop';
 
 legendToggle.addEventListener('click', () => {
@@ -64,19 +71,21 @@ aboutClose.addEventListener('click', () => aboutDialog.close());
 aboutDialog.addEventListener('click', (event) => {
   if (event.target === aboutDialog) aboutDialog.close();
 });
-layersDisclosure.addEventListener('toggle', () => {
-  if (layersDisclosure.open && activeViewClass === 'mobile') closeSoundPanel();
+layersSummary.addEventListener('click', () => {
+  const opening = !layersDisclosure.hasAttribute('open');
+  setLayersOpen(opening);
+  if (opening) closeSoundPanel();
 });
 document.addEventListener('pointerdown', (event) => {
   const target = event.target;
   if (!(target instanceof Node)) return;
   if (!soundControl.contains(target)) closeSoundPanel();
-  if (activeViewClass === 'mobile' && !layersDisclosure.contains(target)) layersDisclosure.open = false;
+  if (activeViewClass === 'mobile' && !layersDisclosure.contains(target)) setLayersOpen(false);
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   closeSoundPanel();
-  if (activeViewClass === 'mobile') layersDisclosure.open = false;
+  if (activeViewClass === 'mobile') setLayersOpen(false);
 });
 
 void start();
@@ -179,7 +188,7 @@ async function start(): Promise<void> {
         if (next === activeViewClass) return;
         activeViewClass = next;
         document.documentElement.dataset.viewClass = next;
-        layersDisclosure.open = next === 'desktop';
+        setLayersOpen(next === 'desktop');
         layersSummary.hidden = next === 'desktop';
         const restored = loadSavedView(localStorage, next);
         if (restored) {
@@ -233,7 +242,7 @@ async function start(): Promise<void> {
       const opening = soundPanel.hidden;
       soundPanel.hidden = !opening;
       soundButton.setAttribute('aria-expanded', String(opening));
-      if (opening && activeViewClass === 'mobile') layersDisclosure.open = false;
+      if (opening && activeViewClass === 'mobile') setLayersOpen(false);
     });
     soundToggle.addEventListener('click', async () => {
       const enabled = await routeSonifier.setEnabled(routeSonifier.status() !== 'on');

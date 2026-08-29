@@ -33,14 +33,14 @@
         <button id="follow-button" class="control-button" type="button" aria-pressed="false" title="Follow live packets">
           <span aria-hidden="true">◎</span><span>Live Follow</span>
         </button>
-        <details id="layers-disclosure" class="layers-disclosure">
-          <summary id="layers-summary" class="control-button" aria-label="Layers" title="Map layers">
+        <div id="layers-disclosure" class="layers-disclosure" open>
+          <button id="layers-summary" class="control-button" type="button" aria-label="Layers" aria-expanded="false" aria-controls="layers-panel" title="Map layers" hidden>
             <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="m4 7 8-4 8 4-8 4z"></path><path d="m4 12 8 4 8-4M4 17l8 4 8-4"></path>
             </svg>
             <span>Layers</span>
-          </summary>
-          <div class="layers-panel glass">
+          </button>
+          <div id="layers-panel" class="layers-panel glass">
             <button id="routes-button" class="control-button" type="button" aria-label="Routes" aria-pressed="false" title="Show routes">
               <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="6" cy="19" r="3"></circle>
@@ -75,7 +75,7 @@
               </select>
             </label>
           </div>
-        </details>
+        </div>
         <div class="sound-control">
           <button id="sound-button" class="control-button" type="button" aria-label="Sound" aria-pressed="false" aria-expanded="false" aria-controls="sound-panel" title="Sound off">
             <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">

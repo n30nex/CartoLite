@@ -918,8 +918,9 @@ export class LiveMap {
     const epoch = ++this.renderEpoch;
     this.container.dataset.renderState = 'rendering';
     if (sourceID) {
+      const sourceEpoch = this.routeHydrationEpoch;
       const settleSource = (): void => {
-        if (epoch !== this.renderEpoch) return;
+        if (sourceEpoch !== this.routeHydrationEpoch) return;
         const source = this.map.getSource(sourceID) as GeoJSONSource | undefined;
         if (!this.routeHydrating && source?.loaded()) {
           this.container.dataset.renderState = 'idle';
