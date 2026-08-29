@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'vitest';
 import type { EndpointV2, RoutePacketView } from './types';
 import { routeSoundPlan } from './audio';
 
