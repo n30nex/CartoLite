@@ -280,7 +280,7 @@ export class LiveMap {
         return;
       }
       this.emitRouteWindowChange();
-      this.markRendering();
+      this.markRendering('routes');
     };
     window.requestAnimationFrame(addBatch);
   }
@@ -493,6 +493,7 @@ export class LiveMap {
   destroy(): void {
     this.routeHydrationEpoch += 1;
     this.routeHydrating = false;
+    this.renderEpoch += 1;
     window.clearInterval(this.freshnessTimer);
     if (this.clusterFlashTimer !== undefined) window.clearTimeout(this.clusterFlashTimer);
     this.map.off('zoomend', this.handleZoomEnd);
@@ -913,9 +914,22 @@ export class LiveMap {
       });
   }
 
-  private markRendering(): void {
+  private markRendering(sourceID?: string): void {
     const epoch = ++this.renderEpoch;
     this.container.dataset.renderState = 'rendering';
+    if (sourceID) {
+      const settleSource = (): void => {
+        if (epoch !== this.renderEpoch) return;
+        const source = this.map.getSource(sourceID) as GeoJSONSource | undefined;
+        if (!this.routeHydrating && source?.loaded()) {
+          this.container.dataset.renderState = 'idle';
+          return;
+        }
+        window.requestAnimationFrame(settleSource);
+      };
+      window.requestAnimationFrame(settleSource);
+      return;
+    }
     if (!this.routeHydrating && this.map.loaded()) {
       this.container.dataset.renderState = 'idle';
       return;
