@@ -75,7 +75,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts/release
-          cp compose.yml .env.example artifacts/release/
+          cp compose.yml artifacts/release/
+          cp .env.example artifacts/release/default.env.example
           jq -n \
             --arg version "${{ steps.release.outputs.version }}" \
             --arg gitSha "${{ steps.release.outputs.sha }}" \
@@ -83,7 +84,7 @@ jobs:
             --arg candidateTag "sha-${{ steps.release.outputs.sha }}" \
             '{schemaVersion:1,version:$version,gitSha:$gitSha,image:$image,candidateTag:$candidateTag,platforms:["linux/amd64"]}' \
             > artifacts/release/release-manifest.json
-          (cd artifacts/release && sha256sum .env.example compose.yml release-manifest.json > SHA256SUMS)
+          (cd artifacts/release && sha256sum default.env.example compose.yml release-manifest.json > SHA256SUMS)
           (cd artifacts/release && sha256sum --check SHA256SUMS)
       - name: Promote the exact digest without rebuilding
         shell: bash
@@ -103,7 +104,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            artifacts/release/.env.example \
+            artifacts/release/default.env.example \
             artifacts/release/compose.yml \
             artifacts/release/release-manifest.json \
             artifacts/release/SHA256SUMS \
