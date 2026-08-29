@@ -1500,7 +1500,7 @@ function heatFeature(
 ): Feature<Point> | undefined {
   const node = nodes.get(id);
   const score = scores.get(id) ?? 0;
-  if (!node || !validEndpoint(node) || score <= 0.000_001) return undefined;
+  if (!node || !validEndpoint(node) || score <= 0) return undefined;
   return {
     type: 'Feature',
     id,

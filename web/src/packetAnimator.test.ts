@@ -186,7 +186,12 @@ describe('PacketAnimator motion preference lifecycle', () => {
       }),
       removeEventListener: vi.fn(),
     } as unknown as MediaQueryList;
-    vi.stubGlobal('matchMedia', vi.fn(() => motionQuery));
+    const lowPowerQuery = {
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList;
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => query.includes('prefers-reduced-motion') ? motionQuery : lowPowerQuery));
     vi.spyOn(performance, 'now').mockReturnValue(900).mockReturnValueOnce(500);
     vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
     vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
