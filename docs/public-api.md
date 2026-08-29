@@ -7,7 +7,7 @@ All endpoints are public and intentionally sanitized. State responses use `Cache
 - `GET /healthz` reports process liveness and build identity.
 - `GET /readyz` succeeds only when checkpoint state is healthy, MQTT is connected and subscribed, the ingest queue is healthy, and no packets have been dropped. Normal RF silence remains ready.
 - `GET /api/state` returns the authoritative `StateV2` snapshot.
-- `GET /api/events?bootId=<boot>&after=<seq>` is a same-origin `text/event-stream` with 15-second keepalives. It replays a bounded sequence window before switching to live events; `Last-Event-ID` is honored on native reconnects. An expired cursor or changed boot receives `reset` and must rehydrate from `/api/state`.
+- `GET /api/events?bootId=<boot>&after=<seq>` is a same-origin `text/event-stream` with 15-second keepalives. It replays a bounded sequence window before switching to live events; `Last-Event-ID` is honored on native reconnects. An expired cursor, changed boot, or retention-pruned topology receives `reset` and must rehydrate from `/api/state`.
 
 ## State schema
 

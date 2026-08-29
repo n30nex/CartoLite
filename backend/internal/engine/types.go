@@ -79,6 +79,11 @@ type StatusEventV2 struct {
 	Status PublicStatus `json:"status"`
 }
 
+type ResetEventV2 struct {
+	Seq    uint64 `json:"seq"`
+	BootID string `json:"bootId"`
+}
+
 type Event struct {
 	Name string
 	Seq  uint64

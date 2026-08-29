@@ -7,7 +7,7 @@
 - a persistent Docker volume for `/data`
 - a TLS edge or reverse proxy for public use
 
-Published images receive the browser-visible CARTO raster key at build time from the `CARTO_BASEMAP_API_KEY` GitHub Actions secret. Keep the value out of source, Compose, and runtime `.env` files.
+Published images receive the browser-visible CARTO raster key at build time from the `CARTO_BASEMAP_API_KEY` GitHub Actions secret. CARTO requires direct browser tile requests with this key in the URL, so it is a publishable project key rather than a server credential. Keep the value out of source, logs, Compose, and runtime `.env` files; use it only for this map and monitor its request allowance.
 
 ## Install
 

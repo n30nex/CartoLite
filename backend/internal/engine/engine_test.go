@@ -493,6 +493,34 @@ func TestPruneDurableStateRemovesExpiredTopologyWithoutDanglingRoutes(t *testing
 	}
 }
 
+func TestCheckpointPruningResetsClientsAfterRefreshingSnapshot(t *testing.T) {
+	state := newTestEngine(t)
+	now := time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC)
+	state.upsertNode("YKF", "AA112233", "Expired", "repeater", false, 43.4, -80.4, true, now.Add(-nodeRetentionWindow-time.Millisecond).UnixMilli())
+	state.updateSnapshot(now)
+
+	var event Event
+	var snapshotAtPublish StateV2
+	state.SetPublisher(func(published Event) {
+		event = published
+		if err := json.Unmarshal(state.StateJSON(), &snapshotAtPublish); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	pruned, saved := state.flushCheckpointAndReset(now)
+	if !pruned || !saved {
+		t.Fatalf("checkpoint pruned/saved = %v/%v, want true/true", pruned, saved)
+	}
+	reset, ok := event.Data.(ResetEventV2)
+	if event.Name != "reset" || !ok || reset.Seq != event.Seq || reset.BootID != state.BootID() {
+		t.Fatalf("reset event = %#v", event)
+	}
+	if snapshotAtPublish.Seq != reset.Seq || len(snapshotAtPublish.Nodes) != 0 {
+		t.Fatalf("snapshot at reset = %#v", snapshotAtPublish)
+	}
+}
+
 func packetHex(payloadType, hashSize int, prefixes ...byte) string {
 	return packetHexPayload(payloadType, hashSize, prefixes)
 }

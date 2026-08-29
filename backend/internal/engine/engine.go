@@ -202,9 +202,9 @@ func (e *Engine) Run(ctx context.Context) {
 			}
 		case now := <-checkpointTick.C:
 			if dirtyCheckpoint {
-				pruned, saved := e.flushCheckpoint(now)
+				pruned, saved := e.flushCheckpointAndReset(now)
 				if pruned {
-					dirtySnapshot = true
+					dirtySnapshot = false
 				}
 				dirtyCheckpoint = !saved
 			}
@@ -567,6 +567,17 @@ func (e *Engine) flushCheckpoint(now time.Time) (bool, bool) {
 		"prunedRoutes", prunedRoutes,
 	)
 	return pruned, true
+}
+
+func (e *Engine) flushCheckpointAndReset(now time.Time) (bool, bool) {
+	pruned, saved := e.flushCheckpoint(now)
+	if !pruned {
+		return false, saved
+	}
+	seq := e.seq.Add(1)
+	e.updateSnapshot(now)
+	e.emit(Event{Name: "reset", Seq: seq, Data: ResetEventV2{Seq: seq, BootID: e.bootID}})
+	return true, saved
 }
 
 func (e *Engine) pruneDurableState(nowMillis int64) (int, int) {

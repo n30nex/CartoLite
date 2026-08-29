@@ -19,6 +19,7 @@
 - Use a 30 fps, lower-resolution, lower-cap animation path on narrow or coarse-pointer devices and ignore packet effects entirely outside the viewport.
 - Make map controls at least 44 pixels tall, increase compact-screen type sizes, remove duplicate route-legend announcements, and brighten the basemap treatment.
 - Return true 404 responses for missing frontend assets and give only hashed build assets year-long immutable caching.
+- Rehydrate connected browsers immediately when checkpoint retention removes routes or nodes.
 
 ### Security
 
