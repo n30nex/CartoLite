@@ -38,6 +38,13 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
 
+  const regionStarted = Date.now();
+  const regionsButton = page.locator('#regions-button');
+  await regionsButton.click();
+  await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true', { timeout: 10_000 });
+  await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+  expect(Date.now() - regionStarted, 'regional overlay should become interactive inside its load budget').toBeLessThan(10_000);
+
   const eventLoopWindow = await page.evaluate(() => new Promise<number>((resolve) => {
     const start = performance.now();
     let turns = 0;
@@ -48,7 +55,7 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
     };
     window.setTimeout(tick, 0);
   }));
-  expect(eventLoopWindow, 'main thread should remain interactive after topology hydration').toBeLessThan(2_000);
+  expect(eventLoopWindow, 'main thread should remain interactive with topology and regions visible').toBeLessThan(2_000);
   await page.screenshot({ path: testInfo.outputPath('cartolite-scale.png') });
 });
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2 - 2026-08-29
+
+- Keep the refreshed 34-region overlay responsive over a live 4,000-node / 7,000-route topology by rendering boundaries and labels without the nearly invisible polygon fill.
+- Cap regional GeoJSON tiling at zoom 12, reduce tile overscan, and preserve close-range boundary detail through controlled worker-side simplification.
+- Extend the scale browser gate to load regions over the full topology and enforce both overlay-load and main-thread responsiveness budgets.
+
 ## 0.4.1 - 2026-08-28
 
 ### Added
