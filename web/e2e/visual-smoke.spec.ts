@@ -41,6 +41,11 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   const routeCanvas = page.locator('#route-canvas');
   await expect(routeCanvas).toBeHidden();
   await expect(page.locator('#packet-canvas')).toBeVisible();
+  await expect(page.locator('#traffic-meter i')).toHaveCount(5);
+  await expect.poll(() => page.locator('#map-grade').getAttribute('data-pulses').then(Number), {
+    message: 'sustained live traffic should keep retriggering the aurora',
+    timeout: 10_000,
+  }).toBeGreaterThan(1);
   await expect(page.locator('#status-text')).not.toHaveText('Starting…');
   const routeWindow = page.locator('#route-window');
   const layersSummary = page.locator('#layers-summary');
@@ -302,6 +307,10 @@ test('keeps a recent packet trail after stable routes are hidden', async ({ page
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
   const packetCanvas = page.locator('#packet-canvas');
   await expect.poll(() => canvasHasPixels(packetCanvas), { timeout: 5_000 }).toBe(true);
+  await expect(packetCanvas).toHaveAttribute('data-last-packet-kind', 'Text');
+  await expect(packetCanvas).toHaveAttribute('data-last-signature', 'orbit');
+  await expect.poll(() => packetCanvas.getAttribute('data-wakes-scheduled').then(Number)).toBeGreaterThan(0);
+  await expect(page.locator('#app')).toHaveAttribute('data-traffic-kind', 'text');
   const afterglowWindow = routeDuration([{ routeId: 'route-a-b', from, to }]) + DESTINATION_BLOOM_MS + 600;
   await page.waitForTimeout(afterglowWindow);
   await expect.poll(() => canvasHasPixels(packetCanvas), { message: '15-second trail should outlive the moving comet and afterglow', timeout: 2_000 }).toBe(true);

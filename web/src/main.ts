@@ -6,13 +6,15 @@ import { LiveMap, type LiveMapFocus, type RouteWindow } from './map';
 import { PacketAnimator } from './packetAnimator';
 import { loadSavedView, saveView, viewClass, type ViewClass } from './preferences';
 import { activityLabel, LiveStore } from './state';
-import { PACKET_KIND_COLORS, ROUTE_LEGEND_ITEMS } from './trafficVisuals';
-import type { EndpointV2, PacketView } from './types';
+import { normalizePacketKind, PACKET_KIND_COLORS, ROUTE_LEGEND_ITEMS } from './trafficVisuals';
 
+const appElement = required<HTMLElement>('app');
 const statusElement = required<HTMLElement>('status');
 const statusText = required<HTMLElement>('status-text');
+const trafficMeter = required<HTMLElement>('traffic-meter');
 const topbar = required<HTMLElement>('topbar');
 const mapElement = required<HTMLElement>('map');
+const mapGrade = required<HTMLElement>('map-grade');
 const fatal = required<HTMLElement>('fatal');
 const followButton = required<HTMLButtonElement>('follow-button');
 const routesButton = required<HTMLButtonElement>('routes-button');
@@ -47,6 +49,9 @@ let lastTrafficPulseAt = -Infinity;
 let soundPulseTimer: number | undefined;
 let scheduledNoteCount = 0;
 let activeViewClass: ViewClass = viewClass();
+let trafficWakeTimer: number | undefined;
+let recentTraffic: number[] = [];
+let auroraPulseCount = 0;
 
 function setLayersOpen(open: boolean): void {
   layersDisclosure.toggleAttribute('open', open);
@@ -139,6 +144,7 @@ async function start(): Promise<void> {
       sonifier?.setPaused(document.hidden);
     });
     window.addEventListener('beforeunload', () => {
+      if (trafficWakeTimer !== undefined) window.clearTimeout(trafficWakeTimer);
       feed?.stop();
       store?.destroy();
       animator?.destroy();
@@ -156,8 +162,11 @@ async function start(): Promise<void> {
       liveFollow = enabled;
       followButton.setAttribute('aria-pressed', String(enabled));
       followButton.classList.toggle('selected', enabled);
+      followButton.dataset.mode = enabled ? 'director' : 'manual';
+      appElement.classList.toggle('director-enabled', enabled);
       followButton.title = enabled ? 'Stop following live packets' : 'Follow live packets';
     };
+    setLiveFollow(false);
 
     liveMap.map.on('dragstart', () => setLiveFollow(false));
 
@@ -223,8 +232,8 @@ async function start(): Promise<void> {
         liveAnimator.add(packet);
         const scheduled = routeSonifier.play(packet);
         if (scheduled > 0) pulseSoundChrome(scheduled);
-        pulseTrafficChrome();
-        if (liveFollow && liveMap.shouldFollow(packet)) liveMap.follow(packetDestination(packet));
+        pulseTrafficChrome(packet.payloadType);
+        if (liveFollow && liveMap.shouldFollow(packet)) liveMap.follow(packet);
       },
       onStatus(event) {
         liveStore.updateStatus(event.status, event.seq);
@@ -284,6 +293,7 @@ async function start(): Promise<void> {
 
 function updateFocusChrome(focus: LiveMapFocus | null): void {
   legend.dataset.focused = String(Boolean(focus));
+  appElement.classList.toggle('focus-active', Boolean(focus));
   focusChip.hidden = !focus;
   if (!focus) {
     focusText.textContent = '';
@@ -295,12 +305,36 @@ function updateFocusChrome(focus: LiveMapFocus | null): void {
   legend.setAttribute('aria-label', `Selected node: ${focus.label}, ${neighbors}`);
 }
 
-function pulseTrafficChrome(): void {
+function pulseTrafficChrome(payloadType: string | undefined): void {
   const now = performance.now();
-  if (now - lastTrafficPulseAt < 1_000) return;
-  lastTrafficPulseAt = now;
-  topbar.classList.add('traffic-pulse');
-  window.setTimeout(() => topbar.classList.remove('traffic-pulse'), 720);
+  recentTraffic = recentTraffic.filter((timestamp) => now - timestamp < 3_000);
+  recentTraffic.push(now);
+  const level = recentTraffic.length >= 16 ? 5
+    : recentTraffic.length >= 10 ? 4
+      : recentTraffic.length >= 6 ? 3
+        : recentTraffic.length >= 3 ? 2 : 1;
+  trafficMeter.dataset.level = String(level);
+  appElement.dataset.trafficKind = normalizePacketKind(payloadType).toLowerCase();
+  if (trafficWakeTimer !== undefined) window.clearTimeout(trafficWakeTimer);
+  trafficWakeTimer = window.setTimeout(() => {
+    trafficWakeTimer = undefined;
+    recentTraffic = [];
+    trafficMeter.dataset.level = '0';
+    appElement.classList.remove('traffic-awake');
+  }, 2_400);
+  if (now - lastTrafficPulseAt >= 620) {
+    lastTrafficPulseAt = now;
+    topbar.classList.remove('traffic-pulse');
+    appElement.classList.remove('traffic-awake');
+    void mapGrade.offsetWidth;
+    topbar.classList.add('traffic-pulse');
+    appElement.classList.add('traffic-awake');
+    auroraPulseCount += 1;
+    mapGrade.dataset.pulses = String(auroraPulseCount);
+    window.setTimeout(() => topbar.classList.remove('traffic-pulse'), 720);
+  } else {
+    appElement.classList.add('traffic-awake');
+  }
 }
 
 function pulseSoundChrome(notes: number): void {
@@ -338,13 +372,6 @@ function updateSoundChrome(status: SoundStatus, volume: number): void {
 function closeSoundPanel(): void {
   soundPanel.hidden = true;
   soundButton.setAttribute('aria-expanded', 'false');
-}
-
-function packetDestination(packet: PacketView): EndpointV2 {
-  if (packet.mode === 'observer') return packet.observer;
-  return packet.segments[packet.segments.length - 1]?.to ?? packet.segments[0]?.from ?? {
-    id: 'default', label: '', lat: 56, lng: -96
-  };
 }
 
 function formatUpdate(timestamp: number): string {

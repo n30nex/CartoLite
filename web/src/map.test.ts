@@ -26,6 +26,7 @@ import {
   neighborRouteFilter,
   nodeIDFilter,
   nodeLabelPriority,
+  packetEndpoints,
   ROUTE_FILTER_LAYER_IDS,
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
@@ -392,6 +393,33 @@ describe('visual hierarchy and soft follow', () => {
     expect(canMoveLiveFollow(0, 100)).toBe(true);
     expect(canMoveLiveFollow(10_000, 10_000 + LIVE_FOLLOW_MIN_INTERVAL_MS - 1)).toBe(false);
     expect(canMoveLiveFollow(10_000, 10_000 + LIVE_FOLLOW_MIN_INTERVAL_MS)).toBe(true);
+  });
+
+  it('frames the complete route for cinematic follow without duplicating relays', () => {
+    const alpha = { id: 'a', label: 'Alpha', lat: 43.6, lng: -79.4 };
+    const bravo = { id: 'b', label: 'Bravo', lat: 44.1, lng: -78.8 };
+    const charlie = { id: 'c', label: 'Charlie', lat: 45.2, lng: -77.5 };
+    const endpoints = packetEndpoints({
+      seq: 1,
+      id: 'cinematic-route',
+      at: 1,
+      payloadType: 'Trace',
+      mode: 'route',
+      segments: [
+        { routeId: 'a-b', from: alpha, to: bravo },
+        { routeId: 'b-c', from: bravo, to: charlie },
+      ],
+    });
+
+    expect(endpoints.map((endpoint) => endpoint.id)).toEqual(['a', 'b', 'c']);
+    expect(packetEndpoints({
+      seq: 2,
+      id: 'observer',
+      at: 2,
+      payloadType: 'Advert',
+      mode: 'observer',
+      observer: alpha,
+    })).toEqual([alpha]);
   });
 
   it('uses decaying traffic for width while route age controls brightness', () => {

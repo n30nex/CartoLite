@@ -19,7 +19,7 @@
   <body>
     <main id="app" aria-label="CartoLite live map">
       <div id="map" aria-label="Live MeshCore route map"></div>
-      <div class="map-grade" aria-hidden="true"></div>
+      <div id="map-grade" class="map-grade" aria-hidden="true"></div>
       <canvas id="region-canvas" aria-hidden="true" hidden></canvas>
       <canvas id="route-canvas" aria-hidden="true" hidden></canvas>
       <canvas id="packet-canvas" aria-hidden="true"></canvas>
@@ -29,6 +29,9 @@
         </button>
         <div id="status" class="status" data-state="loading" role="status">
           <span class="status-dot" aria-hidden="true"></span><span id="status-text">Starting…</span>
+          <span id="traffic-meter" class="traffic-meter" data-level="0" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i>
+          </span>
         </div>
       </section>
       <section class="controls glass" aria-label="Map controls">

@@ -26,6 +26,7 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await expect(page.locator('#status')).toHaveAttribute('title', '4000 nodes · 7000 routes', { timeout: 10_000 });
   await expect(page.locator('#map .maplibregl-canvas')).toBeVisible();
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-power-mode', testInfo.project.name.startsWith('mobile') ? 'low' : 'full');
+  await expect(page.locator('#packet-canvas')).toHaveAttribute('data-quality-mode', testInfo.project.name.startsWith('mobile') ? 'low' : 'full');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(Date.now() - started, 'large topology should hydrate inside the first-view budget').toBeLessThan(10_000);
   const routeCanvas = page.locator('#route-canvas');

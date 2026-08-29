@@ -3,7 +3,6 @@ import type maplibregl from 'maplibre-gl';
 import type { EndpointV2, RoutePacketView, RouteSegmentView } from './types';
 import { PACKET_KIND_COLORS } from './trafficVisuals';
 import {
-  capCombinedNewest,
   capNewest,
   DESTINATION_BLOOM_MS,
   geographicDistanceKm,
@@ -12,16 +11,22 @@ import {
   MAX_RESIDUE,
   MAX_ROUTE_MS,
   MIN_ROUTE_MS,
+  NODE_WAKE_MS,
+  nodeWakeLife,
+  nodeWakeRadius,
   OBSERVER_PING_MS,
   observerRadius,
   PacketAnimator,
   packetDuration,
   payloadColor,
   pulseTiming,
+  quadraticPoint,
+  quadraticSlice,
   RESIDUE_HOT_MS,
   RESIDUE_MS,
   residueLife,
   residueStyle,
+  routeCurve,
   routeDistanceKm,
   routeDuration,
   routeMotion,
@@ -30,6 +35,7 @@ import {
   shouldRefreshResidueCache,
   SINGLE_HOP_MS,
   SOURCE_IGNITION_MS,
+  visualQuality,
 } from './packetAnimator';
 
 function endpoint(id: string, lat: number, lng: number): EndpointV2 {
@@ -105,6 +111,27 @@ describe('packet animation limits', () => {
     expect(interpolateScreenPoint(from, to, 1)).toEqual(to);
   });
 
+  it('uses a deterministic curved ribbon while preserving exact endpoints', () => {
+    const from = { x: 10, y: 20 };
+    const to = { x: 210, y: 20 };
+    const curve = routeCurve(from, to, 'route-a|echo');
+
+    expect(curve).toEqual(routeCurve(from, to, 'route-a|echo'));
+    expect(curve.control.y).not.toBe(20);
+    expect(quadraticPoint(curve, 0)).toEqual(from);
+    expect(quadraticPoint(curve, 1)).toEqual(to);
+    const halfway = quadraticSlice(curve, 0.5);
+    expect(halfway.head).toEqual(quadraticPoint(curve, 0.5));
+    expect(Math.hypot(halfway.tangent.x, halfway.tangent.y)).toBeGreaterThan(0);
+  });
+
+  it('adapts secondary detail without discarding directional route travel', () => {
+    expect(visualQuality(false, 1)).toBe('full');
+    expect(visualQuality(false, 11)).toBe('balanced');
+    expect(visualQuality(false, 25)).toBe('low');
+    expect(visualQuality(true, 1)).toBe('low');
+  });
+
   it('refreshes the residue bitmap on content, projection, or 250ms fade ticks', () => {
     expect(shouldRefreshResidueCache(1000, 1100, false, false)).toBe(false);
     expect(shouldRefreshResidueCache(1000, 1250, false, false)).toBe(true);
@@ -154,20 +181,21 @@ describe('packet animation limits', () => {
     expect(styles[1]!.hot).toBe(0);
   });
 
-  it('caps residue and mixed active effects to their shared budgets', () => {
+  it('lets active nodes breathe briefly after a hop', () => {
+    expect(NODE_WAKE_MS).toBe(4_200);
+    expect(nodeWakeLife(0)).toBe(1);
+    expect(nodeWakeLife(NODE_WAKE_MS / 2)).toBeGreaterThan(0);
+    expect(nodeWakeLife(NODE_WAKE_MS)).toBe(0);
+    expect(nodeWakeRadius(0, 'ripple', true)).toBe(nodeWakeRadius(NODE_WAKE_MS / 2, 'ripple', true));
+    expect(nodeWakeRadius(NODE_WAKE_MS / 2, 'ripple')).toBeGreaterThan(nodeWakeRadius(0, 'ripple'));
+  });
+
+  it('caps only lingering decoration to its bounded budget', () => {
     const values = Array.from({ length: 300 }, (_, index) => index);
     expect(MAX_RESIDUE).toBe(240);
     expect(capNewest(values, MAX_RESIDUE)).toEqual(values.slice(60));
     expect(capNewest(values, 0)).toEqual([]);
-
-    const routes = Array.from({ length: 20 }, (_, index) => ({ started: index * 2 }));
-    const observers = Array.from({ length: 20 }, (_, index) => ({ started: index * 2 + 1 }));
-    const kept = capCombinedNewest(routes, observers, (route) => route.started, (observer) => observer.started);
     expect(MAX_ACTIVE_EFFECTS).toBe(32);
-    expect(kept.routes).toHaveLength(16);
-    expect(kept.observers).toHaveLength(16);
-    expect(kept.routes[0]?.started).toBe(8);
-    expect(kept.observers[0]?.started).toBe(9);
   });
 });
 
@@ -287,6 +315,49 @@ describe('PacketAnimator motion preference lifecycle', () => {
     expect(canvas.dataset.motionMode).toBe('static');
     expect(state.activeRoutes[0]?.completedSegments).toBe(1);
     expect(state.residue).toEqual([expect.objectContaining({ addedAt: 500 })]);
+    animator.destroy();
+  });
+
+  it('keeps every visible route cue during a burst while lowering secondary quality', () => {
+    const media = {
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList;
+    vi.stubGlobal('matchMedia', vi.fn(() => media));
+    vi.stubGlobal('devicePixelRatio', 2);
+    vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+    const context = {
+      clearRect: vi.fn(),
+      setTransform: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context);
+    const map = {
+      on: vi.fn(),
+      off: vi.fn(),
+      project: vi.fn((coordinates: [number, number]) => ({ x: coordinates[0], y: coordinates[1] })),
+    } as unknown as maplibregl.Map;
+    const canvas = document.createElement('canvas');
+    const animator = new PacketAnimator(map, canvas);
+    const a = endpoint('a', 43.6, -79.4);
+    const b = endpoint('b', 43.7, -79.2);
+
+    for (let index = 0; index < 40; index += 1) {
+      animator.add({
+        seq: index + 1,
+        id: `burst-${index}`,
+        at: index,
+        payloadType: 'Advert',
+        mode: 'route',
+        segments: [segment(`route-${index}`, a, b)],
+      });
+    }
+
+    const state = animator as unknown as { activeRoutes: unknown[] };
+    expect(state.activeRoutes).toHaveLength(40);
+    expect(canvas.dataset.qualityMode).toBe('low');
+    expect(canvas.dataset.pixelRatio).toBe('1.25');
     animator.destroy();
   });
 });

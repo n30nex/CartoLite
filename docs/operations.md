@@ -54,4 +54,12 @@ Before changing `/opt/CartoLite`, record the running container ID/image, copy Co
 
 Acceptance requires exact version/SHA/image identity; ready MQTT/checkpoint/queue with zero drops; public schema v2 privacy; live SSE, animation, and scheduled sound; vector TileJSON/PBF/glyph success with no raster request; desktop and both phone orientations; regional MIME/cache proof; watchdog outage/recovery proof; restic backup/check/restore checksum; and a 20-minute soak with zero restarts/drops and no sustained CPU or memory regression.
 
-If any gate fails, restore the recorded v0.4.3 digest, restore the checkpoint only if the existing checkpoint is unusable, recreate only CartoLite, and re-run health, readiness, privacy, SSE, raster rollback, and browser checks before declaring recovery.
+## v0.6.0 visual cutover
+
+The rollback boundary for this release is v0.5.0 at `ghcr.io/n30nex/cartolite@sha256:46ef8248811593f8bc1717fb2e426828e990693462b63961ebae2af8d54b7fbb`.
+
+Promote only the Actions-tested `sha-<full-sha>` image digest; do not rebuild during release. Record the live v0.5.0 image, container ID, boot ID, protected Compose/configuration backup, and checkpoint checksum before recreating only `cartolite-cartolite-1`. Preserve the named data volume, non-root/read-only/cap-drop protections, ports, origin restriction, and bounded logs.
+
+In addition to the standard health, readiness, privacy, SSE, vector-basemap, exact-region, and soak checks, verify curved direction on a multi-hop route, one visible relay cue per scheduled note, all five protocol signatures, traffic-driven aurora/meter response, node wakes, route-wide framing only under Live Follow, manual-drag cancellation, reduced motion, phone portrait/landscape overflow, burst colour separation, adaptive quality state, and the 4,000-node/7,000-route long-task gate. External watchdog, backup, and edge-cache services are unchanged by this visual release.
+
+If any gate fails, restore the recorded v0.5.0 digest, restore the checkpoint only if the existing checkpoint is unusable, recreate only CartoLite, and re-run health, readiness, privacy, SSE, vector basemap, sound, and browser checks before declaring recovery.

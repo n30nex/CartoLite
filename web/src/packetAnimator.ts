@@ -1,6 +1,11 @@
 import type maplibregl from 'maplibre-gl';
 import type { EndpointV2, ObserverPacketEventV2, PacketView, RoutePacketView, RouteSegmentView } from './types';
-import { payloadColor } from './trafficVisuals';
+import {
+  normalizePacketKind,
+  packetSignature,
+  payloadColor,
+  type PacketSignature,
+} from './trafficVisuals';
 
 export { payloadColor } from './trafficVisuals';
 
@@ -20,6 +25,9 @@ export const MAX_RESIDUE = 240;
 export const LOW_POWER_MAX_ACTIVE_EFFECTS = 16;
 export const LOW_POWER_MAX_RESIDUE = 120;
 export const LOW_POWER_FRAME_MS = 1_000 / 30;
+export const NODE_WAKE_MS = 4_200;
+export const MAX_NODE_WAKES = 160;
+export const LOW_POWER_MAX_NODE_WAKES = 72;
 
 const EARTH_RADIUS_KM = 6371.0088;
 const MIN_SEGMENT_KM = 0.025;
@@ -27,9 +35,12 @@ const DISTANCE_SATURATION_KM = 300;
 const EXTRA_HOP_MS = 110;
 const COMET_TAIL_PX = 46;
 
+export type VisualQuality = 'full' | 'balanced' | 'low';
+
 interface ActiveRoute {
   packet: RoutePacketView;
   color: string;
+  signature: PacketSignature;
   started: number;
   duration: number;
   weights: number[];
@@ -41,23 +52,45 @@ interface ActiveRoute {
 interface ActiveObserver {
   packet: ObserverPacketEventV2;
   color: string;
+  signature: PacketSignature;
   started: number;
 }
 
 interface Residue {
   segment: RouteSegmentView;
   color: string;
+  signature: PacketSignature;
   addedAt: number;
 }
 
-interface ScreenPoint {
+interface NodeWake {
+  endpoint: EndpointV2;
+  color: string;
+  signature: PacketSignature;
+  addedAt: number;
+}
+
+export interface ScreenPoint {
   x: number;
   y: number;
 }
 
 interface ProjectedResidue {
   from: ScreenPoint;
+  control: ScreenPoint;
   to: ScreenPoint;
+}
+
+export interface QuadraticRoute {
+  from: ScreenPoint;
+  control: ScreenPoint;
+  to: ScreenPoint;
+}
+
+export interface QuadraticSlice {
+  control: ScreenPoint;
+  head: ScreenPoint;
+  tangent: ScreenPoint;
 }
 
 export interface RouteMotion {
@@ -124,6 +157,51 @@ export function interpolateScreenPoint(from: ScreenPoint, to: ScreenPoint, progr
   };
 }
 
+export function routeCurve(from: ScreenPoint, to: ScreenPoint, seed: string, strength = 1): QuadraticRoute {
+  const deltaX = to.x - from.x;
+  const deltaY = to.y - from.y;
+  const distance = Math.hypot(deltaX, deltaY);
+  const midpoint = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+  if (distance <= 0.01) return { from, control: midpoint, to };
+  const side = stableVisualHash(seed) % 2 === 0 ? 1 : -1;
+  const bend = Math.min(68, distance * 0.16) * clamp(strength);
+  return {
+    from,
+    control: {
+      x: midpoint.x - deltaY / distance * bend * side,
+      y: midpoint.y + deltaX / distance * bend * side,
+    },
+    to,
+  };
+}
+
+export function quadraticPoint(route: QuadraticRoute, progress: number): ScreenPoint {
+  const amount = clamp(progress);
+  const inverse = 1 - amount;
+  return {
+    x: inverse * inverse * route.from.x + 2 * inverse * amount * route.control.x + amount * amount * route.to.x,
+    y: inverse * inverse * route.from.y + 2 * inverse * amount * route.control.y + amount * amount * route.to.y,
+  };
+}
+
+export function quadraticSlice(route: QuadraticRoute, progress: number): QuadraticSlice {
+  const amount = clamp(progress);
+  const first = interpolateScreenPoint(route.from, route.control, amount);
+  const second = interpolateScreenPoint(route.control, route.to, amount);
+  return {
+    control: first,
+    head: interpolateScreenPoint(first, second, amount),
+    tangent: { x: second.x - first.x, y: second.y - first.y },
+  };
+}
+
+export function visualQuality(lowPower: boolean, activeRoutes: number, activeObservers = 0): VisualQuality {
+  const active = Math.max(0, activeRoutes) + Math.max(0, activeObservers);
+  if (lowPower || active > 24) return 'low';
+  if (active > 10) return 'balanced';
+  return 'full';
+}
+
 export function segmentNearViewport(
   from: ScreenPoint,
   to: ScreenPoint,
@@ -179,6 +257,16 @@ export function observerRadius(age: number): number {
   return 8 + clamp(Math.max(0, age) / OBSERVER_PING_MS) * 24;
 }
 
+export function nodeWakeLife(age: number): number {
+  return Math.pow(1 - clamp(Math.max(0, age) / NODE_WAKE_MS), 2.4);
+}
+
+export function nodeWakeRadius(age: number, signature: PacketSignature, reducedMotion = false): number {
+  if (reducedMotion) return 10;
+  const life = nodeWakeLife(age);
+  return 7 + (1 - life) * (signature === 'ripple' ? 24 : 15);
+}
+
 export function residueLife(age: number): number {
   const progress = clamp(Math.max(0, age) / RESIDUE_MS);
   return Math.pow(1 - progress, 2.15);
@@ -203,26 +291,6 @@ export function capNewest<T>(items: readonly T[], limit: number): T[] {
   return kept === 0 ? [] : items.slice(-kept);
 }
 
-export function capCombinedNewest<R, O>(
-  routes: readonly R[],
-  observers: readonly O[],
-  routeStarted: (route: R) => number,
-  observerStarted: (observer: O) => number,
-  limit = MAX_ACTIVE_EFFECTS,
-): { routes: R[]; observers: O[] } {
-  const keptRoutes = [...routes];
-  const keptObservers = [...observers];
-  while (keptRoutes.length + keptObservers.length > Math.max(0, Math.floor(limit))) {
-    const oldestRoute = keptRoutes[0];
-    const oldestObserver = keptObservers[0];
-    const routeTime = oldestRoute === undefined ? Number.POSITIVE_INFINITY : routeStarted(oldestRoute);
-    const observerTime = oldestObserver === undefined ? Number.POSITIVE_INFINITY : observerStarted(oldestObserver);
-    if (routeTime <= observerTime) keptRoutes.shift();
-    else keptObservers.shift();
-  }
-  return { routes: keptRoutes, observers: keptObservers };
-}
-
 export class PacketAnimator {
   private readonly context: CanvasRenderingContext2D;
   private readonly residueCanvas: HTMLCanvasElement;
@@ -232,6 +300,7 @@ export class PacketAnimator {
   private activeRoutes: ActiveRoute[] = [];
   private activeObservers: ActiveObserver[] = [];
   private residue: Residue[] = [];
+  private nodeWakes: NodeWake[] = [];
   private projectedResidue = new Map<Residue, ProjectedResidue>();
   private frameId = 0;
   private residueTimer?: number;
@@ -244,6 +313,8 @@ export class PacketAnimator {
   private residueCacheUpdatedAt = Number.NEGATIVE_INFINITY;
   private dpr = 1;
   private lastDrawAt = Number.NEGATIVE_INFINITY;
+  private scheduledWakeCount = 0;
+  private appliedQuality?: VisualQuality;
 
   constructor(private readonly map: maplibregl.Map, private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext('2d');
@@ -271,12 +342,17 @@ export class PacketAnimator {
   add(packet: PacketView): void {
     if (this.paused || !this.packetNearViewport(packet)) return;
     const color = payloadColor(packet.payloadType);
+    const kind = normalizePacketKind(packet.payloadType);
+    const signature = packetSignature(packet.payloadType);
     const started = performance.now();
+    this.canvas.dataset.lastPacketKind = kind;
+    this.canvas.dataset.lastSignature = signature;
     if (packet.mode === 'route') {
       if (packet.segments.length === 0) return;
       const route: ActiveRoute = {
         packet,
         color,
+        signature,
         started,
         duration: routeDuration(packet.segments),
         weights: segmentTravelWeights(packet.segments),
@@ -290,15 +366,23 @@ export class PacketAnimator {
           completedSegments: packet.segments.length,
         };
         route.completedSegments = packet.segments.length;
-        for (const segment of packet.segments) this.residue.push({ segment, color, addedAt: started });
+        for (const segment of packet.segments) {
+          this.residue.push({ segment, color, signature, addedAt: started });
+          this.addNodeWake(segment.to, color, signature, started);
+        }
         this.residue = capNewest(this.residue, this.residueLimit());
+        this.nodeWakes = capNewest(this.nodeWakes, this.nodeWakeLimit());
         this.residueContentDirty = true;
       }
+      const source = packet.segments[0]?.from;
+      if (source) this.addNodeWake(source, color, signature, started);
+      this.residueContentDirty = true;
       this.activeRoutes.push(route);
     } else {
-      this.activeObservers.push({ packet, color, started });
+      this.activeObservers.push({ packet, color, signature, started });
     }
-    this.trimActiveEffects();
+    this.trimDecorations();
+    this.updateMotionMode();
     this.requestFrame();
   }
 
@@ -308,6 +392,7 @@ export class PacketAnimator {
       this.activeRoutes = [];
       this.activeObservers = [];
       this.residue = [];
+      this.nodeWakes = [];
       this.projectedResidue.clear();
       this.residueContentDirty = true;
       window.cancelAnimationFrame(this.frameId);
@@ -331,7 +416,8 @@ export class PacketAnimator {
 
   private resize(): void {
     const rect = this.canvas.getBoundingClientRect();
-    this.dpr = Math.min(this.lowPower ? 1.25 : 1.5, window.devicePixelRatio || 1);
+    this.dpr = Math.min(this.qualityMode() === 'low' ? 1.25 : 1.5, window.devicePixelRatio || 1);
+    this.canvas.dataset.pixelRatio = String(this.dpr);
     this.canvas.width = Math.max(1, Math.floor(rect.width * this.dpr));
     this.canvas.height = Math.max(1, Math.floor(rect.height * this.dpr));
     this.residueCanvas.width = this.canvas.width;
@@ -365,10 +451,10 @@ export class PacketAnimator {
   private handleLowPowerChange = (event: MediaQueryListEvent): void => {
     if (this.lowPower === event.matches) return;
     this.lowPower = event.matches;
-    this.trimActiveEffects();
+    this.trimDecorations();
     this.residue = capNewest(this.residue, this.residueLimit());
+    this.nodeWakes = capNewest(this.nodeWakes, this.nodeWakeLimit());
     this.updateMotionMode();
-    this.resize();
   };
 
   private handleMapMove = (): void => {
@@ -387,9 +473,14 @@ export class PacketAnimator {
     if (this.paused || this.residueTimer !== undefined || this.frameId !== 0) return;
     let delay = Number.POSITIVE_INFINITY;
     if (this.residue.length > 0) {
-      const redraw = this.lowPower ? RESIDUE_REDRAW_MS * 2 : RESIDUE_REDRAW_MS;
+      const redraw = this.qualityMode() === 'low' ? RESIDUE_REDRAW_MS * 2 : RESIDUE_REDRAW_MS;
       delay = Math.max(0, this.residueCacheUpdatedAt + redraw - now);
       for (const item of this.residue) delay = Math.min(delay, Math.max(0, item.addedAt + RESIDUE_MS - now));
+    }
+    if (this.nodeWakes.length > 0) {
+      const redraw = this.qualityMode() === 'low' ? RESIDUE_REDRAW_MS * 2 : RESIDUE_REDRAW_MS;
+      delay = Math.min(delay, Math.max(0, this.residueCacheUpdatedAt + redraw - now));
+      for (const item of this.nodeWakes) delay = Math.min(delay, Math.max(0, item.addedAt + NODE_WAKE_MS - now));
     }
     if (this.reducedMotion) {
       for (const item of this.activeRoutes) {
@@ -415,7 +506,7 @@ export class PacketAnimator {
   private draw(now: number): void {
     this.frameId = 0;
     if (this.paused) return;
-    if (!this.reducedMotion && this.lowPower && now - this.lastDrawAt < LOW_POWER_FRAME_MS) {
+    if (!this.reducedMotion && this.qualityMode() === 'low' && now - this.lastDrawAt < LOW_POWER_FRAME_MS) {
       this.frameId = window.requestAnimationFrame(this.draw);
       return;
     }
@@ -427,6 +518,11 @@ export class PacketAnimator {
     const liveResidue = this.residue.filter((item) => now - item.addedAt < RESIDUE_MS);
     if (liveResidue.length !== this.residue.length) {
       this.residue = liveResidue;
+      this.residueContentDirty = true;
+    }
+    const liveWakes = this.nodeWakes.filter((item) => now - item.addedAt < NODE_WAKE_MS);
+    if (liveWakes.length !== this.nodeWakes.length) {
+      this.nodeWakes = liveWakes;
       this.residueContentDirty = true;
     }
     this.renderResidueCache(now);
@@ -442,6 +538,7 @@ export class PacketAnimator {
     this.activeObservers = this.activeObservers.filter(
       (item) => now - item.started < OBSERVER_PING_MS,
     );
+    this.updateMotionMode();
     for (const route of this.activeRoutes) this.drawRoute(route, now);
     for (const observer of this.activeObservers) this.drawObserver(observer, now);
     this.context.restore();
@@ -457,18 +554,20 @@ export class PacketAnimator {
       const segment = item.packet.segments[index];
       if (!segment) break;
       const addedAt = item.started + cumulativeWeight(item.weights, index) * item.duration;
-      this.residue.push({ segment, color: item.color, addedAt });
+      this.residue.push({ segment, color: item.color, signature: item.signature, addedAt });
+      this.addNodeWake(segment.to, item.color, item.signature, addedAt);
       item.completedSegments += 1;
       added = true;
     }
     if (added) {
       this.residue = capNewest(this.residue, this.residueLimit());
+      this.nodeWakes = capNewest(this.nodeWakes, this.nodeWakeLimit());
       this.residueContentDirty = true;
     }
   }
 
   private drawResidue(context: CanvasRenderingContext2D, item: Residue, projected: ProjectedResidue, now: number): void {
-    const { from, to } = projected;
+    const { from, control, to } = projected;
     const style = residueStyle(now - item.addedAt);
     const bloomOpacity = this.reducedMotion ? style.life * 0.12 : style.bloomOpacity;
     const coreOpacity = this.reducedMotion ? style.life * 0.34 : style.coreOpacity;
@@ -477,16 +576,35 @@ export class PacketAnimator {
     const coreColor = this.reducedMotion ? item.color : blendWithWhite(item.color, style.hot * 0.36);
     context.beginPath();
     context.moveTo(from.x, from.y);
-    context.lineTo(to.x, to.y);
+    context.quadraticCurveTo(control.x, control.y, to.x, to.y);
     context.strokeStyle = withAlpha(item.color, bloomOpacity);
     context.lineWidth = bloomWidth;
     context.stroke();
     context.beginPath();
     context.moveTo(from.x, from.y);
-    context.lineTo(to.x, to.y);
+    context.quadraticCurveTo(control.x, control.y, to.x, to.y);
+    context.setLineDash(item.signature === 'echo' ? [6, 5] : []);
     context.strokeStyle = withAlpha(coreColor, coreOpacity);
     context.lineWidth = coreWidth;
     context.stroke();
+    context.setLineDash([]);
+  }
+
+  private drawNodeWake(context: CanvasRenderingContext2D, item: NodeWake, now: number): void {
+    const life = nodeWakeLife(now - item.addedAt);
+    if (life <= 0) return;
+    const point = this.point(item.endpoint);
+    const radius = nodeWakeRadius(now - item.addedAt, item.signature, this.reducedMotion);
+    context.strokeStyle = withAlpha(item.color, life * (item.signature === 'double' ? 0.6 : 0.38));
+    context.lineWidth = item.signature === 'double' ? 1.5 : 1;
+    context.beginPath();
+    context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    context.stroke();
+    if (item.signature === 'double' && life > 0.12) {
+      context.beginPath();
+      context.arc(point.x, point.y, Math.max(3, radius - 5), 0, Math.PI * 2);
+      context.stroke();
+    }
   }
 
   private renderResidueCache(now: number): void {
@@ -495,7 +613,7 @@ export class PacketAnimator {
       now,
       this.residueProjectionDirty,
       this.residueContentDirty,
-      this.lowPower ? RESIDUE_REDRAW_MS * 2 : RESIDUE_REDRAW_MS,
+      this.qualityMode() === 'low' ? RESIDUE_REDRAW_MS * 2 : RESIDUE_REDRAW_MS,
     )) return;
 
     if (this.residueProjectionDirty) this.projectedResidue.clear();
@@ -505,9 +623,13 @@ export class PacketAnimator {
     }
     for (const item of this.residue) {
       if (!this.projectedResidue.has(item)) {
+        const from = this.point(item.segment.from);
+        const to = this.point(item.segment.to);
+        const curve = routeCurve(from, to, `${item.segment.routeId}|${item.signature}`);
         this.projectedResidue.set(item, {
-          from: this.point(item.segment.from),
-          to: this.point(item.segment.to),
+          from,
+          control: curve.control,
+          to,
         });
       }
     }
@@ -520,6 +642,7 @@ export class PacketAnimator {
       const projected = this.projectedResidue.get(item);
       if (projected) this.drawResidue(this.residueContext, item, projected, now);
     }
+    for (const item of this.nodeWakes) this.drawNodeWake(this.residueContext, item, now);
     this.residueContext.restore();
     this.residueProjectionDirty = false;
     this.residueContentDirty = false;
@@ -548,9 +671,13 @@ export class PacketAnimator {
     if (segment && elapsed <= item.duration) {
       const from = this.point(segment.from);
       const to = this.point(segment.to);
-      const head = interpolateScreenPoint(from, to, motion.localProgress);
-      this.drawProgressiveTrail(from, head, item.color);
-      this.comet(from.x, from.y, head.x, head.y, item.color);
+      const curve = routeCurve(from, to, `${segment.routeId}|${item.signature}`);
+      const slice = quadraticSlice(curve, motion.localProgress);
+      this.drawProgressiveTrail(curve.from, slice.control, slice.head, item.color, item.signature);
+      this.comet(slice.tangent.x, slice.tangent.y, slice.head.x, slice.head.y, item.color);
+      if (this.qualityMode() !== 'low') {
+        this.drawPacketSignature(slice.head, slice.tangent, item.color, item.signature, elapsed);
+      }
     }
     const first = item.packet.segments[0];
     if (first) this.drawBloom(this.point(first.from), item.color, pulseTiming(elapsed, SOURCE_IGNITION_MS), 10, 21);
@@ -567,20 +694,28 @@ export class PacketAnimator {
     }
   }
 
-  private drawProgressiveTrail(from: ScreenPoint, head: ScreenPoint, color: string): void {
+  private drawProgressiveTrail(
+    from: ScreenPoint,
+    control: ScreenPoint,
+    head: ScreenPoint,
+    color: string,
+    signature: PacketSignature,
+  ): void {
     if (Math.hypot(head.x - from.x, head.y - from.y) <= 0.01) return;
     this.context.strokeStyle = withAlpha(color, 0.19);
-    this.context.lineWidth = 6.6;
+    this.context.lineWidth = this.qualityMode() === 'full' ? 7.4 : 5.8;
     this.context.beginPath();
     this.context.moveTo(from.x, from.y);
-    this.context.lineTo(head.x, head.y);
+    this.context.quadraticCurveTo(control.x, control.y, head.x, head.y);
     this.context.stroke();
     this.context.strokeStyle = withAlpha(blendWithWhite(color, 0.3), 0.74);
     this.context.lineWidth = 1.55;
+    this.context.setLineDash(signature === 'echo' ? [7, 5] : []);
     this.context.beginPath();
     this.context.moveTo(from.x, from.y);
-    this.context.lineTo(head.x, head.y);
+    this.context.quadraticCurveTo(control.x, control.y, head.x, head.y);
     this.context.stroke();
+    this.context.setLineDash([]);
   }
 
   private drawStaticRoute(item: ActiveRoute, opacity: number, motion?: RouteMotion): void {
@@ -591,16 +726,18 @@ export class PacketAnimator {
       if (!segment) continue;
       const from = this.point(segment.from);
       const to = this.point(segment.to);
-      this.drawStaticSegment(from, to, item.color, opacity);
+      const curve = routeCurve(from, to, `${segment.routeId}|${item.signature}`);
+      this.drawStaticSegment(curve, item.color, opacity, item.signature);
       visibleEndpoint = to;
     }
     if (motion && completedSegments < item.packet.segments.length) {
       const segment = item.packet.segments[motion.segmentIndex];
       if (segment) {
         const from = this.point(segment.from);
-        const to = interpolateScreenPoint(from, this.point(segment.to), motion.localProgress);
-        this.drawStaticSegment(from, to, item.color, opacity);
-        visibleEndpoint = to;
+        const curve = routeCurve(from, this.point(segment.to), `${segment.routeId}|${item.signature}`);
+        const slice = quadraticSlice(curve, motion.localProgress);
+        this.drawStaticSegment({ from, control: slice.control, to: slice.head }, item.color, opacity, item.signature);
+        visibleEndpoint = slice.head;
       }
     }
     const first = item.packet.segments[0];
@@ -615,16 +752,18 @@ export class PacketAnimator {
     if (last) this.endpointGlow(this.point(last.to), item.color, opacity);
   }
 
-  private drawStaticSegment(from: ScreenPoint, to: ScreenPoint, color: string, opacity: number): void {
+  private drawStaticSegment(route: QuadraticRoute, color: string, opacity: number, signature: PacketSignature): void {
     this.context.strokeStyle = withAlpha(color, opacity * 0.2);
     this.context.lineWidth = 7;
     this.context.beginPath();
-    this.context.moveTo(from.x, from.y);
-    this.context.lineTo(to.x, to.y);
+    this.context.moveTo(route.from.x, route.from.y);
+    this.context.quadraticCurveTo(route.control.x, route.control.y, route.to.x, route.to.y);
     this.context.stroke();
     this.context.strokeStyle = withAlpha(color, opacity * 0.75);
     this.context.lineWidth = 1.8;
+    this.context.setLineDash(signature === 'echo' ? [6, 5] : []);
     this.context.stroke();
+    this.context.setLineDash([]);
   }
 
   private drawObserver(item: ActiveObserver, now: number): void {
@@ -647,9 +786,7 @@ export class PacketAnimator {
     this.context.fill();
   }
 
-  private comet(fromX: number, fromY: number, x: number, y: number, color: string): void {
-    const deltaX = x - fromX;
-    const deltaY = y - fromY;
+  private comet(deltaX: number, deltaY: number, x: number, y: number, color: string): void {
     const distance = Math.hypot(deltaX, deltaY);
     if (distance <= 0.01) return;
     const tailLength = Math.min(COMET_TAIL_PX, distance);
@@ -690,6 +827,54 @@ export class PacketAnimator {
     this.context.beginPath();
     this.context.arc(x, y, 1.65, 0, Math.PI * 2);
     this.context.fill();
+  }
+
+  private drawPacketSignature(
+    point: ScreenPoint,
+    tangent: ScreenPoint,
+    color: string,
+    signature: PacketSignature,
+    elapsed: number,
+  ): void {
+    const distance = Math.hypot(tangent.x, tangent.y) || 1;
+    const directionX = tangent.x / distance;
+    const directionY = tangent.y / distance;
+    const phase = (elapsed % 520) / 520;
+    this.context.save();
+    this.context.strokeStyle = withAlpha(color, 0.72);
+    this.context.fillStyle = withAlpha(color, 0.72);
+    this.context.lineWidth = 1.05;
+    if (signature === 'ripple') {
+      this.context.beginPath();
+      this.context.arc(point.x, point.y, 3 + phase * 6, 0, Math.PI * 2);
+      this.context.stroke();
+    } else if (signature === 'echo') {
+      for (const offset of [6, 12]) {
+        this.context.beginPath();
+        this.context.moveTo(point.x - directionX * offset - directionY * 2.5, point.y - directionY * offset + directionX * 2.5);
+        this.context.lineTo(point.x - directionX * offset + directionY * 2.5, point.y - directionY * offset - directionX * 2.5);
+        this.context.stroke();
+      }
+    } else if (signature === 'orbit') {
+      const angle = phase * Math.PI * 2;
+      this.context.beginPath();
+      this.context.arc(point.x + Math.cos(angle) * 5, point.y + Math.sin(angle) * 5, 1.35, 0, Math.PI * 2);
+      this.context.fill();
+    } else if (signature === 'double') {
+      for (const radius of [3.5, 6.5]) {
+        this.context.beginPath();
+        this.context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        this.context.stroke();
+      }
+    } else {
+      const perpendicularX = -directionY;
+      const perpendicularY = directionX;
+      this.context.beginPath();
+      this.context.moveTo(point.x - perpendicularX * 4, point.y - perpendicularY * 4);
+      this.context.lineTo(point.x + perpendicularX * 4, point.y + perpendicularY * 4);
+      this.context.stroke();
+    }
+    this.context.restore();
   }
 
   private drawBloom(
@@ -742,29 +927,50 @@ export class PacketAnimator {
     this.context.fill();
   }
 
-  private trimActiveEffects(): void {
-    const kept = capCombinedNewest(
-      this.activeRoutes,
-      this.activeObservers,
-      (route) => route.started,
-      (observer) => observer.started,
-      this.lowPower ? LOW_POWER_MAX_ACTIVE_EFFECTS : MAX_ACTIVE_EFFECTS,
-    );
-    this.activeRoutes = kept.routes;
-    this.activeObservers = kept.observers;
+  private trimDecorations(): void {
+    const observerLimit = this.qualityMode() === 'low' ? LOW_POWER_MAX_ACTIVE_EFFECTS : MAX_ACTIVE_EFFECTS;
+    // Route travel is never capped: every visible live hop keeps its directional
+    // cue. Only observer rings and lingering decoration are bounded during bursts.
+    this.activeObservers = capNewest(this.activeObservers, observerLimit);
+    this.residue = capNewest(this.residue, this.residueLimit());
+    this.nodeWakes = capNewest(this.nodeWakes, this.nodeWakeLimit());
+  }
+
+  private addNodeWake(endpoint: EndpointV2, color: string, signature: PacketSignature, addedAt: number): void {
+    this.nodeWakes.push({ endpoint, color, signature, addedAt });
+    this.scheduledWakeCount += 1;
+    this.canvas.dataset.wakesScheduled = String(this.scheduledWakeCount);
   }
 
   private hasVisibleEffects(): boolean {
-    return this.activeRoutes.length > 0 || this.activeObservers.length > 0 || this.residue.length > 0;
+    return this.activeRoutes.length > 0
+      || this.activeObservers.length > 0
+      || this.residue.length > 0
+      || this.nodeWakes.length > 0;
   }
 
   private updateMotionMode(): void {
+    const quality = this.qualityMode();
+    const qualityChanged = this.appliedQuality !== undefined && this.appliedQuality !== quality;
+    this.appliedQuality = quality;
     this.canvas.dataset.motionMode = this.reducedMotion ? 'static' : 'animated';
     this.canvas.dataset.powerMode = this.lowPower ? 'low' : 'full';
+    this.canvas.dataset.qualityMode = quality;
+    this.canvas.dataset.activeRoutes = String(this.activeRoutes.length);
+    this.canvas.dataset.nodeWakes = String(this.nodeWakes.length);
+    if (qualityChanged) this.resize();
   }
 
   private residueLimit(): number {
-    return this.lowPower ? LOW_POWER_MAX_RESIDUE : MAX_RESIDUE;
+    return this.qualityMode() === 'low' ? LOW_POWER_MAX_RESIDUE : MAX_RESIDUE;
+  }
+
+  private nodeWakeLimit(): number {
+    return this.qualityMode() === 'low' ? LOW_POWER_MAX_NODE_WAKES : MAX_NODE_WAKES;
+  }
+
+  private qualityMode(): VisualQuality {
+    return visualQuality(this.lowPower, this.activeRoutes.length, this.activeObservers.length);
   }
 
   private packetNearViewport(packet: PacketView): boolean {
@@ -808,6 +1014,15 @@ function cumulativeWeight(weights: readonly number[], index: number): number {
 
 function degreesToRadians(value: number): number {
   return (value * Math.PI) / 180;
+}
+
+function stableVisualHash(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 function clamp(value: number): number {
