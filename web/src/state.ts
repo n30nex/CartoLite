@@ -1,9 +1,25 @@
-import type { NodeV1, PacketV1, RouteV1, StateV1, StatusV1 } from './types';
-import { normalizePacketKind, routeTrafficAfterPacket, trafficRenderBucket } from './trafficVisuals';
+import type {
+  EndpointV2,
+  NodeV2,
+  PacketEventV2,
+  PacketView,
+  RouteSegmentView,
+  RouteV2,
+  StateV2,
+  StatusV2
+} from './types';
+import { normalizePacketKind, routeTrafficAfterPacket } from './trafficVisuals';
 
-const ROUTE_BATCH_MS = 250;
+export const ROUTE_BATCH_MS = 1_000;
 
 export type SequenceAction = 'duplicate' | 'next' | 'gap';
+
+export interface MapChanges {
+  reset?: boolean;
+  nodes?: readonly NodeV2[];
+  routes?: readonly RouteV2[];
+  routeGeometry?: readonly string[];
+}
 
 export function sequenceAction(current: number, incoming: number): SequenceAction {
   if (incoming <= current) return 'duplicate';
@@ -11,51 +27,60 @@ export function sequenceAction(current: number, incoming: number): SequenceActio
   return 'gap';
 }
 
-export function assertStateV1(value: unknown): asserts value is StateV1 {
+export function assertStateV2(value: unknown): asserts value is StateV2 {
   if (!value || typeof value !== 'object') throw new Error('state response is not an object');
-  const state = value as Partial<StateV1>;
-  if (state.schemaVersion !== 1) throw new Error(`unsupported state schema: ${String(state.schemaVersion)}`);
+  const state = value as Partial<StateV2>;
+  if (state.schemaVersion !== 2) throw new Error(`unsupported state schema: ${String(state.schemaVersion)}`);
   if (typeof state.bootId !== 'string' || !state.bootId) throw new Error('state is missing bootId');
   if (typeof state.seq !== 'number' || !Number.isSafeInteger(state.seq) || state.seq < 0) throw new Error('state has invalid sequence');
+  if (!Number.isFinite(state.serverTime)) throw new Error('state has invalid server time');
   if (!state.status || !state.map || !Array.isArray(state.nodes) || !Array.isArray(state.routes)) {
     throw new Error('state response is incomplete');
   }
+  if (!validStatus(state.status) || !validMap(state.map)) throw new Error('state metadata is invalid');
+  if (state.nodes.some((node) => !validNode(node))) throw new Error('state contains an invalid node');
+  const nodeIDs = new Set(state.nodes.map((node) => node.id));
+  if (nodeIDs.size !== state.nodes.length) throw new Error('state contains duplicate node IDs');
+  if (state.routes.some((route) => !validRoute(route) || !nodeIDs.has(route.fromId) || !nodeIDs.has(route.toId))) {
+    throw new Error('state contains an invalid route');
+  }
+  if (new Set(state.routes.map((route) => route.id)).size !== state.routes.length) throw new Error('state contains duplicate route IDs');
 }
 
-type Listener = (state: Readonly<StateV1>, mapChanged: boolean) => void;
+type Listener = (state: Readonly<StateV2>, changes: MapChanges | null) => void;
 
 export class LiveStore {
-  private current: StateV1;
+  private current: StateV2;
   private listeners = new Set<Listener>();
   private nodeIndexes = new Map<string, number>();
   private routeIndexes = new Map<string, number>();
   private nodeRoutes = new Map<string, Set<string>>();
-  private pendingRoutes = new Map<string, RouteV1>();
+  private pendingRoutes = new Map<string, RouteV2>();
   private routeTimer?: number;
 
-  constructor(initial: StateV1) {
+  constructor(initial: StateV2) {
     this.current = initial;
     this.rebuildIndexes();
   }
 
-  get snapshot(): Readonly<StateV1> {
+  get snapshot(): Readonly<StateV2> {
     return this.current;
   }
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
-    listener(this.current, true);
+    listener(this.current, { reset: true });
     return () => this.listeners.delete(listener);
   }
 
-  replace(next: StateV1): void {
+  replace(next: StateV2): void {
     this.clearRouteBatch();
     this.current = next;
     this.rebuildIndexes();
-    this.emit(true);
+    this.emit({ reset: true });
   }
 
-  upsertNode(node: NodeV1, seq: number): void {
+  upsertNode(node: NodeV2, seq: number): void {
     const index = this.nodeIndexes.get(node.id);
     const nodes = [...this.current.nodes];
     if (index !== undefined) nodes[index] = node;
@@ -64,24 +89,23 @@ export class LiveStore {
       nodes.push(node);
     }
     this.current = { ...this.current, seq, nodes };
-    this.syncRouteEndpoints(node);
-    this.emit(true);
+    this.emit({ nodes: [node], routeGeometry: [...(this.nodeRoutes.get(node.id) ?? [])] });
   }
 
-  updateStatus(status: StatusV1, seq: number): void {
+  updateStatus(status: StatusV2, seq: number): void {
     this.current = { ...this.current, seq, status };
-    this.emit(false);
+    this.emit(null);
   }
 
   advance(seq: number): void {
     this.current = { ...this.current, seq };
   }
 
-  applyPacket(packet: PacketV1): void {
+  applyPacket(packet: PacketEventV2): PacketView | null {
     this.advance(packet.seq);
-    if (packet.mode === 'observer') {
-      return;
-    }
+    if (packet.mode === 'observer') return packet;
+
+    const resolved: RouteSegmentView[] = [];
     for (const segment of packet.segments) {
       const existing = this.pendingRoutes.get(segment.routeId) ?? this.routeByID(segment.routeId);
       const packetCount = (existing?.packetCount ?? 0) + 1;
@@ -89,15 +113,20 @@ export class LiveStore {
       const isNewest = packet.at >= previousLastHeard;
       this.queueRoute({
         id: segment.routeId,
-        from: segment.from,
-        to: segment.to,
+        fromId: segment.fromId,
+        toId: segment.toId,
         packetCount,
         lastHeard: Math.max(previousLastHeard, packet.at),
         intensity: routeIntensity(packetCount),
         lastKind: isNewest ? normalizePacketKind(packet.payloadType) : existing?.lastKind ?? 'Other',
         traffic: routeTrafficAfterPacket(existing?.traffic ?? 0, previousLastHeard, packet.at)
       });
+      const from = this.nodeByID(segment.fromId);
+      const to = this.nodeByID(segment.toId);
+      if (from && to) resolved.push({ routeId: segment.routeId, from: endpoint(from), to: endpoint(to) });
     }
+    if (resolved.length !== packet.segments.length) return null;
+    return { ...packet, segments: resolved };
   }
 
   destroy(): void {
@@ -105,16 +134,19 @@ export class LiveStore {
     this.listeners.clear();
   }
 
-  private routeByID(id: string): RouteV1 | undefined {
+  private nodeByID(id: string): NodeV2 | undefined {
+    const index = this.nodeIndexes.get(id);
+    return index === undefined ? undefined : this.current.nodes[index];
+  }
+
+  private routeByID(id: string): RouteV2 | undefined {
     const index = this.routeIndexes.get(id);
     return index === undefined ? undefined : this.current.routes[index];
   }
 
-  private queueRoute(route: RouteV1): void {
+  private queueRoute(route: RouteV2): void {
     const previous = this.pendingRoutes.get(route.id) ?? this.routeByID(route.id);
-    if (previous && (previous.from.id !== route.from.id || previous.to.id !== route.to.id)) {
-      this.unindexRoute(previous);
-    }
+    if (previous && (previous.fromId !== route.fromId || previous.toId !== route.toId)) this.unindexRoute(previous);
     this.pendingRoutes.set(route.id, route);
     this.indexRoute(route);
     if (this.routeTimer === undefined) {
@@ -126,36 +158,21 @@ export class LiveStore {
     this.routeTimer = undefined;
     if (this.pendingRoutes.size === 0) return;
     const routes = [...this.current.routes];
-    let shouldEmit = false;
+    const changed: RouteV2[] = [];
     for (const route of this.pendingRoutes.values()) {
       const index = this.routeIndexes.get(route.id);
       if (index === undefined) {
         this.routeIndexes.set(route.id, routes.length);
         routes.push(route);
-        shouldEmit = true;
+        changed.push(route);
       } else {
-        const previous = routes[index];
-        if (!previous || routeNeedsRender(previous, route)) shouldEmit = true;
+        changed.push(route);
         routes[index] = route;
       }
     }
     this.pendingRoutes.clear();
     this.current = { ...this.current, routes };
-    if (shouldEmit) this.emit(true);
-  }
-
-  private syncRouteEndpoints(node: NodeV1): void {
-    const routeIDs = this.nodeRoutes.get(node.id);
-    if (!routeIDs) return;
-    const endpoint = { id: node.id, label: node.label, lat: node.lat, lng: node.lng };
-    for (const routeID of routeIDs) {
-      const route = this.pendingRoutes.get(routeID) ?? this.routeByID(routeID);
-      if (!route) continue;
-      const from = route.from.id === node.id ? endpoint : route.from;
-      const to = route.to.id === node.id ? endpoint : route.to;
-      if (sameEndpoint(from, route.from) && sameEndpoint(to, route.to)) continue;
-      this.queueRoute({ ...route, from, to });
-    }
+    if (changed.length > 0) this.emit({ routes: changed });
   }
 
   private rebuildIndexes(): void {
@@ -169,8 +186,8 @@ export class LiveStore {
     });
   }
 
-  private indexRoute(route: RouteV1): void {
-    for (const nodeID of new Set([route.from.id, route.to.id])) {
+  private indexRoute(route: RouteV2): void {
+    for (const nodeID of new Set([route.fromId, route.toId])) {
       let routes = this.nodeRoutes.get(nodeID);
       if (!routes) {
         routes = new Set<string>();
@@ -180,8 +197,8 @@ export class LiveStore {
     }
   }
 
-  private unindexRoute(route: RouteV1): void {
-    for (const nodeID of new Set([route.from.id, route.to.id])) {
+  private unindexRoute(route: RouteV2): void {
+    for (const nodeID of new Set([route.fromId, route.toId])) {
       const routes = this.nodeRoutes.get(nodeID);
       routes?.delete(route.id);
       if (routes?.size === 0) this.nodeRoutes.delete(nodeID);
@@ -194,12 +211,16 @@ export class LiveStore {
     this.pendingRoutes.clear();
   }
 
-  private emit(mapChanged: boolean): void {
-    for (const listener of this.listeners) listener(this.current, mapChanged);
+  private emit(changes: MapChanges | null): void {
+    for (const listener of this.listeners) listener(this.current, changes);
   }
 }
 
-function routeIntensity(packetCount: number): RouteV1['intensity'] {
+function endpoint(node: NodeV2): EndpointV2 {
+  return { id: node.id, label: node.label, lat: node.lat, lng: node.lng };
+}
+
+function routeIntensity(packetCount: number): RouteV2['intensity'] {
   if (packetCount >= 16) return 4;
   if (packetCount >= 8) return 3;
   if (packetCount >= 4) return 2;
@@ -207,20 +228,57 @@ function routeIntensity(packetCount: number): RouteV1['intensity'] {
   return 0;
 }
 
-function sameEndpoint(left: RouteV1['from'], right: RouteV1['from']): boolean {
-  return left.id === right.id && left.label === right.label && left.lat === right.lat && left.lng === right.lng;
+function validNode(node: NodeV2): boolean {
+  return typeof node?.id === 'string'
+    && node.id.length > 0
+    && typeof node.label === 'string'
+    && ['repeater', 'companion', 'room_server', 'sensor', 'unknown'].includes(node.role)
+    && typeof node.observer === 'boolean'
+    && Number.isFinite(node.lat)
+    && Number.isFinite(node.lng)
+    && Math.abs(node.lat) <= 90
+    && Math.abs(node.lng) <= 180
+    && Number.isFinite(node.lastSeen);
 }
 
-function routeNeedsRender(previous: RouteV1, next: RouteV1): boolean {
-  return !sameEndpoint(previous.from, next.from)
-    || !sameEndpoint(previous.to, next.to)
-    || previous.intensity !== next.intensity
-    || previous.lastKind !== next.lastKind
-    || trafficRenderBucket(previous.traffic) !== trafficRenderBucket(next.traffic)
-    || Math.floor(previous.lastHeard / 60_000) !== Math.floor(next.lastHeard / 60_000);
+function validRoute(route: RouteV2): boolean {
+  return typeof route?.id === 'string'
+    && route.id.length > 0
+    && typeof route.fromId === 'string'
+    && route.fromId.length > 0
+    && typeof route.toId === 'string'
+    && route.toId.length > 0
+    && Number.isSafeInteger(route.packetCount)
+    && route.packetCount >= 1
+    && Number.isFinite(route.lastHeard)
+    && Number.isSafeInteger(route.intensity)
+    && route.intensity >= 0
+    && route.intensity <= 4
+    && ['Advert', 'Trace', 'Text', 'ACK', 'Control', 'Other'].includes(route.lastKind)
+    && Number.isFinite(route.traffic)
+    && route.traffic >= 0
+    && route.traffic <= 64;
 }
 
-export function activityLabel(state: Readonly<StateV1>, streamConnected: boolean): {
+function validStatus(status: StatusV2): boolean {
+  return (status.feed === 'connected' || status.feed === 'disconnected')
+    && (status.activity === 'active' || status.activity === 'quiet')
+    && (status.lastPacketAt === undefined || Number.isFinite(status.lastPacketAt))
+    && Number.isSafeInteger(status.dropped)
+    && status.dropped >= 0
+    && typeof status.version === 'string'
+    && typeof status.gitSha === 'string';
+}
+
+function validMap(map: StateV2['map']): boolean {
+  return Array.isArray(map.center)
+    && map.center.length === 2
+    && Number.isFinite(map.center[0])
+    && Number.isFinite(map.center[1])
+    && Number.isFinite(map.zoom);
+}
+
+export function activityLabel(state: Readonly<StateV2>, streamConnected: boolean): {
   state: 'active' | 'quiet' | 'reconnecting' | 'offline';
   text: string;
 } {

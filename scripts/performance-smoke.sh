@@ -3,11 +3,25 @@ set -euo pipefail
 
 base_url="${1:-http://127.0.0.1:39476}"
 broker_container="${2:-cartolite-mqtt}"
+app_container="${3:-cartolite}"
 packet_count="${CARTOLITE_LOAD_PACKETS:-1200}"
 client_count="${CARTOLITE_LOAD_CLIENTS:-8}"
 
 pids=()
 latency_events="$(mktemp)"
+container_pid="$(docker inspect "$app_container" --format '{{.State.Pid}}')"
+read_write_bytes() {
+  local io_file="/proc/$container_pid/io"
+  local value
+  value="$(awk '/^write_bytes:/ {print $2}' "$io_file" 2>/dev/null || true)"
+  if [[ ! "$value" =~ ^[0-9]+$ ]] && command -v sudo >/dev/null 2>&1; then
+    value="$(sudo -n awk '/^write_bytes:/ {print $2}' "$io_file")"
+  fi
+  [[ "$value" =~ ^[0-9]+$ ]]
+  printf '%s\n' "$value"
+}
+write_bytes_before="$(read_write_bytes)"
+[[ "$write_bytes_before" =~ ^[0-9]+$ ]]
 cleanup() {
   for pid in "${pids[@]:-}"; do kill "$pid" >/dev/null 2>&1 || true; done
   wait >/dev/null 2>&1 || true
@@ -68,8 +82,14 @@ done
 curl --fail --silent "$base_url/readyz" | jq -e '.ready == true and .dropped == 0 and .queueDepth == 0' >/dev/null
 curl --fail --silent "$base_url/api/state" | jq -e '.status.dropped == 0' >/dev/null
 
-container_pid="$(docker inspect cartolite --format '{{.State.Pid}}')"
 rss_kib="$(awk '/^VmRSS:/ {print $2}' "/proc/$container_pid/status")"
 [[ "$rss_kib" =~ ^[0-9]+$ ]]
 echo "CartoLite RSS after load: ${rss_kib} KiB"
 test "$rss_kib" -lt 131072
+
+write_bytes_after="$(read_write_bytes)"
+[[ "$write_bytes_after" =~ ^[0-9]+$ ]]
+write_bytes_delta=$((write_bytes_after - write_bytes_before))
+echo "CartoLite process writes during load: ${write_bytes_delta} bytes"
+test "$write_bytes_delta" -ge 0
+test "$write_bytes_delta" -lt $((16 * 1024 * 1024))

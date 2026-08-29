@@ -2,23 +2,23 @@ import type { PacketKind } from './trafficVisuals';
 
 export type NodeRole = 'repeater' | 'companion' | 'room_server' | 'sensor' | 'unknown';
 
-export interface EndpointV1 {
+export interface EndpointV2 {
   id: string;
   label: string;
   lat: number;
   lng: number;
 }
 
-export interface NodeV1 extends EndpointV1 {
+export interface NodeV2 extends EndpointV2 {
   role: NodeRole;
   observer: boolean;
   lastSeen: number;
 }
 
-export interface RouteV1 {
+export interface RouteV2 {
   id: string;
-  from: EndpointV1;
-  to: EndpointV1;
+  fromId: string;
+  toId: string;
   packetCount: number;
   lastHeard: number;
   intensity: 0 | 1 | 2 | 3 | 4;
@@ -26,7 +26,7 @@ export interface RouteV1 {
   traffic: number;
 }
 
-export interface StatusV1 {
+export interface StatusV2 {
   feed: 'connected' | 'disconnected';
   activity: 'active' | 'quiet';
   lastPacketAt?: number;
@@ -35,42 +35,55 @@ export interface StatusV1 {
   gitSha: string;
 }
 
-export interface StateV1 {
-  schemaVersion: 1;
+export interface StateV2 {
+  schemaVersion: 2;
   bootId: string;
   seq: number;
   serverTime: number;
-  status: StatusV1;
+  status: StatusV2;
   map: { center: [number, number]; zoom: number };
-  nodes: NodeV1[];
-  routes: RouteV1[];
+  nodes: NodeV2[];
+  routes: RouteV2[];
 }
 
-export interface RouteSegmentV1 {
+export interface RouteSegmentEventV2 {
   routeId: string;
-  from: EndpointV1;
-  to: EndpointV1;
+  fromId: string;
+  toId: string;
 }
 
-interface PacketBaseV1 {
+interface PacketBaseV2 {
   seq: number;
   id: string;
   at: number;
   payloadType: PacketKind;
 }
 
-export interface RoutePacketV1 extends PacketBaseV1 {
+export interface RoutePacketEventV2 extends PacketBaseV2 {
   mode: 'route';
-  segments: RouteSegmentV1[];
+  segments: RouteSegmentEventV2[];
 }
 
-export interface ObserverPacketV1 extends PacketBaseV1 {
+export interface ObserverPacketEventV2 extends PacketBaseV2 {
   mode: 'observer';
-  observer: EndpointV1;
+  observer: EndpointV2;
 }
 
-export type PacketV1 = RoutePacketV1 | ObserverPacketV1;
-export type HelloV1 = { seq: number; bootId: string };
-export type NodeEventV1 = { seq: number; node: NodeV1 };
-export type StatusEventV1 = { seq: number; status: StatusV1 };
-export type ResetV1 = { seq: number; bootId: string };
+export type PacketEventV2 = RoutePacketEventV2 | ObserverPacketEventV2;
+
+export interface RouteSegmentView {
+  routeId: string;
+  from: EndpointV2;
+  to: EndpointV2;
+}
+
+export interface RoutePacketView extends PacketBaseV2 {
+  mode: 'route';
+  segments: RouteSegmentView[];
+}
+
+export type PacketView = RoutePacketView | ObserverPacketEventV2;
+export type HelloV2 = { seq: number; bootId: string };
+export type NodeEventV2 = { seq: number; node: NodeV2 };
+export type StatusEventV2 = { seq: number; status: StatusV2 };
+export type ResetV2 = { seq: number; bootId: string };

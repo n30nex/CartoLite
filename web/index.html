@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#03070b" />
     <meta name="description" content="Live MeshCore Canada RF packet routes." />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="CartoLite · MeshCore Canada" />
+    <meta property="og:description" content="A privacy-safe live view of high-confidence MeshCore Canada RF traffic." />
+    <meta property="og:url" content="https://carto.canadaverse.org/" />
+    <meta property="og:image" content="https://carto.canadaverse.org/social-card.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://carto.canadaverse.org/" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/site.webmanifest" />
     <title>CartoLite · MeshCore Canada</title>
   </head>
   <body>
@@ -13,7 +22,9 @@
       <div class="map-grade" aria-hidden="true"></div>
       <canvas id="packet-canvas" aria-hidden="true"></canvas>
       <section id="topbar" class="topbar glass" aria-label="Live status">
-        <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>CartoLite</span></div>
+        <button id="about-button" class="brand" type="button" aria-haspopup="dialog" title="About CartoLite">
+          <span class="brand-mark" aria-hidden="true"></span><span>CartoLite</span>
+        </button>
         <div id="status" class="status" data-state="loading" role="status">
           <span class="status-dot" aria-hidden="true"></span><span id="status-text">Starting…</span>
         </div>
@@ -22,7 +33,7 @@
         <button id="follow-button" class="control-button" type="button" aria-pressed="false" title="Follow live packets">
           <span aria-hidden="true">◎</span><span>Live Follow</span>
         </button>
-        <button id="routes-button" class="control-button selected" type="button" aria-label="Routes" aria-pressed="true" title="Hide routes">
+        <button id="routes-button" class="control-button" type="button" aria-label="Routes" aria-pressed="false" title="Show routes">
           <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="6" cy="19" r="3"></circle>
             <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"></path>
@@ -30,7 +41,7 @@
           </svg>
           <span>Routes</span>
         </button>
-        <button id="heatmap-button" class="control-button" type="button" aria-label="Heatmap" aria-pressed="false" title="Show heatmap">
+        <button id="heatmap-button" class="control-button selected" type="button" aria-label="Heatmap" aria-pressed="true" title="Hide heatmap">
           <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="12" cy="12" r="2.5"></circle>
             <circle cx="12" cy="12" r="6"></circle>
@@ -47,6 +58,16 @@
         </button>
         <button id="reset-button" class="control-button icon-button" type="button" title="Reset map view" aria-label="Reset map view">⌂</button>
       </section>
+      <label class="route-window glass" for="route-window">
+        <span>Routes</span>
+        <select id="route-window" aria-label="Route age window">
+          <option value="auto">Auto · 15m</option>
+          <option value="15m">15m</option>
+          <option value="1h">1h</option>
+          <option value="6h">6h</option>
+          <option value="24h">24h</option>
+        </select>
+      </label>
       <section id="legend" class="legend glass" aria-label="Map legend" data-collapsed="true" data-focused="false">
         <button id="legend-toggle" class="legend-toggle" type="button" aria-label="Show map legend" aria-controls="legend-items" aria-expanded="false">
           <span class="legend-toggle-mark" aria-hidden="true">i</span>
@@ -60,9 +81,20 @@
           <i aria-hidden="true"></i><span id="focus-text"></span>
         </div>
       </section>
-      <section id="route-legend" class="route-legend glass" aria-label="Route colors show the latest packet type"></section>
+      <section id="route-legend" class="route-legend glass" aria-label="Route colors show the latest packet type" hidden></section>
       <div id="tooltip" class="tooltip glass" role="tooltip" hidden></div>
       <div id="fatal" class="fatal glass" role="alert" hidden></div>
+      <dialog id="about-dialog" class="about-dialog glass" aria-labelledby="about-title">
+        <button id="about-close" class="about-close" type="button" aria-label="Close CartoLite information">×</button>
+        <h1 id="about-title">CartoLite</h1>
+        <p>A live, privacy-safe view of high-confidence MeshCore Canada RF traffic.</p>
+        <dl>
+          <div><dt>Map</dt><dd>Clusters and heat summarize activity. Routes narrow automatically from 15 minutes nationally to 24 hours locally.</dd></div>
+          <div><dt>Colours</dt><dd>Route and packet colours show the latest sanitized packet kind, never message content.</dd></div>
+          <div><dt>Privacy</dt><dd>No public keys, packet payloads, message text, raw paths, or visitor analytics are published.</dd></div>
+          <div><dt>Updated</dt><dd id="last-update">Waiting for live state…</dd></div>
+        </dl>
+      </dialog>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

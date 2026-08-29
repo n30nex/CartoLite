@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LiveFeed, type LiveFeedHandlers } from './api';
-import type { PacketV1, StateV1 } from './types';
+import type { PacketEventV2, StateV2 } from './types';
 
-const initial: StateV1 = {
-  schemaVersion: 1,
+const initial: StateV2 = {
+  schemaVersion: 2,
   bootId: 'boot-a',
   seq: 7,
   serverTime: 1,
-  status: { feed: 'connected', activity: 'active', dropped: 0, version: '0.1.0', gitSha: 'abc' },
-  map: { center: [-80.35, 43.45], zoom: 8.25 },
+  status: { feed: 'connected', activity: 'active', dropped: 0, version: '0.4.0', gitSha: 'abc' },
+  map: { center: [-96, 56], zoom: 3.4 },
   nodes: [],
   routes: []
 };
@@ -49,9 +49,9 @@ describe('LiveFeed recovery', () => {
   });
 
   it('closes the stream during recovery, ignores stale events, and reconnects from the snapshot cursor', async () => {
-    let resolveRecovery!: (state: StateV1) => void;
+    let resolveRecovery!: (state: StateV2) => void;
     const snapshot = { ...initial, bootId: 'boot-b', seq: 20 };
-    const recovery = new Promise<StateV1>((resolve) => { resolveRecovery = resolve; });
+    const recovery = new Promise<StateV2>((resolve) => { resolveRecovery = resolve; });
     const onPacket = vi.fn();
     const recover = vi.fn(() => recovery);
     const feed = new LiveFeed(initial, handlers({ onPacket, recover }));
@@ -133,7 +133,7 @@ function handlers(overrides: Partial<LiveFeedHandlers> = {}): LiveFeedHandlers {
   };
 }
 
-function observerPacket(seq: number): PacketV1 {
+function observerPacket(seq: number): PacketEventV2 {
   return {
     seq,
     id: `packet-${seq}`,

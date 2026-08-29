@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test';
-import type { NodeV1, RouteV1, StateV1 } from '../src/types';
+import type { NodeV2, RouteV2, StateV2 } from '../src/types';
 
-test('keeps a 2k-node / 5k-route first view responsive', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile', 'large-topology renderer budget runs once on desktop');
+test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testInfo) => {
   const state = scaleState();
   const firstRoute = state.routes[0];
   if (!firstRoute) throw new Error('scale fixture has no routes');
@@ -12,7 +11,7 @@ test('keeps a 2k-node / 5k-route first view responsive', async ({ page }, testIn
     at: Date.now(),
     payloadType: 'Text',
     mode: 'route',
-    segments: [{ routeId: firstRoute.id, from: firstRoute.from, to: firstRoute.to }]
+    segments: [{ routeId: firstRoute.id, fromId: firstRoute.fromId, toId: firstRoute.toId }]
   };
 
   await page.route('**/api/state', (route) => route.fulfill({ json: state }));
@@ -24,15 +23,19 @@ test('keeps a 2k-node / 5k-route first view responsive', async ({ page }, testIn
 
   const started = Date.now();
   await page.goto('/');
-  await expect(page.locator('#status')).toHaveAttribute('title', '2000 nodes · 5000 routes', { timeout: 10_000 });
+  await expect(page.locator('#status')).toHaveAttribute('title', '4000 nodes · 7000 routes', { timeout: 10_000 });
   await expect(page.locator('#map .maplibregl-canvas')).toBeVisible();
+  await expect(page.locator('#packet-canvas')).toHaveAttribute('data-power-mode', testInfo.project.name === 'mobile' ? 'low' : 'full');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(Date.now() - started, 'large topology should hydrate inside the first-view budget').toBeLessThan(10_000);
 
   const heatmapButton = page.locator('#heatmap-button');
-  await heatmapButton.click();
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
+  const routesButton = page.locator('#routes-button');
+  await routesButton.click();
+  await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
 
   const eventLoopWindow = await page.evaluate(() => new Promise<number>((resolve) => {
@@ -49,12 +52,12 @@ test('keeps a 2k-node / 5k-route first view responsive', async ({ page }, testIn
   await page.screenshot({ path: testInfo.outputPath('cartolite-scale.png') });
 });
 
-function scaleState(): StateV1 {
+function scaleState(): StateV2 {
   const now = Date.now();
-  const kinds: readonly RouteV1['lastKind'][] = ['Advert', 'Trace', 'Text', 'ACK', 'Control', 'Other'];
+  const kinds: readonly RouteV2['lastKind'][] = ['Advert', 'Trace', 'Text', 'ACK', 'Control', 'Other'];
   const trafficLevels = [0.25, 1, 4, 12, 32, 64] as const;
   const routeAges = [0, 5 * 60_000, 20 * 60_000, 2 * 60 * 60_000, 8 * 60 * 60_000, 23 * 60 * 60_000] as const;
-  const nodes: NodeV1[] = Array.from({ length: 2_000 }, (_, index): NodeV1 => ({
+  const nodes: NodeV2[] = Array.from({ length: 4_000 }, (_, index): NodeV2 => ({
     id: `node-${index}`,
     label: `MC ${index}`,
     role: index % 11 === 0 ? 'room_server' : index % 3 === 0 ? 'repeater' : 'companion',
@@ -63,32 +66,28 @@ function scaleState(): StateV1 {
     lng: -83.5 + (Math.floor(index / 40) % 50) * 0.09,
     lastSeen: now - (index % 120) * 60_000
   }));
-  const routes: RouteV1[] = Array.from({ length: 5_000 }, (_, index) => {
+  const routes: RouteV2[] = Array.from({ length: 7_000 }, (_, index) => {
     const from = nodes[index % nodes.length]!;
     const to = nodes[(index * 37 + 113) % nodes.length]!;
     return {
       id: `route-${index}`,
-      from: endpoint(from),
-      to: endpoint(to),
+      fromId: from.id,
+      toId: to.id,
       packetCount: 1 + index % 31,
       lastHeard: now - routeAges[index % routeAges.length]!,
-      intensity: (index % 5) as RouteV1['intensity'],
+      intensity: (index % 5) as RouteV2['intensity'],
       lastKind: kinds[index % kinds.length]!,
       traffic: trafficLevels[index % trafficLevels.length]!
     };
   });
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     bootId: 'scale-smoke',
     seq: 0,
     serverTime: now,
     status: { feed: 'connected', activity: 'active', lastPacketAt: now, dropped: 0, version: 'test', gitSha: 'scale' },
-    map: { center: [-80.35, 43.45], zoom: 8.25 },
+    map: { center: [-96, 56], zoom: 3.4 },
     nodes,
     routes
   };
-}
-
-function endpoint(node: NodeV1): RouteV1['from'] {
-  return { id: node.id, label: node.label, lat: node.lat, lng: node.lng };
 }

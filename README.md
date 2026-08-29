@@ -1,12 +1,12 @@
 # CartoLite
 
-CartoLite is a compact, privacy-safe live map of high-confidence MeshCore Canada RF traffic. The default page is the product: a dark radio-constellation map with collision-managed labels, jewel-like nodes, packet-colored topology, and event-driven, distance-aware Canvas2D packet light with 15-second fading trails. Stable routes use the latest sanitized packet kind, stay bright for the first hour, dim with age, disappear after 24 hours, and grow only within a tightly capped, decaying traffic range relative to the active network. Selecting a node focuses and illuminates its recent connections; hovering or tapping a focused route shows its endpoints, packet kind, packet count, and last-heard time. Optional GPU-rendered Heatmap and MeshMapper Canada Regions layers stay off until requested, preserving the fast default view. It deliberately omits history, chat, PacketTV, search, phonebooks, operator tools, analytics, and databases.
+CartoLite is a compact, privacy-safe live map of high-confidence MeshCore Canada RF traffic. It opens on a national activity view: recent nodes cluster cleanly, the heatmap shows where traffic is active, and the heavier route lattice stays off until requested. Route windows narrow automatically from 24 hours at local detail to 15 minutes at national scale. Selecting a node focuses its recent connections; hovering or tapping a focused route shows its endpoints, packet kind, packet count, and last-heard time. Live packets remain visible as bounded, distance-aware light with 15-second trails even when stable routes are hidden. The visitor's last viewport stays only in that browser. CartoLite deliberately omits history, chat, PacketTV, search, phonebooks, operator tools, visitor analytics, and databases.
 
 ## Runtime shape
 
-- One static Go binary subscribes to MeshCore MQTT, validates routes, maintains bounded in-memory state, serves the public API/SSE stream, and embeds the frontend.
-- One vanilla TypeScript page uses MapLibre GL JS for stable map geometry and Canvas2D for transient packet motion.
-- One `/data/state-v1.json` checkpoint preserves current nodes and routes across restarts. It is not packet history.
+- One static Go binary subscribes to MeshCore MQTT, validates routes, maintains bounded in-memory state, serves normalized public schema v2 and SSE, and embeds the frontend.
+- One vanilla TypeScript page uses MapLibre GL JS incremental GeoJSON updates for stable geometry and Canvas2D for transient packet motion.
+- One internal `/data/state-v1.json` checkpoint preserves current topology across restarts. Routes expire after 24 hours and unreferenced nodes after 30 days; it is not packet history.
 - One non-root, read-only, `linux/amd64` container is published to `ghcr.io/n30nex/cartolite`.
 
 See [Architecture](docs/architecture.md), [data sources](docs/data-sources.md), [public API](docs/public-api.md), and [deployment](docs/deployment.md).
@@ -23,7 +23,7 @@ docker compose up -d
 curl --fail http://127.0.0.1:39476/readyz
 ```
 
-The production example preserves the current direct origin on port 80 and a loopback health endpoint on port 39476. Public SSE is same-origin and validates the browser `Origin` against the request host.
+The production example exposes port 80 for a TLS edge and a loopback health endpoint on port 39476. Restrict origin traffic to the edge, redirect public HTTP to HTTPS, and use strict certificate validation between the edge and origin. Public SSE is same-origin and validates the browser `Origin` against the request host.
 
 ## Development and verification
 

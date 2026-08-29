@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -26,7 +27,10 @@ const (
 	maxNodes                = 10_000
 	maxRoutes               = 20_000
 	maxEdgeKM               = 150.0
+	snapshotInterval        = time.Second
+	checkpointInterval      = 5 * time.Minute
 	nodeFreshnessEventEvery = time.Minute
+	nodeRetentionWindow     = 30 * 24 * time.Hour
 	routeTrafficHalfLife    = 15 * time.Minute
 	routeVisibilityWindow   = 24 * time.Hour
 	maxRouteTraffic         = 64.0
@@ -47,20 +51,32 @@ type Options struct {
 }
 
 type Engine struct {
-	checkpoint   string
-	version      string
-	gitSHA       string
-	bootID       string
-	log          *slog.Logger
-	input        chan mqtt.Message
-	feedWake     chan struct{}
-	desiredFeed  atomic.Bool
-	dropped      atomic.Int64
-	seq          atomic.Uint64
-	checkpointOK atomic.Bool
-	snapshot     atomic.Value
-	done         chan struct{}
-	publish      func(Event)
+	checkpoint           string
+	version              string
+	gitSHA               string
+	bootID               string
+	log                  *slog.Logger
+	input                chan mqtt.Message
+	feedWake             chan struct{}
+	desiredFeed          atomic.Bool
+	dropped              atomic.Int64
+	seq                  atomic.Uint64
+	checkpointOK         atomic.Bool
+	snapshot             atomic.Value
+	processed            atomic.Int64
+	snapshotBytes        atomic.Int64
+	publicNodes          atomic.Int64
+	publicRoutes         atomic.Int64
+	checkpointBytes      atomic.Int64
+	checkpointDurationMS atomic.Int64
+	lastCheckpointAt     atomic.Int64
+	lastCheckpointNodes  atomic.Int64
+	lastCheckpointRoutes atomic.Int64
+	prunedNodes          atomic.Int64
+	prunedRoutes         atomic.Int64
+	checkpointDirty      bool
+	done                 chan struct{}
+	publish              func(Event)
 
 	nodes      map[string]*privateNode
 	nodeIDs    map[string]*privateNode
@@ -68,7 +84,6 @@ type Engine struct {
 	routes     map[string]*privateRoute
 	feed       bool
 	lastPacket int64
-	mutations  int
 }
 
 func New(options Options) (*Engine, error) {
@@ -104,6 +119,12 @@ func New(options Options) (*Engine, error) {
 		routes:     routes,
 	}
 	e.checkpointOK.Store(true)
+	e.lastCheckpointNodes.Store(int64(len(e.nodes)))
+	e.lastCheckpointRoutes.Store(int64(len(e.routes)))
+	if info, statErr := os.Stat(options.Checkpoint); statErr == nil {
+		e.checkpointBytes.Store(info.Size())
+		e.lastCheckpointAt.Store(info.ModTime().UnixMilli())
+	}
 	for key, node := range e.nodes {
 		id := nodePublicID(node)
 		if current := e.nodeIDs[id]; current == nil || node.LastSeen > current.LastSeen {
@@ -111,6 +132,10 @@ func New(options Options) (*Engine, error) {
 		}
 		e.indexNode(key, node)
 	}
+	prunedRoutes, prunedNodes := e.pruneDurableState(time.Now().UnixMilli())
+	e.checkpointDirty = prunedRoutes > 0 || prunedNodes > 0
+	e.prunedRoutes.Add(int64(prunedRoutes))
+	e.prunedNodes.Add(int64(prunedNodes))
 	e.updateSnapshot(time.Now())
 	return e, nil
 }
@@ -137,32 +162,27 @@ func (e *Engine) SetFeed(connected bool) {
 
 func (e *Engine) Run(ctx context.Context) {
 	defer close(e.done)
-	snapshotTick := time.NewTicker(250 * time.Millisecond)
-	checkpointTick := time.NewTicker(5 * time.Second)
+	snapshotTick := time.NewTicker(snapshotInterval)
+	checkpointTick := time.NewTicker(checkpointInterval)
 	defer snapshotTick.Stop()
 	defer checkpointTick.Stop()
 	dirtySnapshot := true
-	dirtyCheckpoint := false
+	dirtyCheckpoint := e.checkpointDirty
 	lastStatus := PublicStatus{}
 	for {
 		select {
 		case <-ctx.Done():
 			if dirtyCheckpoint {
-				e.flushCheckpoint()
+				_, _ = e.flushCheckpoint(time.Now())
 			}
 			e.updateSnapshot(time.Now())
 			return
 		case message := <-e.input:
+			e.processed.Add(1)
 			if e.process(message) {
 				dirtyCheckpoint = true
-				e.mutations++
 			}
 			dirtySnapshot = true
-			if e.mutations >= 100 {
-				e.flushCheckpoint()
-				dirtyCheckpoint = false
-				e.mutations = 0
-			}
 		case <-e.feedWake:
 			if desired := e.desiredFeed.Load(); e.feed != desired {
 				e.feed = desired
@@ -172,7 +192,7 @@ func (e *Engine) Run(ctx context.Context) {
 			status := e.publicStatus(now)
 			if status != lastStatus {
 				seq := e.seq.Add(1)
-				e.emit(Event{Name: "status", Seq: seq, Data: StatusEvent{Seq: seq, Status: status}})
+				e.emit(Event{Name: "status", Seq: seq, Data: StatusEventV2{Seq: seq, Status: status}})
 				lastStatus = status
 				dirtySnapshot = true
 			}
@@ -180,11 +200,13 @@ func (e *Engine) Run(ctx context.Context) {
 				e.updateSnapshot(now)
 				dirtySnapshot = false
 			}
-		case <-checkpointTick.C:
+		case now := <-checkpointTick.C:
 			if dirtyCheckpoint {
-				e.flushCheckpoint()
-				dirtyCheckpoint = false
-				e.mutations = 0
+				pruned, saved := e.flushCheckpoint(now)
+				if pruned {
+					dirtySnapshot = true
+				}
+				dirtyCheckpoint = !saved
 			}
 		}
 	}
@@ -203,6 +225,22 @@ func (e *Engine) Dropped() int64          { return e.dropped.Load() }
 func (e *Engine) QueueDepth() int         { return len(e.input) }
 func (e *Engine) QueueHealthy() bool      { return len(e.input) < cap(e.input) }
 func (e *Engine) CheckpointHealthy() bool { return e.checkpointOK.Load() }
+
+func (e *Engine) OperationalStats() OperationalStats {
+	return OperationalStats{
+		Processed:              e.processed.Load(),
+		SnapshotBytes:          e.snapshotBytes.Load(),
+		PublicNodes:            e.publicNodes.Load(),
+		PublicRoutes:           e.publicRoutes.Load(),
+		CheckpointBytes:        e.checkpointBytes.Load(),
+		CheckpointDurationMS:   e.checkpointDurationMS.Load(),
+		LastCheckpointAt:       e.lastCheckpointAt.Load(),
+		LastCheckpointNodes:    e.lastCheckpointNodes.Load(),
+		LastCheckpointRoutes:   e.lastCheckpointRoutes.Load(),
+		PrunedCheckpointNodes:  e.prunedNodes.Load(),
+		PrunedCheckpointRoutes: e.prunedRoutes.Load(),
+	}
+}
 
 func (e *Engine) process(message mqtt.Message) bool {
 	if message.Topic.Kind == "status" {
@@ -305,7 +343,7 @@ func (e *Engine) sourceNode(region string, packet meshcore.Packet) *privateNode 
 	return positioned[0]
 }
 
-func (e *Engine) resolveAndRecord(message mqtt.Message, packet meshcore.Packet, source, observer *privateNode, payloadKind string) ([]RouteSegmentV1, bool) {
+func (e *Engine) resolveAndRecord(message mqtt.Message, packet meshcore.Packet, source, observer *privateNode, payloadKind string) ([]RouteSegmentV2, bool) {
 	if packet.InvalidForMap || (message.RSSI == nil && message.SNR == nil) {
 		return nil, false
 	}
@@ -338,20 +376,20 @@ func (e *Engine) resolveAndRecord(message mqtt.Message, packet meshcore.Packet, 
 	if len(ordered) < 2 {
 		return nil, false
 	}
-	segments := make([]RouteSegmentV1, 0, len(ordered)-1)
+	segments := make([]RouteSegmentV2, 0, len(ordered)-1)
 	for index := 0; index+1 < len(ordered); index++ {
 		from, to := ordered[index], ordered[index+1]
 		if distanceKM(from.Lat, from.Lng, to.Lat, to.Lng) > maxEdgeKM && packet.PayloadType != meshcore.PayloadTrace {
 			return nil, false
 		}
-		fromEndpoint, toEndpoint := endpointFor(from), endpointFor(to)
-		routeID := routePublicID(fromEndpoint.ID, toEndpoint.ID)
-		segments = append(segments, RouteSegmentV1{RouteID: routeID, From: fromEndpoint, To: toEndpoint})
+		fromID, toID := nodePublicID(from), nodePublicID(to)
+		routeID := routePublicID(fromID, toID)
+		segments = append(segments, RouteSegmentV2{RouteID: routeID, FromID: fromID, ToID: toID})
 	}
 	for _, segment := range segments {
 		route := e.routes[segment.RouteID]
 		if route == nil {
-			route = &privateRoute{ID: segment.RouteID, FromID: segment.From.ID, ToID: segment.To.ID}
+			route = &privateRoute{ID: segment.RouteID, FromID: segment.FromID, ToID: segment.ToID}
 			e.routes[segment.RouteID] = route
 		}
 		route.PacketCount++
@@ -414,20 +452,20 @@ func (e *Engine) upsertNode(region, key, name, role string, observer bool, lat, 
 func (e *Engine) emitNode(node *privateNode) {
 	node.LastPublished = node.LastSeen
 	seq := e.seq.Add(1)
-	e.emit(Event{Name: "node", Seq: seq, Data: NodeEvent{Seq: seq, Node: publicNode(node)}})
+	e.emit(Event{Name: "node", Seq: seq, Data: NodeEventV2{Seq: seq, Node: publicNode(node)}})
 }
 
 func shouldPublishFreshness(node *privateNode, at int64) bool {
 	return at > node.LastPublished && (node.LastPublished == 0 || at-node.LastPublished >= nodeFreshnessEventEvery.Milliseconds())
 }
 
-func (e *Engine) emitPacket(at int64, payloadType string, segments []RouteSegmentV1, observer *EndpointV1) {
+func (e *Engine) emitPacket(at int64, payloadType string, segments []RouteSegmentV2, observer *EndpointV2) {
 	seq := e.seq.Add(1)
 	mode := "route"
 	if observer != nil {
 		mode = "observer"
 	}
-	event := PacketEvent{Seq: seq, ID: opaqueID("p", e.bootID+"|"+strconv.FormatUint(seq, 10)), At: at, PayloadType: payloadType, Mode: mode, Segments: segments, Observer: observer}
+	event := PacketEventV2{Seq: seq, ID: opaqueID("p", e.bootID+"|"+strconv.FormatUint(seq, 10)), At: at, PayloadType: payloadType, Mode: mode, Segments: segments, Observer: observer}
 	e.emit(Event{Name: "packet", Seq: seq, Data: event})
 }
 
@@ -439,15 +477,15 @@ func (e *Engine) emit(event Event) {
 
 func (e *Engine) updateSnapshot(now time.Time) {
 	nowMillis := now.UnixMilli()
-	state := StateV1{
-		SchemaVersion: 1,
+	state := StateV2{
+		SchemaVersion: 2,
 		BootID:        e.bootID,
 		Seq:           e.seq.Load(),
 		ServerTime:    now.UnixMilli(),
 		Status:        e.publicStatus(now),
-		Map:           MapV1{Center: [2]float64{-80.35, 43.45}, Zoom: 8.25},
-		Nodes:         make([]NodeV1, 0, len(e.nodeIDs)),
-		Routes:        make([]RouteV1, 0, len(e.routes)),
+		Map:           MapV2{Center: [2]float64{-96.0, 56.0}, Zoom: 3.4},
+		Nodes:         make([]NodeV2, 0, len(e.nodeIDs)),
+		Routes:        make([]RouteV2, 0, len(e.routes)),
 	}
 	for _, node := range e.nodeIDs {
 		if node.HasCoords {
@@ -464,10 +502,10 @@ func (e *Engine) updateSnapshot(now time.Time) {
 		if !fromOK || !toOK || !from.HasCoords || !to.HasCoords {
 			continue
 		}
-		state.Routes = append(state.Routes, RouteV1{
+		state.Routes = append(state.Routes, RouteV2{
 			ID:          route.ID,
-			From:        endpointFor(from),
-			To:          endpointFor(to),
+			FromID:      route.FromID,
+			ToID:        route.ToID,
 			PacketCount: route.PacketCount,
 			LastHeard:   route.LastHeard,
 			Intensity:   intensity(route.PacketCount),
@@ -481,6 +519,9 @@ func (e *Engine) updateSnapshot(now time.Time) {
 		e.log.Error("public snapshot encode failed", "error", err)
 		return
 	}
+	e.snapshotBytes.Store(int64(len(body)))
+	e.publicNodes.Store(int64(len(state.Nodes)))
+	e.publicRoutes.Store(int64(len(state.Routes)))
 	e.snapshot.Store(body)
 }
 
@@ -495,13 +536,70 @@ func (e *Engine) publicStatus(now time.Time) PublicStatus {
 	return PublicStatus{Feed: feed, Activity: activity, LastPacketAt: e.lastPacket, Dropped: e.dropped.Load(), Version: e.version, GitSHA: e.gitSHA}
 }
 
-func (e *Engine) flushCheckpoint() {
+func (e *Engine) flushCheckpoint(now time.Time) (bool, bool) {
+	prunedRoutes, prunedNodes := e.pruneDurableState(now.UnixMilli())
+	pruned := prunedRoutes > 0 || prunedNodes > 0
+	started := time.Now()
 	if err := writeCheckpoint(e.checkpoint, e.nodes, e.routes); err != nil {
 		e.checkpointOK.Store(false)
 		e.log.Error("checkpoint write failed", "error", err)
-		return
+		return pruned, false
+	}
+	duration := time.Since(started)
+	bytes := int64(0)
+	if info, err := os.Stat(e.checkpoint); err == nil {
+		bytes = info.Size()
 	}
 	e.checkpointOK.Store(true)
+	e.checkpointBytes.Store(bytes)
+	e.checkpointDurationMS.Store(duration.Milliseconds())
+	e.lastCheckpointAt.Store(now.UnixMilli())
+	e.lastCheckpointNodes.Store(int64(len(e.nodes)))
+	e.lastCheckpointRoutes.Store(int64(len(e.routes)))
+	e.prunedNodes.Add(int64(prunedNodes))
+	e.prunedRoutes.Add(int64(prunedRoutes))
+	e.log.Info("checkpoint saved",
+		"bytes", bytes,
+		"durationMs", duration.Milliseconds(),
+		"nodes", len(e.nodes),
+		"routes", len(e.routes),
+		"prunedNodes", prunedNodes,
+		"prunedRoutes", prunedRoutes,
+	)
+	return pruned, true
+}
+
+func (e *Engine) pruneDurableState(nowMillis int64) (int, int) {
+	prunedRoutes := 0
+	for id, route := range e.routes {
+		if routeVisible(route.LastHeard, nowMillis) && e.nodeIDs[route.FromID] != nil && e.nodeIDs[route.ToID] != nil {
+			continue
+		}
+		delete(e.routes, id)
+		prunedRoutes++
+	}
+
+	referenced := make(map[string]struct{}, len(e.routes)*2)
+	for _, route := range e.routes {
+		referenced[route.FromID] = struct{}{}
+		referenced[route.ToID] = struct{}{}
+	}
+	removedIDs := make(map[string]struct{})
+	prunedNodes := 0
+	for mapKey, node := range e.nodes {
+		id := nodePublicID(node)
+		if _, keep := referenced[id]; keep || nowMillis-node.LastSeen <= nodeRetentionWindow.Milliseconds() {
+			continue
+		}
+		delete(e.nodes, mapKey)
+		e.unindexNode(mapKey, node)
+		removedIDs[id] = struct{}{}
+		prunedNodes++
+	}
+	for id := range removedIDs {
+		e.refreshNodeID(id)
+	}
+	return prunedRoutes, prunedNodes
 }
 
 func (e *Engine) indexNode(mapKey string, node *privateNode) {
@@ -582,12 +680,12 @@ func (e *Engine) evictRoutes() {
 	}
 }
 
-func publicNode(node *privateNode) NodeV1 {
-	return NodeV1{ID: nodePublicID(node), Label: node.Label, Role: normalizeRole(node.Role), Observer: node.Observer, Lat: node.Lat, Lng: node.Lng, LastSeen: node.LastSeen}
+func publicNode(node *privateNode) NodeV2 {
+	return NodeV2{ID: nodePublicID(node), Label: node.Label, Role: normalizeRole(node.Role), Observer: node.Observer, Lat: node.Lat, Lng: node.Lng, LastSeen: node.LastSeen}
 }
 
-func endpointFor(node *privateNode) EndpointV1 {
-	return EndpointV1{ID: nodePublicID(node), Label: node.Label, Lat: node.Lat, Lng: node.Lng}
+func endpointFor(node *privateNode) EndpointV2 {
+	return EndpointV2{ID: nodePublicID(node), Label: node.Label, Lat: node.Lat, Lng: node.Lng}
 }
 
 func nodePublicID(node *privateNode) string { return opaqueID("n", node.Key) }

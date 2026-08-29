@@ -40,6 +40,12 @@ func NewHub(bootID string) *Hub {
 	return &Hub{bootID: bootID, clients: make(map[uint64]chan wireEvent), history: make([]wireEvent, maxReplayEvents)}
 }
 
+func (h *Hub) ClientCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.clients)
+}
+
 func (h *Hub) Publish(event engine.Event) {
 	body, err := json.Marshal(event.Data)
 	if err != nil {

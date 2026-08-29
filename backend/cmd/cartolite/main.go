@@ -65,6 +65,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go state.Run(ctx)
+	go reportOperationalStats(ctx, log, state, hub)
 	broker := mqtt.NewClient(mqtt.ClientConfig{
 		Enabled: cfg.MQTTEnabled, BrokerURL: cfg.MQTTBrokerURL, Topic: cfg.MQTTTopic,
 		ClientID: cfg.MQTTClientID, Username: cfg.MQTTUsername, Password: cfg.MQTTPassword, Regions: cfg.Regions,
@@ -101,6 +102,36 @@ func run() error {
 	}
 	state.Wait()
 	return nil
+}
+
+func reportOperationalStats(ctx context.Context, log *slog.Logger, state *engine.Engine, hub *httpapi.Hub) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			stats := state.OperationalStats()
+			log.Info("cartolite operational summary",
+				"processed", stats.Processed,
+				"sequence", state.Sequence(),
+				"queueDepth", state.QueueDepth(),
+				"dropped", state.Dropped(),
+				"sseClients", hub.ClientCount(),
+				"publicNodes", stats.PublicNodes,
+				"publicRoutes", stats.PublicRoutes,
+				"snapshotBytes", stats.SnapshotBytes,
+				"checkpointBytes", stats.CheckpointBytes,
+				"checkpointDurationMs", stats.CheckpointDurationMS,
+				"lastCheckpointAt", stats.LastCheckpointAt,
+				"checkpointNodes", stats.LastCheckpointNodes,
+				"checkpointRoutes", stats.LastCheckpointRoutes,
+				"prunedNodes", stats.PrunedCheckpointNodes,
+				"prunedRoutes", stats.PrunedCheckpointRoutes,
+			)
+		}
+	}
 }
 
 func healthcheck(url string) error {

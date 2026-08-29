@@ -56,6 +56,20 @@ func TestSecurityHeadersExcludeExternalGlyphOrigins(t *testing.T) {
 			t.Fatalf("CSP still allows external glyph origin %q: %q", origin, csp)
 		}
 	}
+	if policy := response.Header().Get("Permissions-Policy"); !strings.Contains(policy, "geolocation=()") || !strings.Contains(policy, "usb=()") {
+		t.Fatalf("Permissions-Policy does not deny unused device access: %q", policy)
+	}
+	if hsts := response.Header().Get("Strict-Transport-Security"); hsts != "max-age=31536000" {
+		t.Fatalf("unexpected HSTS policy: %q", hsts)
+	}
+}
+
+func TestMissingFrontendAssetReturnsNotFound(t *testing.T) {
+	response := httptest.NewRecorder()
+	testHandler(t, true).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/missing-asset.svg", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("missing frontend asset returned %d", response.Code)
+	}
 }
 
 func TestSSERejectsCrossOrigin(t *testing.T) {

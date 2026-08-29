@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type maplibregl from 'maplibre-gl';
-import type { EndpointV1, RoutePacketV1, RouteSegmentV1 } from './types';
+import type { EndpointV2, RoutePacketView, RouteSegmentView } from './types';
 import { PACKET_KIND_COLORS } from './trafficVisuals';
 import {
   capCombinedNewest,
@@ -25,21 +25,27 @@ import {
   routeDistanceKm,
   routeDuration,
   routeMotion,
+  segmentNearViewport,
   segmentTravelWeights,
   shouldRefreshResidueCache,
   SINGLE_HOP_MS,
   SOURCE_IGNITION_MS,
 } from './packetAnimator';
 
-function endpoint(id: string, lat: number, lng: number): EndpointV1 {
+function endpoint(id: string, lat: number, lng: number): EndpointV2 {
   return { id, label: id, lat, lng };
 }
 
-function segment(id: string, from: EndpointV1, to: EndpointV1): RouteSegmentV1 {
+function segment(id: string, from: EndpointV2, to: EndpointV2): RouteSegmentView {
   return { routeId: id, from, to };
 }
 
 describe('packet animation limits', () => {
+  it('keeps crossing effects and rejects offscreen-only effects', () => {
+    expect(segmentNearViewport({ x: -50, y: 50 }, { x: 150, y: 50 }, 100, 100, 10)).toBe(true);
+    expect(segmentNearViewport({ x: 200, y: 200 }, { x: 300, y: 300 }, 100, 100, 10)).toBe(false);
+  });
+
   it('uses the intended single-hop duration and caps long routes', () => {
     expect(packetDuration(1)).toBe(SINGLE_HOP_MS);
     expect(packetDuration(100)).toBe(MAX_ROUTE_MS);
@@ -199,7 +205,7 @@ describe('PacketAnimator motion preference lifecycle', () => {
     const canvas = document.createElement('canvas');
     const a = endpoint('a', 43.6, -79.4);
     const b = endpoint('b', 43.7, -79.2);
-    const packet: RoutePacketV1 = {
+    const packet: RoutePacketView = {
       seq: 1,
       id: 'packet-1',
       at: 1,

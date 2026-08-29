@@ -1,0 +1,12 @@
+{
+  "name": "CartoLite · MeshCore Canada",
+  "short_name": "CartoLite",
+  "description": "Privacy-safe live MeshCore Canada RF traffic map.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#03070b",
+  "theme_color": "#03070b",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"mime"
@@ -162,17 +163,19 @@ func (s *Server) frontend(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := fs.ReadFile(s.static, name)
 	if err != nil {
-		name = "index.html"
-		body, err = fs.ReadFile(s.static, name)
-	}
-	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			http.NotFound(w, r)
+			return
+		}
 		http.Error(w, "frontend unavailable", http.StatusInternalServerError)
 		return
 	}
 	if name == "index.html" {
 		w.Header().Set("Cache-Control", "no-cache")
-	} else {
+	} else if strings.HasPrefix(name, "assets/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400")
 	}
 	if contentType := mime.TypeByExtension(path.Ext(name)); contentType != "" {
 		w.Header().Set("Content-Type", contentType)
@@ -245,6 +248,8 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		w.Header().Set("Permissions-Policy", "accelerometer=(), bluetooth=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), serial=(), usb=()")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https://*.basemaps.cartocdn.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.basemaps.cartocdn.com; worker-src 'self' blob:; child-src blob:")
 		next.ServeHTTP(w, r)
 	})
