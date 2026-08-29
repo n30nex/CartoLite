@@ -1125,16 +1125,6 @@ type InteractiveLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setL
 type LayerFilter = Parameters<maplibregl.Map['setFilter']>[1];
 type ActiveLayerFilter = Exclude<LayerFilter, null | undefined>;
 
-function applyLayerVisibility(map: RouteLayerMap, layerIDs: readonly string[], visible: boolean): boolean {
-  let applied = false;
-  for (const layerID of layerIDs) {
-    if (!map.getLayer(layerID)) continue;
-    map.setLayoutProperty(layerID, 'visibility', visible ? 'visible' : 'none');
-    applied = true;
-  }
-  return applied;
-}
-
 export function applyRouteHitLayerVisibility(map: RouteLayerMap, visible: boolean): boolean {
   if (!map.getLayer(ROUTE_HIT_LAYER_ID)) return false;
   map.setLayoutProperty(ROUTE_HIT_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
