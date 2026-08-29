@@ -916,6 +916,10 @@ export class LiveMap {
   private markRendering(): void {
     const epoch = ++this.renderEpoch;
     this.container.dataset.renderState = 'rendering';
+    if (!this.routeHydrating && this.map.loaded()) {
+      this.container.dataset.renderState = 'idle';
+      return;
+    }
     this.map.once('idle', () => {
       if (epoch === this.renderEpoch && !this.routeHydrating) this.container.dataset.renderState = 'idle';
     });

@@ -28,6 +28,7 @@ const soundVolume = required<HTMLInputElement>('sound-volume');
 const soundVolumeOutput = required<HTMLOutputElement>('sound-volume-output');
 const soundActivity = required<HTMLElement>('sound-activity');
 const layersDisclosure = required<HTMLDetailsElement>('layers-disclosure');
+const layersSummary = required<HTMLElement>('layers-summary');
 const resetButton = required<HTMLButtonElement>('reset-button');
 const legend = required<HTMLElement>('legend');
 const legendToggle = required<HTMLButtonElement>('legend-toggle');
@@ -48,6 +49,7 @@ let activeViewClass: ViewClass = viewClass();
 
 document.documentElement.dataset.viewClass = activeViewClass;
 layersDisclosure.open = activeViewClass === 'desktop';
+layersSummary.hidden = activeViewClass === 'desktop';
 
 legendToggle.addEventListener('click', () => {
   legendExpanded = !legendExpanded;
@@ -178,6 +180,7 @@ async function start(): Promise<void> {
         activeViewClass = next;
         document.documentElement.dataset.viewClass = next;
         layersDisclosure.open = next === 'desktop';
+        layersSummary.hidden = next === 'desktop';
         const restored = loadSavedView(localStorage, next);
         if (restored) {
           mapElement.dataset.viewSource = liveMap.restore(restored.center, restored.zoom, liveStore.snapshot.nodes)
