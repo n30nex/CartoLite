@@ -19,7 +19,7 @@
 - Keep the historical Routes overlay responsive by pre-rendering at most the 700 freshest routes in the chosen window into a dedicated Canvas2D bitmap in frame-bounded batches; selected-node routes retain a separate exact MapLibre hit-test source, and live packet animation and sound remain uncapped.
 - Keep the national heat summary calm and responsive by rendering the 600 strongest active-node weights while preserving the complete topology and live event stream.
 - Toggle the prewarmed Routes lattice by revealing its finished canvas bitmap, toggle Heatmap through its bounded GeoJSON source, and keep the first Regions reveal data-driven so primary interactions avoid bulk source ingestion or a full style recompile.
-- Refresh the exact unsimplified 34-region MeshMapper snapshot on 2026-08-29 and validate its metadata, code set, geometry, checksum, lazy loading, MIME type, and attribution; stage the unchanged boundary edges across eight balanced MapLibre sources so the 46,449-vertex overlay does not land in one main-thread task.
+- Refresh the exact unsimplified 34-region MeshMapper snapshot on 2026-08-29 and validate its metadata, code set, geometry, checksum, lazy loading, MIME type, and attribution; validate and partition it in a Web Worker, then paint every unchanged boundary edge to a dedicated canvas in frame-bounded batches.
 - Extend CI with vector authorization, phone landscape, oscillator-count, no-raster, stale-view, operations transition, region checksum, and sub-100 ms layer-interaction gates.
 
 ### Security

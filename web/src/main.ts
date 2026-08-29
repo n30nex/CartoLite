@@ -100,8 +100,10 @@ async function start(): Promise<void> {
   try {
     // Construct MapLibre before the state request so the basemap can paint while
     // the initial snapshot is in flight.
+    const regionCanvas = required<HTMLCanvasElement>('region-canvas');
     const routeCanvas = required<HTMLCanvasElement>('route-canvas');
     const liveMap = new LiveMap(mapElement, required<HTMLElement>('tooltip'), {
+      regionCanvas,
       routeCanvas,
       onFocusChange: updateFocusChrome,
       onRouteWindowChange(label) {

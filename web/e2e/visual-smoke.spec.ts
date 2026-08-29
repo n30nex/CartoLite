@@ -36,6 +36,8 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect.poll(() => cartoResponses.vector, { message: 'CARTO vector PBF tiles should load' }).toBeGreaterThan(0);
   await expect.poll(() => cartoResponses.glyph, { message: 'CARTO glyph PBFs should load' }).toBeGreaterThan(0);
   expect(rasterRequests, 'the vector-only release must not request a raster basemap').toEqual([]);
+  const regionCanvas = page.locator('#region-canvas');
+  await expect(regionCanvas).toBeHidden();
   const routeCanvas = page.locator('#route-canvas');
   await expect(routeCanvas).toBeHidden();
   await expect(page.locator('#packet-canvas')).toBeVisible();
@@ -186,6 +188,9 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(regionsButton).toHaveAttribute('title', 'Hide regions');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'true');
+  await expect(regionCanvas).toBeVisible();
+  await expect.poll(() => regionCanvas.getAttribute('data-rendered-vertices').then(Number)).toBeGreaterThan(0);
+  expect(await canvasHasPixels(regionCanvas), 'exact regional boundaries should paint on their dedicated canvas').toBe(true);
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   expect(regionAssetRequests).toHaveLength(1);
   await heatmapButton.click();
@@ -196,6 +201,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(regionsButton).toHaveAttribute('aria-pressed', 'false');
   await expect(regionsButton).toHaveAttribute('title', 'Show regions');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'false');
+  await expect(regionCanvas).toBeHidden();
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true');
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await heatmapButton.click();

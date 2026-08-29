@@ -12,7 +12,8 @@ import type {
 } from 'geojson';
 import canadaRegionsURL from './assets/meshmapper-canada-regions.geojson?url';
 import { cartoVectorRequestURL, cartoVectorStyle } from './basemap';
-import { REGION_BOUNDARY_SOURCE_COUNT, regionSourceCollections } from './regions';
+import { RegionCanvas } from './regionCanvas';
+import type { RegionLinePiece, RegionWorkerOutput } from './regions';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
 import { RouteLatticeCanvas, type LatticeRoute } from './routeLattice';
 import type { MapChanges } from './state';
@@ -35,21 +36,12 @@ export type RouteWindow = 'auto' | '15m' | '1h' | '6h' | '24h';
 
 const EMPTY_POINTS: FeatureCollection<Point> = { type: 'FeatureCollection', features: [] };
 const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', features: [] };
-const EMPTY_FEATURES: FeatureCollection = { type: 'FeatureCollection', features: [] };
 const ACTIVITY_HEAT_SOURCE_ID = 'activity-heat-source';
-const REGION_SOURCE_ID = 'meshmapper-canada-regions';
 const REGION_LABEL_SOURCE_ID = 'meshmapper-canada-region-labels';
-const REGION_BOUNDARY_SOURCE_IDS = Array.from(
-  { length: REGION_BOUNDARY_SOURCE_COUNT },
-  (_, index) => index === 0 ? REGION_SOURCE_ID : `${REGION_SOURCE_ID}-${index + 1}`
-);
 const ROUTE_DETAIL_SOURCE_ID = 'route-details';
 export const HEATMAP_LAYER_ID = 'activity-heat';
-export const REGION_OUTLINE_LAYER_IDS = REGION_BOUNDARY_SOURCE_IDS.map(
-  (_, index) => index === 0 ? 'region-outline' : `region-outline-${index + 1}`
-);
 export const REGION_LABEL_LAYER_ID = 'region-labels';
-export const REGION_LAYER_IDS = [...REGION_OUTLINE_LAYER_IDS, REGION_LABEL_LAYER_ID] as const;
+export const REGION_LAYER_IDS = [REGION_LABEL_LAYER_ID] as const;
 export const ROUTE_HIT_LAYER_ID = 'route-hit';
 export const NODE_HIT_LAYER_ID = 'node-hit';
 export const ROUTE_FILTER_LAYER_IDS = [ROUTE_HIT_LAYER_ID] as const;
@@ -74,6 +66,7 @@ export interface LiveMapFocus {
 }
 
 export interface LiveMapOptions {
+  regionCanvas: HTMLCanvasElement;
   routeCanvas: HTMLCanvasElement;
   onFocusChange?: (focus: LiveMapFocus | null) => void;
   onRouteWindowChange?: (label: string) => void;
@@ -126,6 +119,7 @@ export class LiveMap {
   private lastFocusSignature: string | undefined;
   private lastFollowMoveAt = 0;
   private readonly reducedMotion = prefersReducedMotion();
+  private readonly regionCanvas: RegionCanvas;
   private readonly routeLattice: RouteLatticeCanvas;
   private freshnessTimer: number;
   private renderEpoch = 0;
@@ -160,6 +154,7 @@ export class LiveMap {
       maxBounds: [[-142, 38], [-48, 84]],
       transformRequest: (url) => ({ url: cartoVectorRequestURL(url) })
     });
+    this.regionCanvas = new RegionCanvas(this.map, options.regionCanvas);
     this.routeLattice = new RouteLatticeCanvas(this.map, options.routeCanvas);
     this.map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
     this.map.on('load', () => this.installLayers());
@@ -495,6 +490,7 @@ export class LiveMap {
   setRegionsVisible(visible: boolean): void {
     this.regionsVisible = visible;
     this.container.dataset.regionsVisible = String(visible);
+    this.regionCanvas.setVisible(visible);
     if (visible) {
       if (this.regionsLoaded) {
         if (applyRegionLayerVisibility(this.map, true)) this.markRendering();
@@ -514,6 +510,7 @@ export class LiveMap {
     window.clearInterval(this.freshnessTimer);
     if (this.clusterFlashTimer !== undefined) window.clearTimeout(this.clusterFlashTimer);
     this.map.off('zoomend', this.handleZoomEnd);
+    this.regionCanvas.destroy();
     this.routeLattice.destroy();
     this.map.remove();
   }
@@ -537,17 +534,12 @@ export class LiveMap {
   }
 
   private installLayers(): void {
-    for (const [index, sourceID] of REGION_BOUNDARY_SOURCE_IDS.entries()) {
-      this.map.addSource(sourceID, {
-        type: 'geojson',
-        data: EMPTY_FEATURES,
-        maxzoom: 12,
-        buffer: 32,
-        tolerance: 0.75,
-        ...(index === 0 ? { attribution: MESHMAP_ATTRIBUTION } : {})
-      });
-    }
-    this.map.addSource(REGION_LABEL_SOURCE_ID, { type: 'geojson', data: EMPTY_POINTS, maxzoom: 12 });
+    this.map.addSource(REGION_LABEL_SOURCE_ID, {
+      type: 'geojson',
+      data: EMPTY_POINTS,
+      maxzoom: 12,
+      attribution: MESHMAP_ATTRIBUTION
+    });
 
     this.map.addSource(ACTIVITY_HEAT_SOURCE_ID, { type: 'geojson', data: EMPTY_POINTS, maxzoom: 14 });
     this.map.addLayer({
@@ -577,22 +569,6 @@ export class LiveMap {
         'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.72, 7, 0.62, 10, 0.4, 14, 0.18, 16, 0.1]
       }
     });
-    for (const [index, sourceID] of REGION_BOUNDARY_SOURCE_IDS.entries()) {
-      this.map.addLayer({
-        id: REGION_OUTLINE_LAYER_IDS[index]!,
-        type: 'line',
-        source: sourceID,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': '#69d1ca',
-          'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.45, 6, 0.7, 10, 1.1, 14, 1.35],
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.18, 6, 0.3, 10, 0.42, 14, 0.28],
-          'line-dasharray': [2, 2],
-          'line-blur': 0.18
-        }
-      });
-    }
-
     this.map.addSource(ROUTE_DETAIL_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 14 });
     this.map.addLayer({
       id: ROUTE_HOVER_LAYER_IDS[0],
@@ -892,7 +868,7 @@ export class LiveMap {
 
   private ensureRegionsData(): void {
     if (this.regionsLoaded || this.regionsLoad) return;
-    if (!this.map.getSource(REGION_SOURCE_ID) || !this.map.getSource(REGION_LABEL_SOURCE_ID)) return;
+    if (!this.map.getSource(REGION_LABEL_SOURCE_ID)) return;
     this.regionsLoad = this.loadRegionsData()
       .then(() => {
         this.regionsLoaded = true;
@@ -908,20 +884,53 @@ export class LiveMap {
       });
   }
 
-  private async loadRegionsData(): Promise<void> {
-    const response = await fetch(canadaRegionsURL, { credentials: 'same-origin' });
-    if (!response.ok) throw new Error(`regional asset returned HTTP ${response.status}`);
-    const collections = regionSourceCollections(await response.json());
+  private loadRegionsData(): Promise<void> {
     const labelSource = this.map.getSource(REGION_LABEL_SOURCE_ID) as GeoJSONSource | undefined;
-    if (!labelSource) throw new Error('regional label source is unavailable');
-    await labelSource.setData(collections.labels);
-    for (let index = 0; index < collections.boundaries.length; index += 1) {
-      await nextAnimationFrame();
-      const sourceID = REGION_BOUNDARY_SOURCE_IDS[index]!;
-      const source = this.map.getSource(sourceID) as GeoJSONSource | undefined;
-      if (!source) throw new Error(`regional boundary source ${sourceID} is unavailable`);
-      await source.setData(collections.boundaries[index]!);
-    }
+    if (!labelSource) return Promise.reject(new Error('regional label source is unavailable'));
+    const worker = new Worker(new URL('./regionWorker.ts', import.meta.url), {
+      type: 'module',
+      name: 'cartolite-regions'
+    });
+    const pieces: RegionLinePiece[] = [];
+    let labels: FeatureCollection<Point> | undefined;
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const fail = (error: Error): void => {
+        if (settled) return;
+        settled = true;
+        worker.terminate();
+        reject(error);
+      };
+      worker.onerror = (event): void => fail(new Error(event.message || 'regional worker failed'));
+      worker.onmessage = (event: MessageEvent<RegionWorkerOutput>): void => {
+        const message = event.data;
+        if (message.type === 'labels') {
+          labels = message.labels;
+          return;
+        }
+        if (message.type === 'pieces') {
+          pieces.push(...message.pieces);
+          return;
+        }
+        if (message.type === 'error') {
+          fail(new Error(message.message));
+          return;
+        }
+        if (settled) return;
+        settled = true;
+        worker.terminate();
+        if (!labels) {
+          reject(new Error('regional worker returned no labels'));
+          return;
+        }
+        void Promise.all([
+          labelSource.setData(labels),
+          this.regionCanvas.setPieces(pieces)
+        ]).then(() => resolve()).catch(reject);
+      };
+      worker.postMessage({ url: canadaRegionsURL });
+    });
   }
 
   private markRendering(sourceID?: string): void {
@@ -1638,10 +1647,6 @@ export function routeWindowLabel(window: RouteWindow, zoom: number): string {
   const age = effectiveRouteWindowMS(window, zoom);
   const label = age === 15 * 60_000 ? '15m' : age === 60 * 60_000 ? '1h' : age === 6 * 60 * 60_000 ? '6h' : '24h';
   return window === 'auto' ? `Auto · ${label}` : label;
-}
-
-function nextAnimationFrame(): Promise<void> {
-  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

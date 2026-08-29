@@ -33,6 +33,7 @@ button { font: inherit; }
   pointer-events: none;
 }
 
+#region-canvas,
 #route-canvas,
 #packet-canvas {
   position: absolute;
@@ -42,11 +43,12 @@ button { font: inherit; }
   pointer-events: none;
 }
 
-#route-canvas { z-index: 2; }
-#packet-canvas { z-index: 3; }
+#region-canvas { z-index: 2; }
+#route-canvas { z-index: 3; }
+#packet-canvas { z-index: 4; }
 
 .glass {
-  z-index: 4;
+  z-index: 5;
   border: 1px solid rgba(151, 220, 224, 0.15);
   background: linear-gradient(145deg, rgba(8, 20, 26, 0.86), rgba(2, 9, 14, 0.78));
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.32), inset 0 1px rgba(219, 255, 255, 0.035);
