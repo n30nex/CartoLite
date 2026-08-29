@@ -18,6 +18,7 @@ import {
   canMoveLiveFollow,
   CLUSTER_HIGHLIGHT_LAYER_ID,
   effectiveRouteWindowMS,
+  HEAT_RENDER_BUDGET,
   HEATMAP_LAYER_ID,
   isRouteInspectable,
   isPointInSafeArea,
@@ -162,6 +163,22 @@ describe('optional map layers', () => {
 });
 
 describe('activity heatmap data', () => {
+  it('caps dense heat summaries while retaining the strongest activity', () => {
+    const now = 1_900_000_000_000;
+    const routes = Array.from({ length: HEAT_RENDER_BUDGET + 5 }, (_, index) => route(
+      `heat-${index}`,
+      `node-${String(index).padStart(4, '0')}`,
+      `node-${String(index).padStart(4, '0')}`,
+      now
+    ));
+    routes.push(route('heat-hotspot', 'z-hotspot', 'z-hotspot', now, 'Other', 64));
+
+    const collection = heatCollectionFor(routes, now);
+
+    expect(collection.features).toHaveLength(HEAT_RENDER_BUDGET);
+    expect(collection.features.some((feature) => feature.id === 'z-hotspot')).toBe(true);
+  });
+
   it('deduplicates route endpoints and accumulates repeated activity', () => {
     const now = 1_900_000_000_000;
     const collection = heatCollectionFor([

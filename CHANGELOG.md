@@ -17,6 +17,7 @@
 - Store desktop and mobile map views separately and return home when a restored view contains no node active in the last 24 hours.
 - Strengthen selected-node focus and preserve cyan/amber traffic colour during bursts by removing additive white saturation from packet bloom and residue.
 - Keep the historical Routes overlay responsive by rendering at most the 700 freshest routes in the chosen window, prioritizing routes attached to the selected node; live packet animation and sound remain uncapped.
+- Keep the national heat summary calm and responsive by rendering the 600 strongest active-node weights while preserving the complete topology and live event stream.
 - Refresh the exact unsimplified 34-region MeshMapper snapshot on 2026-08-29 and validate its metadata, code set, geometry, checksum, lazy loading, MIME type, and attribution.
 - Extend CI with vector authorization, phone landscape, oscillator-count, no-raster, stale-view, operations transition, region checksum, and sub-100 ms layer-interaction gates.
 

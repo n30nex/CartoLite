@@ -49,8 +49,9 @@ const NODE_CORE_LAYER_ID = 'node-core';
 const NODE_LABEL_LAYER_ID = 'node-labels';
 const NODE_BASE_FILTER = ['!', ['has', 'point_count']] as ActiveLayerFilter;
 const LOCAL_FONTS = ['Open Sans Regular'];
-const ROUTE_HYDRATION_BATCH_SIZE = 128;
+const ROUTE_HYDRATION_BATCH_SIZE = 200;
 export const ROUTE_RENDER_BUDGET = 700;
+export const HEAT_RENDER_BUDGET = 600;
 
 export interface LiveMapFocus {
   label: string;
@@ -277,7 +278,7 @@ export class LiveMap {
       this.emitRouteWindowChange();
       this.markRendering('routes');
     };
-    const addBatch = async (): Promise<void> => {
+    const addBatch = (): void => {
       if (!active()) return;
       const additions: Feature<LineString>[] = [];
       const end = Math.min(routes.length, offset + ROUTE_HYDRATION_BATCH_SIZE);
@@ -287,24 +288,19 @@ export class LiveMap {
         additions.push(feature);
         this.routeFeatureIDs.add(String(feature.id));
       }
-      try {
-        // Await each worker diff so MapLibre cannot merge every frame's routes
-        // back into one large main-thread apply.
-        if (additions.length > 0) await source.updateData({ add: additions }, true);
-      } catch (error) {
-        fail(error);
-        return;
-      }
+      // Keep feature creation frame-bounded while MapLibre coalesces pending
+      // worker diffs for the already-capped historical overlay.
+      if (additions.length > 0) void source.updateData({ add: additions }, true).catch(fail);
       if (!active()) return;
       if (offset < routes.length) {
-        window.requestAnimationFrame(() => { void addBatch(); });
+        window.requestAnimationFrame(addBatch);
         return;
       }
       finish();
     };
     void source.updateData({ removeAll: true }, true)
       .then(() => {
-        if (active()) window.requestAnimationFrame(() => { void addBatch(); });
+        if (active()) window.requestAnimationFrame(addBatch);
       })
       .catch(fail);
   }
@@ -1557,9 +1553,14 @@ function heatCollection(nodes: ReadonlyMap<string, NodeV2>, scores: ReadonlyMap<
   return {
     type: 'FeatureCollection',
     features: [...scores.keys()]
-      .sort()
       .map((id) => heatFeature(id, nodes, scores))
       .filter((feature): feature is Feature<Point> => feature !== undefined)
+      .sort((left, right) => {
+        const leftID = String(left.id);
+        const rightID = String(right.id);
+        return (scores.get(rightID) ?? 0) - (scores.get(leftID) ?? 0) || leftID.localeCompare(rightID);
+      })
+      .slice(0, HEAT_RENDER_BUDGET)
   };
 }
 
