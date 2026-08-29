@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 - 2026-08-29
+
+### Fixed
+
+- Keep the authorized MeshMapper credit in MapLibre's attribution control so it remains available when the exact Canadian regions overlay is rendered on its dedicated canvas.
+- Add browser coverage that verifies the live attribution control includes MeshMapper after Regions is enabled.
+
 ## 0.6.0 - 2026-08-29
 
 ### Added

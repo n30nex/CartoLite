@@ -156,7 +156,10 @@ export class LiveMap {
     });
     this.regionCanvas = new RegionCanvas(this.map, options.regionCanvas);
     this.routeLattice = new RouteLatticeCanvas(this.map, options.routeCanvas);
-    this.map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+    this.map.addControl(new maplibregl.AttributionControl({
+      compact: true,
+      customAttribution: MESHMAP_ATTRIBUTION
+    }), 'bottom-right');
     this.map.on('load', () => this.installLayers());
     this.map.on('zoomend', this.handleZoomEnd);
     this.freshnessTimer = window.setInterval(() => this.render(this.lastState, { reset: true }, true), 60_000);
