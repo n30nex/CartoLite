@@ -193,6 +193,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(regionsButton).toHaveAttribute('title', 'Hide regions');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'true');
+  await expect(page.locator('.maplibregl-ctrl-attrib-inner')).toContainText('MeshMapper');
   await expect(regionCanvas).toBeVisible();
   await expect.poll(() => regionCanvas.getAttribute('data-rendered-vertices').then(Number)).toBeGreaterThan(0);
   expect(await canvasHasPixels(regionCanvas), 'exact regional boundaries should paint on their dedicated canvas').toBe(true);

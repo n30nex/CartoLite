@@ -54,6 +54,10 @@ Before changing `/opt/CartoLite`, record the running container ID/image, copy Co
 
 Acceptance requires exact version/SHA/image identity; ready MQTT/checkpoint/queue with zero drops; public schema v2 privacy; live SSE, animation, and scheduled sound; vector TileJSON/PBF/glyph success with no raster request; desktop and both phone orientations; regional MIME/cache proof; watchdog outage/recovery proof; restic backup/check/restore checksum; and a 20-minute soak with zero restarts/drops and no sustained CPU or memory regression.
 
+## v0.6.1 attribution hotfix
+
+v0.6.1 preserves the v0.6.0 visual runtime and adds the authorized MeshMapper credit directly to MapLibre's attribution control. Deploy it through the same digest-pinned release process and verify the attribution control contains `MeshMapper` after enabling Regions.
+
 ## v0.6.0 visual cutover
 
 The rollback boundary for this release is v0.5.0 at `ghcr.io/n30nex/cartolite@sha256:46ef8248811593f8bc1717fb2e426828e990693462b63961ebae2af8d54b7fbb`.
