@@ -110,18 +110,24 @@ function scaleState(): StateV2 {
 
 async function installLongTaskObserver(page: import('@playwright/test').Page): Promise<void> {
   await page.evaluate(() => {
-    const state = { durations: [] as number[] };
+    const state = { durations: [] as number[], since: performance.now() };
     Object.defineProperty(window, '__cartoliteLongTasks', { configurable: true, value: state });
     if (!PerformanceObserver.supportedEntryTypes.includes('longtask')) return;
     new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) state.durations.push(entry.duration);
+      for (const entry of list.getEntries()) {
+        if (entry.startTime >= state.since) state.durations.push(entry.duration);
+      }
     }).observe({ type: 'longtask', buffered: false });
   });
 }
 
 async function resetLongTasks(page: import('@playwright/test').Page): Promise<void> {
   await page.evaluate(() => {
-    (window as unknown as { __cartoliteLongTasks: { durations: number[] } }).__cartoliteLongTasks.durations = [];
+    const state = (window as unknown as {
+      __cartoliteLongTasks: { durations: number[]; since: number };
+    }).__cartoliteLongTasks;
+    state.durations = [];
+    state.since = performance.now();
   });
 }
 
