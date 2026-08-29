@@ -320,6 +320,7 @@ button { font: inherit; }
 }
 
 @media (max-width: 520px) {
+  .brand { min-width: 44px; justify-content: center; padding: 0; }
   .topbar .brand > span:last-child,
   #status-text {
     position: absolute;
