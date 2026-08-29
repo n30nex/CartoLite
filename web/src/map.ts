@@ -324,11 +324,13 @@ export class LiveMap {
       });
     }
     if (!diff.add?.length && !diff.update?.length && !diff.remove?.length) return false;
-    void (this.map.getSource(sourceID) as GeoJSONSource).updateData(diff).catch((error: unknown) => {
+    try {
+      (this.map.getSource(sourceID) as GeoJSONSource).updateData(diff);
+    } catch (error: unknown) {
       console.warn(`Incremental ${sourceID} update failed:`, error instanceof Error ? error.message : error);
       if (sourceID === 'routes') this.routeDataDirty = true;
       if (sourceID === ACTIVITY_HEAT_SOURCE_ID) this.heatDataDirty = true;
-    });
+    }
     return true;
   }
 
