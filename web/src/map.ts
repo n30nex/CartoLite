@@ -4,7 +4,7 @@ import maplibregl, {
   type GeoJSONSourceDiff,
   type MapMouseEvent
 } from 'maplibre-gl';
-import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
+import type { Feature, FeatureCollection, LineString, MultiLineString, Point, Position } from 'geojson';
 import canadaRegionsURL from './assets/meshmapper-canada-regions.geojson?url';
 import { cartoVectorRequestURL, cartoVectorStyle } from './basemap';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
@@ -28,15 +28,19 @@ export type RouteWindow = 'auto' | '15m' | '1h' | '6h' | '24h';
 
 const EMPTY_POINTS: FeatureCollection<Point> = { type: 'FeatureCollection', features: [] };
 const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', features: [] };
+const EMPTY_ROUTE_BUCKETS: FeatureCollection<MultiLineString> = { type: 'FeatureCollection', features: [] };
 const EMPTY_FEATURES: FeatureCollection = { type: 'FeatureCollection', features: [] };
 const ACTIVITY_HEAT_SOURCE_ID = 'activity-heat-source';
 const REGION_SOURCE_ID = 'meshmapper-canada-regions';
+const ROUTE_SOURCE_ID = 'routes';
+const ROUTE_DETAIL_SOURCE_ID = 'route-details';
+const ROUTES_VISIBLE_GLOBAL_STATE = 'routes-visible';
 export const HEATMAP_LAYER_ID = 'activity-heat';
 export const REGION_LAYER_IDS = ['region-outline', 'region-labels'] as const;
 const ROUTE_LAYER_IDS = ['route-glow', 'routes'] as const;
 export const ROUTE_HIT_LAYER_ID = 'route-hit';
 export const NODE_HIT_LAYER_ID = 'node-hit';
-export const ROUTE_FILTER_LAYER_IDS = [...ROUTE_LAYER_IDS, ROUTE_HIT_LAYER_ID] as const;
+export const ROUTE_FILTER_LAYER_IDS = [ROUTE_HIT_LAYER_ID] as const;
 export const SELECTED_NODE_LAYER_ID = 'selected-node';
 export const SELECTED_NODE_OUTER_LAYER_ID = 'selected-node-outer';
 export const NEIGHBOR_NODE_LAYER_ID = 'neighbor-nodes';
@@ -49,9 +53,9 @@ const NODE_CORE_LAYER_ID = 'node-core';
 const NODE_LABEL_LAYER_ID = 'node-labels';
 const NODE_BASE_FILTER = ['!', ['has', 'point_count']] as ActiveLayerFilter;
 const LOCAL_FONTS = ['Open Sans Regular'];
-const ROUTE_HYDRATION_BATCH_SIZE = 200;
 export const ROUTE_RENDER_BUDGET = 700;
 export const HEAT_RENDER_BUDGET = 600;
+export const ROUTE_STYLE_BUCKET_LIMIT = 100;
 
 export interface LiveMapFocus {
   label: string;
@@ -84,12 +88,10 @@ export class LiveMap {
   private nodesByID = new Map<string, NodeV2>();
   private routesByID = new Map<string, RouteV2>();
   private nodeFeatureIDs = new Set<string>();
-  private routeFeatureIDs = new Set<string>();
   private heatFeatureIDs = new Set<string>();
   private heatScores = new Map<string, number>();
   private routeHeat = new Map<string, { endpointIDs: string[]; score: number }>();
   private heatEpoch = 0;
-  private routeBaseline = 1;
   private routeDataDirty = true;
   private routeHydrating = false;
   private routeHydrationEpoch = 0;
@@ -184,8 +186,8 @@ export class LiveMap {
       for (const endpointID of this.updateHeatIndex(routeIDs)) heatNodeIDs.add(endpointID);
     }
     if (routeFeatureIDs.size > 0) {
-      if (this.routesVisible && !this.routeHydrating) changed = this.updateRouteFeatures([...routeFeatureIDs]) || changed;
-      else this.routeDataDirty = true;
+      this.routeDataDirty = true;
+      if (!this.routeHydrating && this.map.getSource(ROUTE_SOURCE_ID)) this.hydrateRouteSource();
     }
     if (heatNodeIDs.size > 0) {
       if (this.heatmapVisible) changed = this.updateHeatFeatures([...heatNodeIDs]) || changed;
@@ -208,9 +210,8 @@ export class LiveMap {
     (this.map.getSource('nodes') as GeoJSONSource).setData(nodes);
     this.nodeFeatureIDs = new Set(nodes.features.map((feature) => String(feature.id)));
 
-    this.routeBaseline = routeTrafficBaseline(state.routes, now);
     this.routeDataDirty = true;
-    if (this.routesVisible) this.hydrateRouteSource(now);
+    this.hydrateRouteSource(now);
 
     this.rebuildHeatIndex(now);
     this.heatDataDirty = true;
@@ -231,36 +232,29 @@ export class LiveMap {
     return this.applyFeatureDiff('nodes', this.nodeFeatureIDs, features);
   }
 
-  private updateRouteFeatures(ids: readonly string[]): boolean {
-    const now = Date.now();
-    const maxAge = this.effectiveRouteAgeMS();
-    const features = new Map<string, Feature<LineString> | undefined>();
-    for (const id of new Set(ids)) {
-      const route = this.routesByID.get(id);
-      features.set(id, routeFeature(route, this.nodesByID, now, this.routeBaseline, maxAge));
-    }
-    const changed = this.applyFeatureDiff('routes', this.routeFeatureIDs, features);
-    if (changed) this.routeDataDirty = false;
-    return changed;
-  }
-
   private hydrateRouteSource(now = Date.now()): void {
-    const source = this.map.getSource('routes') as GeoJSONSource | undefined;
-    if (!source) return;
+    const source = this.map.getSource(ROUTE_SOURCE_ID) as GeoJSONSource | undefined;
+    const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
+    if (!source || !detailSource) return;
     const hydrationEpoch = ++this.routeHydrationEpoch;
     const maxAge = this.effectiveRouteAgeMS();
     const allRoutes = [...this.routesByID.values()];
-    this.routeBaseline = routeTrafficBaseline(allRoutes, now);
-    const routes = routeRenderCandidates(allRoutes, now, maxAge, this.selectedNodeID);
+    const routeBaseline = routeTrafficBaseline(allRoutes, now);
+    const eligibleRoutes = this.selectedNodeID
+      ? recentNeighborRoutes(allRoutes, this.selectedNodeID, now)
+      : allRoutes;
+    const routes = routeRenderCandidates(eligibleRoutes, now, maxAge, this.selectedNodeID);
+    const visual = routeBucketCollection(routes, this.nodesByID, now, routeBaseline, maxAge);
+    const details = this.selectedNodeID
+      ? routeCollection(routes, this.nodesByID, now, maxAge, routeBaseline)
+      : EMPTY_LINES;
     this.routeHydrating = true;
     this.routeDataDirty = false;
-    this.routeFeatureIDs.clear();
     this.markRendering();
 
     const active = (): boolean => hydrationEpoch === this.routeHydrationEpoch
-      && this.routesVisible
-      && Boolean(this.map.getSource('routes'));
-    let offset = 0;
+      && Boolean(this.map.getSource(ROUTE_SOURCE_ID))
+      && Boolean(this.map.getSource(ROUTE_DETAIL_SOURCE_ID));
     const fail = (error: unknown): void => {
       if (!active()) return;
       this.routeHydrating = false;
@@ -276,32 +270,10 @@ export class LiveMap {
         return;
       }
       this.emitRouteWindowChange();
-      this.markRendering('routes');
+      this.markRendering(ROUTE_SOURCE_ID);
     };
-    const addBatch = (): void => {
-      if (!active()) return;
-      const additions: Feature<LineString>[] = [];
-      const end = Math.min(routes.length, offset + ROUTE_HYDRATION_BATCH_SIZE);
-      for (; offset < end; offset += 1) {
-        const feature = routeFeature(routes[offset], this.nodesByID, now, this.routeBaseline, maxAge);
-        if (!feature) continue;
-        additions.push(feature);
-        this.routeFeatureIDs.add(String(feature.id));
-      }
-      // Keep feature creation frame-bounded while MapLibre coalesces pending
-      // worker diffs for the already-capped historical overlay.
-      if (additions.length > 0) void source.updateData({ add: additions }, true).catch(fail);
-      if (!active()) return;
-      if (offset < routes.length) {
-        window.requestAnimationFrame(addBatch);
-        return;
-      }
-      finish();
-    };
-    void source.updateData({ removeAll: true }, true)
-      .then(() => {
-        if (active()) window.requestAnimationFrame(addBatch);
-      })
+    void Promise.all([source.setData(visual), detailSource.setData(details)])
+      .then(finish)
       .catch(fail);
   }
 
@@ -385,7 +357,6 @@ export class LiveMap {
       (this.map.getSource(sourceID) as GeoJSONSource).updateData(diff);
     } catch (error: unknown) {
       console.warn(`Incremental ${sourceID} update failed:`, error instanceof Error ? error.message : error);
-      if (sourceID === 'routes') this.routeDataDirty = true;
       if (sourceID === ACTIVITY_HEAT_SOURCE_ID) this.heatDataDirty = true;
     }
     return true;
@@ -469,26 +440,17 @@ export class LiveMap {
   setRoutesVisible(visible: boolean): void {
     this.routesVisible = visible;
     this.container.dataset.routesVisible = String(visible);
-    const source = this.map.getSource('routes') as GeoJSONSource | undefined;
-    if (!visible) {
-      this.routeHydrationEpoch += 1;
-      this.routeHydrating = false;
-      this.routeDataDirty = true;
-      this.routeFeatureIDs.clear();
-      if (source) {
-        void source.updateData({ removeAll: true }, true).catch((error: unknown) => {
-          console.warn('Route source clear failed:', error instanceof Error ? error.message : error);
-          this.container.dataset.renderState = 'idle';
-        });
-      }
+    if (this.map.getLayer(ROUTE_LAYER_IDS[0])) {
+      this.map.setGlobalStateProperty(ROUTES_VISIBLE_GLOBAL_STATE, visible);
     }
+    const source = this.map.getSource(ROUTE_SOURCE_ID) as GeoJSONSource | undefined;
     const needsHydration = visible && this.routeDataDirty && Boolean(source);
     const hitApplied = this.selectedNodeID !== null && applyRouteHitLayerVisibility(this.map, visible);
     const neighborsApplied = this.selectedNodeID !== null && applyNeighborRingVisibility(this.map, visible);
     if (needsHydration) this.hydrateRouteSource();
     if (!visible) this.clearRouteInspection();
     if (!visible) this.map.getCanvas().style.cursor = '';
-    if (!needsHydration && (Boolean(source) || hitApplied || neighborsApplied)) this.markRendering(visible ? undefined : 'routes');
+    if (!needsHydration && (Boolean(source) || hitApplied || neighborsApplied)) this.markRendering();
   }
 
   setHeatmapVisible(visible: boolean): void {
@@ -510,7 +472,7 @@ export class LiveMap {
     if (this.routeWindow === window) return;
     this.routeWindow = window;
     this.routeDataDirty = true;
-    if (this.routesVisible && this.map.getSource('routes')) {
+    if (this.map.getSource(ROUTE_SOURCE_ID)) {
       this.hydrateRouteSource();
     } else {
       this.emitRouteWindowChange();
@@ -545,7 +507,7 @@ export class LiveMap {
   private handleZoomEnd = (): void => {
     if (this.routeWindow !== 'auto') return;
     this.routeDataDirty = true;
-    if (this.routesVisible && this.map.getSource('routes')) {
+    if (this.map.getSource(ROUTE_SOURCE_ID)) {
       this.hydrateRouteSource();
     } else {
       this.emitRouteWindowChange();
@@ -612,11 +574,13 @@ export class LiveMap {
       }
     });
 
-    this.map.addSource('routes', { type: 'geojson', data: EMPTY_LINES, maxzoom: 14 });
+    this.map.setGlobalStateProperty(ROUTES_VISIBLE_GLOBAL_STATE, this.routesVisible);
+    this.map.addSource(ROUTE_SOURCE_ID, { type: 'geojson', data: EMPTY_ROUTE_BUCKETS, maxzoom: 14 });
+    this.map.addSource(ROUTE_DETAIL_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 14 });
     this.map.addLayer({
       id: 'route-glow',
       type: 'line',
-      source: 'routes',
+      source: ROUTE_SOURCE_ID,
       paint: {
         'line-color': routeColorExpression(),
         'line-width': routeGlowWidth(false),
@@ -627,7 +591,7 @@ export class LiveMap {
     this.map.addLayer({
       id: 'routes',
       type: 'line',
-      source: 'routes',
+      source: ROUTE_SOURCE_ID,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': routeColorExpression(),
@@ -638,7 +602,7 @@ export class LiveMap {
     this.map.addLayer({
       id: ROUTE_HOVER_LAYER_IDS[0],
       type: 'line',
-      source: 'routes',
+      source: ROUTE_DETAIL_SOURCE_ID,
       filter: routeIDFilter(null),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
       paint: {
@@ -651,7 +615,7 @@ export class LiveMap {
     this.map.addLayer({
       id: ROUTE_HOVER_LAYER_IDS[1],
       type: 'line',
-      source: 'routes',
+      source: ROUTE_DETAIL_SOURCE_ID,
       filter: routeIDFilter(null),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
       paint: {
@@ -663,7 +627,7 @@ export class LiveMap {
     this.map.addLayer({
       id: ROUTE_HIT_LAYER_ID,
       type: 'line',
-      source: 'routes',
+      source: ROUTE_DETAIL_SOURCE_ID,
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
       paint: {
         'line-color': '#ffffff',
@@ -1032,7 +996,7 @@ export class LiveMap {
     this.selectedNodeLabel = nodeID ? label : '';
     this.container.dataset.selectedNodeId = nodeID ?? '';
     this.routeDataDirty = true;
-    if (this.routesVisible && this.map.getSource('routes')) this.hydrateRouteSource();
+    if (this.map.getSource(ROUTE_SOURCE_ID)) this.hydrateRouteSource();
     this.updateFocusData();
     this.applyFocusState();
     if (nodeID === null && this.tooltip.dataset.kind === 'route') this.hideTooltip();
@@ -1451,13 +1415,14 @@ export function prefersReducedMotion(): boolean {
 }
 
 function routeZoomOpacity(scale: number): ExpressionSpecification {
-  return [
+  const opacity: ExpressionSpecification = [
     'interpolate', ['linear'], ['zoom'],
     3, ['*', ['get', 'opacity'], 0.1 * scale],
     5, ['*', ['get', 'opacity'], 0.24 * scale],
     7, ['*', ['get', 'opacity'], 0.58 * scale],
     9, ['*', ['get', 'opacity'], scale]
   ];
+  return ['case', ['==', ['global-state', ROUTES_VISIBLE_GLOBAL_STATE], true], opacity, 0];
 }
 
 function routeGlowOpacity(focused: boolean): ExpressionSpecification {
@@ -1608,18 +1573,91 @@ export function routeRenderCandidates(
     .slice(0, ROUTE_RENDER_BUDGET);
 }
 
+interface RouteStyleBucket {
+  color: string;
+  width: number;
+  glowWidth: number;
+  opacity: number;
+}
+
+interface MutableRouteBucket extends RouteStyleBucket {
+  coordinates: Position[][];
+}
+
+const ROUTE_TRAFFIC_STYLE_BUCKETS = [
+  { maximum: 0.25, width: 0.72, glowWidth: 1.9 },
+  { maximum: 0.5, width: 0.95, glowWidth: 2.35 },
+  { maximum: 0.75, width: 1.2, glowWidth: 2.85 },
+  { maximum: 1, width: 1.5, glowWidth: 3.4 }
+] as const;
+const ROUTE_OPACITY_STYLE_BUCKETS = [0.1, 0.26, 0.42, 0.66, 0.94] as const;
+
+export function routeBucketCollection(
+  routes: readonly RouteV2[],
+  nodes: ReadonlyMap<string, NodeV2>,
+  now = Date.now(),
+  trafficBaseline = routeTrafficBaseline(routes, now),
+  maxAge = ROUTE_MAX_AGE_MS
+): FeatureCollection<MultiLineString> {
+  const buckets = new Map<string, MutableRouteBucket>();
+  for (const route of routes) {
+    if (Math.max(0, now - route.lastHeard) > maxAge) continue;
+    const from = nodes.get(route.fromId);
+    const to = nodes.get(route.toId);
+    if (!from || !to || !validEndpoint(from) || !validEndpoint(to)) continue;
+    const style = routeStyleBucket(route, now, trafficBaseline);
+    const key = `${style.color}:${style.width}:${style.opacity}`;
+    const bucket = buckets.get(key) ?? { ...style, coordinates: [] };
+    bucket.coordinates.push([[from.lng, from.lat], [to.lng, to.lat]]);
+    buckets.set(key, bucket);
+  }
+  return {
+    type: 'FeatureCollection',
+    features: [...buckets.entries()].map(([key, bucket]) => ({
+      type: 'Feature',
+      id: `route-bucket-${key}`,
+      geometry: { type: 'MultiLineString', coordinates: bucket.coordinates },
+      properties: {
+        color: bucket.color,
+        width: bucket.width,
+        glowWidth: bucket.glowWidth,
+        opacity: bucket.opacity
+      }
+    }))
+  };
+}
+
 export function routeCollection(
   routes: readonly RouteV2[],
   nodes: ReadonlyMap<string, NodeV2>,
   now = Date.now(),
-  maxAge = ROUTE_MAX_AGE_MS
+  maxAge = ROUTE_MAX_AGE_MS,
+  trafficBaseline = routeTrafficBaseline(routes, now)
 ): FeatureCollection<LineString> {
-  const trafficBaseline = routeTrafficBaseline(routes, now);
   return {
     type: 'FeatureCollection',
     features: routes
       .map((route) => routeFeature(route, nodes, now, trafficBaseline, maxAge))
       .filter((feature): feature is Feature<LineString> => feature !== undefined)
+  };
+}
+
+function routeStyleBucket(
+  route: Pick<RouteV2, 'traffic' | 'lastHeard' | 'lastKind'>,
+  now: number,
+  trafficBaseline: number
+): RouteStyleBucket {
+  const visual = routeVisualProperties(route, now, trafficBaseline);
+  const traffic = ROUTE_TRAFFIC_STYLE_BUCKETS.find((bucket) => visual.trafficLevel <= bucket.maximum)
+    ?? ROUTE_TRAFFIC_STYLE_BUCKETS[ROUTE_TRAFFIC_STYLE_BUCKETS.length - 1]!;
+  const opacity = ROUTE_OPACITY_STYLE_BUCKETS.reduce((closest, candidate) => (
+    Math.abs(candidate - visual.opacity) < Math.abs(closest - visual.opacity) ? candidate : closest
+  ));
+  return {
+    color: payloadColor(route.lastKind),
+    width: traffic.width,
+    glowWidth: traffic.glowWidth,
+    opacity
   };
 }
 

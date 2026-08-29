@@ -32,7 +32,9 @@ import {
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
   ROUTE_RENDER_BUDGET,
+  ROUTE_STYLE_BUCKET_LIMIT,
   REGION_LAYER_IDS,
+  routeBucketCollection,
   routeCollection,
   routeColorExpression,
   routeRenderCandidates,
@@ -88,6 +90,8 @@ describe('route layer visibility', () => {
     expect(setPaintProperty).toHaveBeenCalledWith('route-glow', 'line-width', expect.any(Array));
     expect(setPaintProperty).toHaveBeenCalledWith('routes', 'line-opacity', expect.any(Array));
     expect(setPaintProperty.mock.calls.some((call) => call[1] === 'line-color')).toBe(false);
+    expect(JSON.stringify(setPaintProperty.mock.calls)).toContain('global-state');
+    expect(JSON.stringify(setPaintProperty.mock.calls)).toContain('routes-visible');
   });
 });
 
@@ -184,6 +188,33 @@ describe('activity heatmap data', () => {
 });
 
 describe('stable route visual data', () => {
+  it('groups the stable lattice into bounded style buckets without dropping geometry', () => {
+    const now = 1_900_000_000_000;
+    const kinds: readonly RouteV2['lastKind'][] = ['Advert', 'Trace', 'Text', 'ACK', 'Control', 'Other'];
+    const routes = Array.from({ length: ROUTE_RENDER_BUDGET }, (_, index) => route(
+      `bucket-${index}`,
+      `from-${index}`,
+      `to-${index}`,
+      now - (index % 5) * 4 * 60 * 60_000,
+      kinds[index % kinds.length]!,
+      1 + index % 64
+    ));
+
+    const collection = routeBucketCollection(routes, nodesFor(routes), now);
+    const segmentCount = collection.features.reduce((total, feature) => total + feature.geometry.coordinates.length, 0);
+
+    expect(collection.features.length).toBeLessThanOrEqual(ROUTE_STYLE_BUCKET_LIMIT);
+    expect(segmentCount).toBe(routes.length);
+    expect(collection.features.every((feature) => feature.geometry.type === 'MultiLineString')).toBe(true);
+    expect(collection.features.every(({ properties }) => (
+      properties !== null
+      && typeof properties.color === 'string'
+      && Number(properties.width) >= 0.68
+      && Number(properties.glowWidth) <= 3.4
+      && Number(properties.opacity) <= 1
+    ))).toBe(true);
+  });
+
   it('caps the historical lattice while keeping selected-node routes ahead of fresher traffic', () => {
     const now = 1_900_000_000_000;
     const routes = Array.from({ length: ROUTE_RENDER_BUDGET + 5 }, (_, index) => route(
@@ -250,7 +281,7 @@ describe('stable route visual data', () => {
 });
 
 describe('node neighbor focus', () => {
-  it('filters every route layer to recent edges touching the selected node', () => {
+  it('filters the individual route hit source to recent edges touching the selected node', () => {
     const setFilter = vi.fn();
     const map = {
       getLayer: vi.fn(() => ({})),
