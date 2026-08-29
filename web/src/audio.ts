@@ -115,7 +115,6 @@ export class RouteSonifier {
   private context?: AudioContext;
   private master?: GainNode;
   private ambience?: DelayNode;
-  private ambienceLevel?: GainNode;
   private enabled = false;
   private preferredEnabled: boolean;
   private volume: number;
@@ -218,7 +217,6 @@ export class RouteSonifier {
     this.context = undefined;
     this.master = undefined;
     this.ambience = undefined;
-    this.ambienceLevel = undefined;
   }
 
   private createContext(): AudioContext {
@@ -244,7 +242,6 @@ export class RouteSonifier {
     this.context = context;
     this.master = master;
     this.ambience = ambience;
-    this.ambienceLevel = ambienceLevel;
     return context;
   }
 
