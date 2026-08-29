@@ -57,6 +57,7 @@ function setLayersOpen(open: boolean): void {
 document.documentElement.dataset.viewClass = activeViewClass;
 setLayersOpen(activeViewClass === 'desktop');
 layersSummary.hidden = activeViewClass === 'desktop';
+layersSummary.style.display = activeViewClass === 'desktop' ? 'none' : '';
 
 legendToggle.addEventListener('click', () => {
   legendExpanded = !legendExpanded;
@@ -190,6 +191,7 @@ async function start(): Promise<void> {
         document.documentElement.dataset.viewClass = next;
         setLayersOpen(next === 'desktop');
         layersSummary.hidden = next === 'desktop';
+        layersSummary.style.display = next === 'desktop' ? 'none' : '';
         const restored = loadSavedView(localStorage, next);
         if (restored) {
           mapElement.dataset.viewSource = liveMap.restore(restored.center, restored.zoom, liveStore.snapshot.nodes)

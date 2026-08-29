@@ -257,9 +257,25 @@ export class LiveMap {
     const active = (): boolean => hydrationEpoch === this.routeHydrationEpoch
       && this.routesVisible
       && Boolean(this.map.getSource('routes'));
-    source.updateData({ removeAll: true });
     let offset = 0;
-    const addBatch = (): void => {
+    const fail = (error: unknown): void => {
+      if (!active()) return;
+      this.routeHydrating = false;
+      this.routeDataDirty = true;
+      this.container.dataset.renderState = 'idle';
+      console.warn('Route source update failed:', error instanceof Error ? error.message : error);
+    };
+    const finish = (): void => {
+      if (!active()) return;
+      this.routeHydrating = false;
+      if (this.routeDataDirty) {
+        this.hydrateRouteSource();
+        return;
+      }
+      this.emitRouteWindowChange();
+      this.markRendering('routes');
+    };
+    const addBatch = async (): Promise<void> => {
       if (!active()) return;
       const additions: Feature<LineString>[] = [];
       const end = Math.min(routes.length, offset + ROUTE_HYDRATION_BATCH_SIZE);
@@ -269,20 +285,26 @@ export class LiveMap {
         additions.push(feature);
         this.routeFeatureIDs.add(String(feature.id));
       }
-      if (additions.length > 0) source.updateData({ add: additions });
+      try {
+        // Wait for each worker diff before scheduling the next frame. MapLibre
+        // otherwise merges pending diffs and applies the whole burst at once.
+        if (additions.length > 0) await source.updateData({ add: additions }, true);
+      } catch (error) {
+        fail(error);
+        return;
+      }
+      if (!active()) return;
       if (offset < routes.length) {
-        window.requestAnimationFrame(addBatch);
+        window.requestAnimationFrame(() => { void addBatch(); });
         return;
       }
-      this.routeHydrating = false;
-      if (this.routeDataDirty) {
-        this.hydrateRouteSource();
-        return;
-      }
-      this.emitRouteWindowChange();
-      this.markRendering('routes');
+      finish();
     };
-    window.requestAnimationFrame(addBatch);
+    void source.updateData({ removeAll: true }, true)
+      .then(() => {
+        if (active()) window.requestAnimationFrame(() => { void addBatch(); });
+      })
+      .catch(fail);
   }
 
   private rebuildHeatIndex(now = Date.now()): void {
@@ -922,7 +944,7 @@ export class LiveMap {
       const settleSource = (): void => {
         if (sourceEpoch !== this.routeHydrationEpoch) return;
         const source = this.map.getSource(sourceID) as GeoJSONSource | undefined;
-        if (!this.routeHydrating && source?.loaded()) {
+        if (!this.routeHydrating && source && this.map.isSourceLoaded(sourceID)) {
           this.container.dataset.renderState = 'idle';
           return;
         }
