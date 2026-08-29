@@ -32,7 +32,7 @@ const EMPTY_FEATURES: FeatureCollection = { type: 'FeatureCollection', features:
 const ACTIVITY_HEAT_SOURCE_ID = 'activity-heat-source';
 const REGION_SOURCE_ID = 'meshmapper-canada-regions';
 export const HEATMAP_LAYER_ID = 'activity-heat';
-export const REGION_LAYER_IDS = ['region-fill', 'region-outline', 'region-labels'] as const;
+export const REGION_LAYER_IDS = ['region-outline', 'region-labels'] as const;
 export const ROUTE_LAYER_IDS = ['route-glow', 'routes'] as const;
 export const ROUTE_HIT_LAYER_ID = 'route-hit';
 export const NODE_HIT_LAYER_ID = 'node-hit';
@@ -463,17 +463,10 @@ export class LiveMap {
     this.map.addSource(REGION_SOURCE_ID, {
       type: 'geojson',
       data: EMPTY_FEATURES,
+      maxzoom: 12,
+      buffer: 32,
+      tolerance: 0.75,
       attribution: 'Canadian regions &copy; <a href="https://meshmapper.net/">MeshMapper</a>, used with permission'
-    });
-    this.map.addLayer({
-      id: REGION_LAYER_IDS[0],
-      type: 'fill',
-      source: REGION_SOURCE_ID,
-      layout: { visibility: 'none' },
-      paint: {
-        'fill-color': '#32b7ad',
-        'fill-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.018, 7, 0.026, 10, 0.036, 14, 0.018]
-      }
     });
 
     this.map.addSource(ACTIVITY_HEAT_SOURCE_ID, { type: 'geojson', data: EMPTY_POINTS, maxzoom: 14 });
@@ -506,7 +499,7 @@ export class LiveMap {
       }
     });
     this.map.addLayer({
-      id: REGION_LAYER_IDS[1],
+      id: REGION_LAYER_IDS[0],
       type: 'line',
       source: REGION_SOURCE_ID,
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
@@ -588,7 +581,7 @@ export class LiveMap {
     if (this.regionsVisible) this.ensureRegionsData();
 
     this.map.addLayer({
-      id: REGION_LAYER_IDS[2],
+      id: REGION_LAYER_IDS[1],
       type: 'symbol',
       source: REGION_SOURCE_ID,
       minzoom: 5,
