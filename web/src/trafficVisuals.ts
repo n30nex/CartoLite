@@ -1,4 +1,5 @@
 export type PacketKind = 'Advert' | 'Trace' | 'Text' | 'ACK' | 'Control' | 'Other';
+export type PacketSignature = 'ripple' | 'echo' | 'orbit' | 'double' | 'tick';
 
 export const ROUTE_TRAFFIC_HALF_LIFE_MS = 15 * 60_000;
 export const ROUTE_TRAFFIC_MAX = 64;
@@ -12,6 +13,15 @@ export const PACKET_KIND_COLORS: Readonly<Record<PacketKind, string>> = {
   ACK: '#8bd4ff',
   Control: '#7dbfff',
   Other: '#7dbfff'
+};
+
+export const PACKET_KIND_SIGNATURES: Readonly<Record<PacketKind, PacketSignature>> = {
+  Advert: 'ripple',
+  Trace: 'echo',
+  Text: 'orbit',
+  ACK: 'double',
+  Control: 'tick',
+  Other: 'tick'
 };
 
 export const ROUTE_LEGEND_ITEMS: readonly { kind: PacketKind; label: string; shortLabel: string; accessibleLabel: string }[] = [
@@ -34,6 +44,10 @@ export function normalizePacketKind(payloadType: string | undefined): PacketKind
 
 export function payloadColor(payloadType: string | undefined): string {
   return PACKET_KIND_COLORS[normalizePacketKind(payloadType)];
+}
+
+export function packetSignature(payloadType: string | undefined): PacketSignature {
+  return PACKET_KIND_SIGNATURES[normalizePacketKind(payloadType)];
 }
 
 export function decayedRouteTraffic(traffic: number, lastHeard: number, now: number): number {

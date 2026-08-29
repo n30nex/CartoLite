@@ -3,6 +3,8 @@ import {
   decayedRouteTraffic,
   normalizePacketKind,
   PACKET_KIND_COLORS,
+  PACKET_KIND_SIGNATURES,
+  packetSignature,
   payloadColor,
   ROUTE_TRAFFIC_HALF_LIFE_MS,
   ROUTE_TRAFFIC_MAX,
@@ -35,6 +37,22 @@ describe('packet traffic palette', () => {
     expect(normalizePacketKind('unknown')).toBe('Other');
     expect(normalizePacketKind(undefined)).toBe('Other');
     expect(payloadColor('unknown')).toBe(PACKET_KIND_COLORS.Other);
+  });
+
+  it('assigns a restrained visual signature to every public packet kind', () => {
+    expect(PACKET_KIND_SIGNATURES).toEqual({
+      Advert: 'ripple',
+      Trace: 'echo',
+      Text: 'orbit',
+      ACK: 'double',
+      Control: 'tick',
+      Other: 'tick'
+    });
+    expect(packetSignature('Advert')).toBe('ripple');
+    expect(packetSignature('TraceResponse')).toBe('echo');
+    expect(packetSignature('TextMessage')).toBe('orbit');
+    expect(packetSignature('ACK')).toBe('double');
+    expect(packetSignature(undefined)).toBe('tick');
   });
 });
 

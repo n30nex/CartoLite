@@ -116,6 +116,7 @@ export class LiveMap {
   private tooltipSize: TooltipSize = { width: 0, height: 0 };
   private lastFocusSignature: string | undefined;
   private lastFollowMoveAt = 0;
+  private directorTimer?: number;
   private readonly reducedMotion = prefersReducedMotion();
   private readonly regionCanvas: RegionCanvas;
   private readonly routeLattice: RouteLatticeCanvas;
@@ -135,6 +136,7 @@ export class LiveMap {
     this.container.dataset.selectedNodeId = '';
     this.container.dataset.neighborRouteCount = '0';
     this.container.dataset.hoveredRouteId = '';
+    this.container.dataset.cameraMode = 'idle';
     this.map = new maplibregl.Map({
       container: this.container,
       style: cartoVectorStyle(),
@@ -418,20 +420,40 @@ export class LiveMap {
     return { center: [center.lng, center.lat], zoom: this.map.getZoom() };
   }
 
-  follow(endpoint: EndpointV2): void {
-    if (!validEndpoint(endpoint)) return;
+  follow(packet: PacketView): void {
+    const endpoints = packetEndpoints(packet).filter(validEndpoint);
+    if (endpoints.length === 0) return;
     const container = this.map.getContainer();
-    const point = this.map.project([endpoint.lng, endpoint.lat]);
-    if (isPointInSafeArea(point, { width: container.clientWidth, height: container.clientHeight })) return;
+    const viewport = { width: container.clientWidth, height: container.clientHeight };
+    const inside = endpoints.every((endpoint) => isPointInSafeArea(
+      this.map.project([endpoint.lng, endpoint.lat]),
+      viewport,
+    ));
+    if (inside || this.map.isMoving()) return;
     const now = Date.now();
     if (!canMoveLiveFollow(this.lastFollowMoveAt, now)) return;
     this.lastFollowMoveAt = now;
-    const center: [number, number] = [endpoint.lng, endpoint.lat];
-    if (this.reducedMotion) {
-      this.map.jumpTo({ center });
+    this.container.dataset.cameraMode = 'director';
+    if (this.directorTimer !== undefined) window.clearTimeout(this.directorTimer);
+    this.directorTimer = window.setTimeout(() => {
+      this.directorTimer = undefined;
+      this.container.dataset.cameraMode = 'idle';
+    }, 900);
+    if (endpoints.length === 1) {
+      const center: [number, number] = [endpoints[0]!.lng, endpoints[0]!.lat];
+      if (this.reducedMotion) this.map.jumpTo({ center });
+      else this.map.easeTo({ center, duration: 620, essential: false });
       return;
     }
-    this.map.easeTo({ center, duration: 450, essential: false });
+    const bounds = new maplibregl.LngLatBounds();
+    for (const endpoint of endpoints) bounds.extend([endpoint.lng, endpoint.lat]);
+    const horizontal = container.clientWidth <= 620 ? 56 : 104;
+    this.map.fitBounds(bounds, {
+      padding: { top: 86, right: horizontal, bottom: 72, left: horizontal },
+      maxZoom: this.map.getZoom(),
+      duration: this.reducedMotion ? 0 : 720,
+      essential: false,
+    });
   }
 
   shouldFollow(packet: PacketView): boolean {
@@ -502,6 +524,7 @@ export class LiveMap {
     this.routeHydrating = false;
     this.renderEpoch += 1;
     window.clearInterval(this.freshnessTimer);
+    if (this.directorTimer !== undefined) window.clearTimeout(this.directorTimer);
     if (this.clusterFlashTimer !== undefined) window.clearTimeout(this.clusterFlashTimer);
     this.map.off('zoomend', this.handleZoomEnd);
     this.regionCanvas.destroy();
@@ -548,19 +571,19 @@ export class LiveMap {
           0.55, 0.6,
           1, 1.25
         ],
-        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 3, 0.55, 7, 0.85, 10, 1.1, 16, 1.25],
-        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 3, 14, 6, 22, 9, 30, 13, 38, 16, 44],
+        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 3, 0.42, 7, 0.7, 10, 0.9, 16, 1.05],
+        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 3, 12, 6, 19, 9, 26, 13, 33, 16, 38],
         'heatmap-color': [
           'interpolate', ['linear'], ['heatmap-density'],
           0, 'rgba(3,7,11,0)',
-          0.08, 'rgba(20,109,118,0.18)',
-          0.25, 'rgba(29,166,157,0.42)',
-          0.48, 'rgba(69,223,195,0.62)',
-          0.7, 'rgba(242,191,79,0.80)',
-          0.88, 'rgba(255,145,82,0.90)',
-          1, 'rgba(255,244,177,0.98)'
+          0.08, 'rgba(20,109,118,0.13)',
+          0.25, 'rgba(29,166,157,0.34)',
+          0.48, 'rgba(69,223,195,0.52)',
+          0.7, 'rgba(235,187,75,0.67)',
+          0.88, 'rgba(248,137,88,0.76)',
+          1, 'rgba(255,202,107,0.84)'
         ],
-        'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.72, 7, 0.62, 10, 0.4, 14, 0.18, 16, 0.1]
+        'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.62, 7, 0.53, 10, 0.34, 14, 0.16, 16, 0.08]
       }
     });
     this.map.addSource(ROUTE_DETAIL_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 14 });
@@ -1268,6 +1291,21 @@ export function isRouteInspectable(
 ): boolean {
   if (!routeID) return false;
   return recentNeighborRoutes(routes, selectedNodeID, now).some((route) => route.id === routeID);
+}
+
+export function packetEndpoints(packet: PacketView): EndpointV2[] {
+  if (packet.mode === 'observer') return [packet.observer];
+  const endpoints: EndpointV2[] = [];
+  const seen = new Set<string>();
+  for (const segment of packet.segments) {
+    for (const endpoint of [segment.from, segment.to]) {
+      const key = `${endpoint.id}|${endpoint.lat}|${endpoint.lng}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      endpoints.push(endpoint);
+    }
+  }
+  return endpoints;
 }
 
 export function isPointInSafeArea(

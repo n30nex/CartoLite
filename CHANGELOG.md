@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.0 - 2026-08-29
+
+### Added
+
+- Add deterministic curved energy ribbons with an origin charge, directional comet, relay spark, destination bloom, and a four-second node wake for every visible live route.
+- Add distinct restrained packet signatures: expanding Advert ripples, Trace echoes, orbiting Text sparks, double-ring ACKs, and Control ticks, while retaining the established protocol palette.
+- Add a protocol-coloured aurora wake, live traffic meter, route/region glow response, selected-node vignette, and a cinematic camera indicator without introducing telemetry or new data sources.
+- Add route-wide cinematic framing while Live Follow is enabled; manual map movement still disables Follow and reduced-motion visitors receive an immediate non-animated camera update.
+
+### Changed
+
+- Replace straight transient packet paths and residue with stable quadratic curves whose direction and shape remain consistent while the map moves.
+- Reduce heatmap radius, intensity, opacity, and white-hot saturation so dense corridors remain geographic and packet colours stay distinguishable.
+- Keep every visible route animation during bursts while automatically reducing only secondary signatures, observer rings, lingering residue, resolution, and frame cadence on phones or under heavy activity.
+- Make active nodes breathe after each completed hop and keep stable route and exact MeshMapper region canvases visually synchronized with live traffic.
+
+### Accessibility and verification
+
+- Preserve 44-pixel phone controls, separate saved views, static reduced-motion route illumination, visitor-local audio preferences, and the existing privacy-safe public schema.
+- Extend unit and browser coverage for curved geometry, protocol signatures, node wakes, adaptive quality, uncapped visible route cues, cinematic route framing, responsive layouts, and the 4,000-node/7,000-route interaction budget.
+
 ## 0.5.0 - 2026-08-29
 
 ### Added
