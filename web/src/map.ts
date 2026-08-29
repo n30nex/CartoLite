@@ -4,9 +4,17 @@ import maplibregl, {
   type GeoJSONSourceDiff,
   type MapMouseEvent
 } from 'maplibre-gl';
-import type { Feature, FeatureCollection, LineString, MultiLineString, Point, Position } from 'geojson';
+import type {
+  Feature,
+  FeatureCollection,
+  LineString,
+  MultiLineString,
+  Point,
+  Position
+} from 'geojson';
 import canadaRegionsURL from './assets/meshmapper-canada-regions.geojson?url';
 import { cartoVectorRequestURL, cartoVectorStyle } from './basemap';
+import { REGION_BOUNDARY_SOURCE_COUNT, regionSourceCollections } from './regions';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
 import type { MapChanges } from './state';
 import {
@@ -32,11 +40,20 @@ const EMPTY_ROUTE_BUCKETS: FeatureCollection<MultiLineString> = { type: 'Feature
 const EMPTY_FEATURES: FeatureCollection = { type: 'FeatureCollection', features: [] };
 const ACTIVITY_HEAT_SOURCE_ID = 'activity-heat-source';
 const REGION_SOURCE_ID = 'meshmapper-canada-regions';
+const REGION_LABEL_SOURCE_ID = 'meshmapper-canada-region-labels';
+const REGION_BOUNDARY_SOURCE_IDS = Array.from(
+  { length: REGION_BOUNDARY_SOURCE_COUNT },
+  (_, index) => index === 0 ? REGION_SOURCE_ID : `${REGION_SOURCE_ID}-${index + 1}`
+);
 const ROUTE_SOURCE_ID = 'routes';
 const ROUTE_DETAIL_SOURCE_ID = 'route-details';
 const ROUTES_VISIBLE_GLOBAL_STATE = 'routes-visible';
 export const HEATMAP_LAYER_ID = 'activity-heat';
-export const REGION_LAYER_IDS = ['region-outline', 'region-labels'] as const;
+export const REGION_OUTLINE_LAYER_IDS = REGION_BOUNDARY_SOURCE_IDS.map(
+  (_, index) => index === 0 ? 'region-outline' : `region-outline-${index + 1}`
+);
+export const REGION_LABEL_LAYER_ID = 'region-labels';
+export const REGION_LAYER_IDS = [...REGION_OUTLINE_LAYER_IDS, REGION_LABEL_LAYER_ID] as const;
 const ROUTE_LAYER_IDS = ['route-glow', 'routes'] as const;
 export const ROUTE_HIT_LAYER_ID = 'route-hit';
 export const NODE_HIT_LAYER_ID = 'node-hit';
@@ -523,14 +540,17 @@ export class LiveMap {
   }
 
   private installLayers(): void {
-    this.map.addSource(REGION_SOURCE_ID, {
-      type: 'geojson',
-      data: EMPTY_FEATURES,
-      maxzoom: 12,
-      buffer: 32,
-      tolerance: 0.75,
-      attribution: MESHMAP_ATTRIBUTION
-    });
+    for (const [index, sourceID] of REGION_BOUNDARY_SOURCE_IDS.entries()) {
+      this.map.addSource(sourceID, {
+        type: 'geojson',
+        data: EMPTY_FEATURES,
+        maxzoom: 12,
+        buffer: 32,
+        tolerance: 0.75,
+        ...(index === 0 ? { attribution: MESHMAP_ATTRIBUTION } : {})
+      });
+    }
+    this.map.addSource(REGION_LABEL_SOURCE_ID, { type: 'geojson', data: EMPTY_POINTS, maxzoom: 12 });
 
     this.map.addSource(ACTIVITY_HEAT_SOURCE_ID, { type: 'geojson', data: EMPTY_POINTS, maxzoom: 14 });
     this.map.addLayer({
@@ -560,19 +580,21 @@ export class LiveMap {
         'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.72, 7, 0.62, 10, 0.4, 14, 0.18, 16, 0.1]
       }
     });
-    this.map.addLayer({
-      id: REGION_LAYER_IDS[0],
-      type: 'line',
-      source: REGION_SOURCE_ID,
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: {
-        'line-color': '#69d1ca',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.45, 6, 0.7, 10, 1.1, 14, 1.35],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.18, 6, 0.3, 10, 0.42, 14, 0.28],
-        'line-dasharray': [2, 2],
-        'line-blur': 0.18
-      }
-    });
+    for (const [index, sourceID] of REGION_BOUNDARY_SOURCE_IDS.entries()) {
+      this.map.addLayer({
+        id: REGION_OUTLINE_LAYER_IDS[index]!,
+        type: 'line',
+        source: sourceID,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#69d1ca',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.45, 6, 0.7, 10, 1.1, 14, 1.35],
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.18, 6, 0.3, 10, 0.42, 14, 0.28],
+          'line-dasharray': [2, 2],
+          'line-blur': 0.18
+        }
+      });
+    }
 
     this.map.setGlobalStateProperty(ROUTES_VISIBLE_GLOBAL_STATE, this.routesVisible);
     this.map.addSource(ROUTE_SOURCE_ID, { type: 'geojson', data: EMPTY_ROUTE_BUCKETS, maxzoom: 14 });
@@ -642,9 +664,9 @@ export class LiveMap {
     if (this.regionsVisible) this.ensureRegionsData();
 
     this.map.addLayer({
-      id: REGION_LAYER_IDS[1],
+      id: REGION_LABEL_LAYER_ID,
       type: 'symbol',
-      source: REGION_SOURCE_ID,
+      source: REGION_LABEL_SOURCE_ID,
       minzoom: 5,
       layout: {
         'text-field': ['get', 'code'],
@@ -898,9 +920,8 @@ export class LiveMap {
 
   private ensureRegionsData(): void {
     if (this.regionsLoaded || this.regionsLoad) return;
-    const source = this.map.getSource(REGION_SOURCE_ID) as GeoJSONSource | undefined;
-    if (!source) return;
-    this.regionsLoad = source.setData(canadaRegionsURL, true)
+    if (!this.map.getSource(REGION_SOURCE_ID) || !this.map.getSource(REGION_LABEL_SOURCE_ID)) return;
+    this.regionsLoad = this.loadRegionsData()
       .then(() => {
         this.regionsLoaded = true;
         this.container.dataset.regionsLoaded = 'true';
@@ -913,6 +934,22 @@ export class LiveMap {
       .finally(() => {
         this.regionsLoad = undefined;
       });
+  }
+
+  private async loadRegionsData(): Promise<void> {
+    const response = await fetch(canadaRegionsURL, { credentials: 'same-origin' });
+    if (!response.ok) throw new Error(`regional asset returned HTTP ${response.status}`);
+    const collections = regionSourceCollections(await response.json());
+    const labelSource = this.map.getSource(REGION_LABEL_SOURCE_ID) as GeoJSONSource | undefined;
+    if (!labelSource) throw new Error('regional label source is unavailable');
+    await labelSource.setData(collections.labels);
+    for (let index = 0; index < collections.boundaries.length; index += 1) {
+      await nextAnimationFrame();
+      const sourceID = REGION_BOUNDARY_SOURCE_IDS[index]!;
+      const source = this.map.getSource(sourceID) as GeoJSONSource | undefined;
+      if (!source) throw new Error(`regional boundary source ${sourceID} is unavailable`);
+      await source.setData(collections.boundaries[index]!);
+    }
   }
 
   private markRendering(sourceID?: string): void {
@@ -1415,14 +1452,19 @@ export function prefersReducedMotion(): boolean {
 }
 
 function routeZoomOpacity(scale: number): ExpressionSpecification {
-  const opacity: ExpressionSpecification = [
-    'interpolate', ['linear'], ['zoom'],
-    3, ['*', ['get', 'opacity'], 0.1 * scale],
-    5, ['*', ['get', 'opacity'], 0.24 * scale],
-    7, ['*', ['get', 'opacity'], 0.58 * scale],
-    9, ['*', ['get', 'opacity'], scale]
+  const gated = (factor: number): ExpressionSpecification => [
+    'case',
+    ['==', ['global-state', ROUTES_VISIBLE_GLOBAL_STATE], true],
+    ['*', ['get', 'opacity'], factor],
+    0
   ];
-  return ['case', ['==', ['global-state', ROUTES_VISIBLE_GLOBAL_STATE], true], opacity, 0];
+  return [
+    'interpolate', ['linear'], ['zoom'],
+    3, gated(0.1 * scale),
+    5, gated(0.24 * scale),
+    7, gated(0.58 * scale),
+    9, gated(scale)
+  ];
 }
 
 function routeGlowOpacity(focused: boolean): ExpressionSpecification {
@@ -1733,6 +1775,10 @@ export function routeWindowLabel(window: RouteWindow, zoom: number): string {
   const age = effectiveRouteWindowMS(window, zoom);
   const label = age === 15 * 60_000 ? '15m' : age === 60 * 60_000 ? '1h' : age === 6 * 60 * 60_000 ? '6h' : '24h';
   return window === 'auto' ? `Auto · ${label}` : label;
+}
+
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

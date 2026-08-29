@@ -19,7 +19,7 @@
 - Keep the historical Routes overlay responsive by rendering at most the 700 freshest routes in the chosen window, grouped into at most 100 style-preserving `MultiLineString` buckets and prewarmed while hidden; selected-node routes retain a separate exact hit-test source, and live packet animation and sound remain uncapped.
 - Keep the national heat summary calm and responsive by rendering the 600 strongest active-node weights while preserving the complete topology and live event stream.
 - Toggle the prewarmed Routes lattice through MapLibre global paint state, toggle Heatmap through its bounded GeoJSON source, and keep the first Regions reveal data-driven so primary interactions avoid bulk source ingestion or a full style recompile.
-- Refresh the exact unsimplified 34-region MeshMapper snapshot on 2026-08-29 and validate its metadata, code set, geometry, checksum, lazy loading, MIME type, and attribution.
+- Refresh the exact unsimplified 34-region MeshMapper snapshot on 2026-08-29 and validate its metadata, code set, geometry, checksum, lazy loading, MIME type, and attribution; stage the unchanged boundary edges across eight balanced MapLibre sources so the 46,449-vertex overlay does not land in one main-thread task.
 - Extend CI with vector authorization, phone landscape, oscillator-count, no-raster, stale-view, operations transition, region checksum, and sub-100 ms layer-interaction gates.
 
 ### Security

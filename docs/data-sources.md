@@ -11,7 +11,7 @@
 - Geometry: no coordinates are removed, rounded, or simplified
 - Snapshot: 46,449 closed-ring vertices; SHA-256 `6013c8879e44904df0e91389257a43e9d4250fa5e612d1b6002bcd20d7b6fa2c`
 
-Vite emits this snapshot as a content-hashed `.geojson` asset. CartoLite serves it as `application/geo+json` with immutable origin caching, and the production Cloudflare rule may cache only the matching `/assets/meshmapper-canada-regions-*.geojson` path. The overlay remains lazy and is fetched only when a visitor enables Regions.
+Vite emits this snapshot as a content-hashed `.geojson` asset. CartoLite serves it as `application/geo+json` with immutable origin caching, and the production Cloudflare rule may cache only the matching `/assets/meshmapper-canada-regions-*.geojson` path. The overlay remains lazy and is fetched only when a visitor enables Regions. After validating the exact code set and closed rings, the browser preserves every source edge while splitting long rings and balancing the resulting line pieces across eight MapLibre worker sources; labels use the committed region centres. This runtime partition changes neither the cached snapshot nor its coordinates.
 
 Some individual outlines may ultimately incorporate data from OpenStreetMap or geoBoundaries. Their upstream provenance and licensing may therefore also apply; this snapshot preserves the geometry served by MeshMapper rather than asserting a separate origin.
 
