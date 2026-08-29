@@ -4,10 +4,23 @@ import { NEIGHBOR_ROUTE_RECENT_MS } from '../src/routeFocus';
 import type { StateV2 } from '../src/types';
 
 test('renders the live route map and privacy-safe state', async ({ page }, testInfo) => {
+  const mobile = isMobileProject(testInfo.project.name);
+  await instrumentAudioContext(page);
   const mapStyleErrors = captureMapStyleErrors(page);
+  const consoleErrors = captureConsoleErrors(page);
   const regionAssetRequests: string[] = [];
+  const cartoResponses = { tileJSON: 0, vector: 0, glyph: 0 };
+  const rasterRequests: string[] = [];
   page.on('request', (request) => {
     if (isRegionAssetURL(request.url())) regionAssetRequests.push(request.url());
+    if (/basemaps\.cartocdn\.com\/.+\.(?:png|jpg)(?:\?|$)|dark_all/i.test(request.url())) rasterRequests.push(request.url());
+  });
+  page.on('response', (response) => {
+    if (!response.ok()) return;
+    const url = response.url();
+    if (url.includes('/vector/carto.streets/v1/tiles.json')) cartoResponses.tileJSON += 1;
+    else if (url.includes('/vectortiles/carto.streets/') && url.includes('.mvt')) cartoResponses.vector += 1;
+    else if (url.includes('/fonts/') && url.includes('.pbf')) cartoResponses.glyph += 1;
   });
   const stateResponse = page.waitForResponse((response) => response.url().endsWith('/api/state') && response.ok());
   await page.goto('/');
@@ -19,9 +32,26 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(page.locator('.map-grade')).toHaveCSS('pointer-events', 'none');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   expect(mapStyleErrors, 'MapLibre should accept every installed layer expression').toEqual([]);
+  await expect.poll(() => cartoResponses.tileJSON, { message: 'CARTO vector TileJSON should load' }).toBeGreaterThan(0);
+  await expect.poll(() => cartoResponses.vector, { message: 'CARTO vector PBF tiles should load' }).toBeGreaterThan(0);
+  await expect.poll(() => cartoResponses.glyph, { message: 'CARTO glyph PBFs should load' }).toBeGreaterThan(0);
+  expect(rasterRequests, 'the vector-only release must not request a raster basemap').toEqual([]);
+  const regionCanvas = page.locator('#region-canvas');
+  await expect(regionCanvas).toBeHidden();
+  const routeCanvas = page.locator('#route-canvas');
+  await expect(routeCanvas).toBeHidden();
   await expect(page.locator('#packet-canvas')).toBeVisible();
   await expect(page.locator('#status-text')).not.toHaveText('Starting…');
   const routeWindow = page.locator('#route-window');
+  const layersSummary = page.locator('#layers-summary');
+  if (mobile) {
+    await expect(layersSummary).toBeVisible();
+    await expect(page.locator('#layers-disclosure')).not.toHaveAttribute('open', '');
+    await expect(routeWindow).toBeHidden();
+    await layersSummary.click();
+  } else {
+    await expect(layersSummary).toBeHidden();
+  }
   await expect(routeWindow).toBeVisible();
   await expect(routeWindow).toHaveValue('auto');
   const aboutDialog = page.locator('#about-dialog');
@@ -30,6 +60,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(aboutDialog).toContainText('No public keys, packet payloads, message text, raw paths, or visitor analytics');
   await page.locator('#about-close').click();
   await expect(aboutDialog).toBeHidden();
+  if (mobile) await openLayers(page);
   const nodeLegend = page.locator('#legend-items');
   await expect(nodeLegend).toContainText('Repeater');
   await expect(nodeLegend).toContainText('Companion');
@@ -38,8 +69,8 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   const routeLegend = page.locator('#route-legend');
   await expect(routeLegend).toBeHidden();
   await expect(routeLegend.locator('.route-legend-item')).toHaveCount(5);
-  if (testInfo.project.name === 'mobile') {
-    const targetSizes = await page.locator('#about-button, .control-button, #route-window, #legend-toggle').evaluateAll((elements) => elements.map((element) => {
+  if (mobile) {
+    const targetSizes = await page.locator('#about-button, .control-button:visible, #route-window, #legend-toggle').evaluateAll((elements) => elements.map((element) => {
       const bounds = element.getBoundingClientRect();
       return { width: bounds.width, height: bounds.height };
     }));
@@ -47,6 +78,11 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
       expect(size.width, 'mobile control target width').toBeGreaterThanOrEqual(44);
       expect(size.height, 'mobile control target height').toBeGreaterThanOrEqual(44);
     }
+    const overflow = await page.locator('#topbar, .controls, .layers-panel').evaluateAll((elements) => elements.some((element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.left < -0.5 || bounds.right > window.innerWidth + 0.5 || bounds.top < -0.5 || bounds.bottom > window.innerHeight + 0.5;
+    }));
+    expect(overflow, 'mobile controls should stay inside portrait and landscape viewports').toBe(false);
     await expect(page.locator('#legend-toggle')).toBeVisible();
     await expect(page.locator('#legend')).toHaveAttribute('data-collapsed', 'true');
     await expect(page.locator('#legend-toggle')).toHaveAttribute('aria-expanded', 'false');
@@ -56,6 +92,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
     await expect(page.locator('#legend-toggle')).toHaveAttribute('aria-label', 'Hide map legend');
     await expect(page.locator('#legend-items')).toBeVisible();
     await page.locator('#legend-toggle').click();
+    await openLayers(page);
   } else {
     await expect(page.locator('#legend-items')).toBeVisible();
   }
@@ -79,26 +116,55 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'false');
   expect(regionAssetRequests, 'regional GeoJSON should stay lazy while the layer is off').toEqual([]);
   const soundButton = page.locator('#sound-button');
+  const soundPanel = page.locator('#sound-panel');
+  const soundToggle = page.locator('#sound-toggle');
   await expect(soundButton).toBeVisible();
   await expect(soundButton).toHaveAttribute('aria-label', 'Sound');
   await expect(soundButton).toHaveAttribute('aria-pressed', 'false');
-  await expect(soundButton).toHaveAttribute('title', 'Turn on route sounds');
+  await expect(soundButton).toHaveAttribute('title', 'Sound off — 80%');
+  await expect(page.locator('#sound-state')).toHaveText('Off');
   await soundButton.click();
+  await expect(soundPanel).toBeVisible();
+  await expect(page.locator('#sound-panel-state')).toHaveText('Off');
+  await expect(page.locator('#sound-volume-output')).toHaveText('80%');
+  await soundToggle.click();
   await expect(soundButton).toHaveAttribute('aria-pressed', 'true');
-  await expect(soundButton).toHaveAttribute('title', 'Sound on — visible live hops only');
+  await expect(soundButton).toHaveAttribute('title', 'Sound on — 80% · visible live hops only');
+  await expect(page.locator('#sound-panel-state')).toHaveText('On');
   await expect(soundButton).toHaveClass(/sounding/, { timeout: 15_000 });
-  await soundButton.click();
+  const audioCounts = await page.evaluate(() => ({
+    oscillators: (window as unknown as { __cartoliteOscillators: number }).__cartoliteOscillators,
+    scheduled: Number(document.getElementById('sound-activity')?.dataset.scheduled ?? 0)
+  }));
+  expect(audioCounts.scheduled).toBeGreaterThan(0);
+  expect(audioCounts.oscillators, 'one oscillator should be created for every scheduled visible hop').toBe(audioCounts.scheduled);
+  await page.locator('#sound-volume').evaluate((element) => {
+    const input = element as HTMLInputElement;
+    input.value = '65';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(page.locator('#sound-volume-output')).toHaveText('65%');
+  await soundToggle.click();
   await expect(soundButton).toHaveAttribute('aria-pressed', 'false');
-  await expect(soundButton).toHaveAttribute('title', 'Turn on route sounds');
+  await expect(soundButton).toHaveAttribute('title', 'Sound off — 65%');
+  await expect(page.locator('#sound-panel-state')).toHaveText('Off');
+  await soundButton.click();
+  await expect(soundPanel).toBeHidden();
+  if (mobile) await openLayers(page);
 
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(routeLegend).toBeVisible();
+  await expect(routeCanvas).toBeVisible();
+  await expect.poll(() => routeCanvas.getAttribute('data-rendered-routes').then(Number)).toBeGreaterThan(0);
+  expect(await canvasHasPixels(routeCanvas), 'stable route lattice should paint on its dedicated canvas').toBe(true);
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
+  if (mobile) await openLayers(page);
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'false');
   await expect(routesButton).toHaveAttribute('title', 'Show routes');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
+  await expect(routeCanvas).toBeHidden();
   await expect(routeLegend).toBeHidden();
   await expect(routeLegend.locator('.route-legend-item')).toHaveCount(5);
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
@@ -112,6 +178,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
+  await expect(routeCanvas).toBeVisible();
 
   const regionResponsePromise = page.waitForResponse((assetResponse) => isRegionAssetURL(assetResponse.url()));
   await regionsButton.click();
@@ -121,6 +188,9 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(regionsButton).toHaveAttribute('title', 'Hide regions');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'true');
+  await expect(regionCanvas).toBeVisible();
+  await expect.poll(() => regionCanvas.getAttribute('data-rendered-vertices').then(Number)).toBeGreaterThan(0);
+  expect(await canvasHasPixels(regionCanvas), 'exact regional boundaries should paint on their dedicated canvas').toBe(true);
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   expect(regionAssetRequests).toHaveLength(1);
   await heatmapButton.click();
@@ -131,11 +201,13 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(regionsButton).toHaveAttribute('aria-pressed', 'false');
   await expect(regionsButton).toHaveAttribute('title', 'Show regions');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'false');
+  await expect(regionCanvas).toBeHidden();
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true');
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await heatmapButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'false');
   expect(mapStyleErrors, 'route styling should remain MapLibre-valid after data and layer visibility changes').toEqual([]);
+  expect(consoleErrors, 'browser should not emit console errors').toEqual([]);
   expect(state.schemaVersion).toBe(2);
 
   const serialized = JSON.stringify(state).toLowerCase();
@@ -147,11 +219,13 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
 });
 
 test('keeps the map primary with reduced motion and releases live follow on drag', async ({ page }, testInfo) => {
+  const mobile = isMobileProject(testInfo.project.name);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   await expect(page.locator('#map')).toBeVisible();
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-motion-mode', 'static');
   await expect(page.locator('#follow-button')).toBeVisible();
+  if (mobile) await openLayers(page);
   await expect(page.locator('#routes-button')).toBeVisible();
   await expect(page.locator('#routes-button')).toHaveAttribute('aria-pressed', 'false');
   await page.locator('#routes-button').click();
@@ -165,7 +239,7 @@ test('keeps the map primary with reduced motion and releases live follow on drag
   const box = await mapCanvas.boundingBox();
   expect(box).not.toBeNull();
   if (!box) return;
-  if (testInfo.project.name !== 'mobile') {
+  if (!mobile) {
     await page.mouse.move(box.x + box.width * 0.54, box.y + box.height * 0.54);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width * 0.64, box.y + box.height * 0.58, { steps: 4 });
@@ -185,7 +259,7 @@ test('keeps the map primary with reduced motion and releases live follow on drag
 });
 
 test('keeps a recent packet trail after stable routes are hidden', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile', 'trail lifetime is covered once on desktop');
+  test.skip(isMobileProject(testInfo.project.name), 'trail lifetime is covered once on desktop');
   const now = Date.now();
   const from = { id: 'a', label: 'Alpha', lat: 43.45, lng: -80.42 };
   const to = { id: 'b', label: 'Bravo', lat: 43.5, lng: -80.28 };
@@ -236,7 +310,7 @@ test('keeps a recent packet trail after stable routes are hidden', async ({ page
 });
 
 test('focuses recent route neighbors and clears selection on the map', async ({ page }, testInfo) => {
-  const mobile = testInfo.project.name === 'mobile';
+  const mobile = isMobileProject(testInfo.project.name);
   const now = Date.now();
   const center: [number, number] = [-80.35, 43.45];
   const alpha = { id: 'a', label: 'Alpha', lng: center[0], lat: center[1] };
@@ -272,7 +346,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   }));
   await page.addInitScript(({ key, view }) => {
     window.localStorage.setItem(key, JSON.stringify(view));
-  }, { key: 'cartolite:view:v2', view: { center, zoom: state.map.zoom } });
+  }, { key: `cartolite:view:v3:${mobile ? 'mobile' : 'desktop'}`, view: { center, zoom: state.map.zoom } });
 
   await page.goto('/');
   const map = page.locator('#map');
@@ -281,6 +355,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   const focusChip = page.locator('#focus-chip');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
   const routesButton = page.locator('#routes-button');
+  if (mobile) await openLayers(page);
   await routesButton.click();
   await expect(map).toHaveAttribute('data-routes-visible', 'true');
   const box = await canvas.boundingBox();
@@ -317,6 +392,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
     await expect(tooltip).toBeHidden();
   }
 
+  if (mobile) await openLayers(page);
   await routesButton.click();
   await expect(map).toHaveAttribute('data-routes-visible', 'false');
   await expect(map).toHaveAttribute('data-selected-node-id', 'a');
@@ -326,6 +402,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await expect(focusChip).toContainText('Alpha · 2 neighbors');
   await expect(page.locator('#legend')).toHaveAttribute('data-focused', 'true');
 
+  if (mobile) await openLayers(page);
   await routesButton.click();
   await expect(map).toHaveAttribute('data-routes-visible', 'true');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
@@ -365,6 +442,64 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await page.screenshot({ path: testInfo.outputPath('cartolite-neighbors.png') });
 });
 
+test('restores remembered sound as Tap to Resume without autoplay', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'the browser autoplay contract is identical across viewports');
+  await page.addInitScript(() => {
+    localStorage.setItem('cartolite:sound:v1', JSON.stringify({ enabled: true, volume: 0.63 }));
+    const native = window.AudioContext;
+    const state = { constructions: 0 };
+    Object.defineProperty(window, '__cartoliteAudioConstruction', { configurable: true, value: state });
+    Object.defineProperty(window, 'AudioContext', {
+      configurable: true,
+      value: new Proxy(native, {
+        construct(target, argumentsList) {
+          state.constructions += 1;
+          return Reflect.construct(target, argumentsList);
+        }
+      })
+    });
+  });
+
+  await page.goto('/');
+  await expect(page.locator('#sound-state')).toHaveText('Tap to Resume');
+  await expect(page.locator('#sound-button')).toHaveAttribute('aria-pressed', 'false');
+  expect(await audioConstructionCount(page)).toBe(0);
+  await page.locator('#sound-button').click();
+  await expect(page.locator('#sound-panel-state')).toHaveText('Tap to Resume');
+  await expect(page.locator('#sound-volume-output')).toHaveText('63%');
+  expect(await audioConstructionCount(page)).toBe(0);
+  await page.locator('#sound-toggle').click();
+  await expect(page.locator('#sound-panel-state')).toHaveText('On');
+  expect(await audioConstructionCount(page)).toBe(1);
+});
+
+test('re-homes when the saved viewport has no current activity', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop and mobile key separation is covered by unit tests');
+  const now = Date.now();
+  const state: StateV2 = {
+    schemaVersion: 2,
+    bootId: 'saved-view-smoke',
+    seq: 0,
+    serverTime: now,
+    status: { feed: 'connected', activity: 'active', lastPacketAt: now, dropped: 0, version: 'test', gitSha: 'saved-view' },
+    map: { center: [-79.38, 43.65], zoom: 8 },
+    nodes: [{ id: 'toronto', label: 'Toronto', role: 'repeater', observer: false, lat: 43.65, lng: -79.38, lastSeen: now }],
+    routes: []
+  };
+  await page.addInitScript(() => {
+    localStorage.setItem('cartolite:view:v3:desktop', JSON.stringify({ center: [-123.12, 49.28], zoom: 12 }));
+  });
+  await page.route('**/api/state', (route) => route.fulfill({ json: state }));
+  await page.route('**/api/events**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `retry: 60000\n\nevent: hello\ndata: ${JSON.stringify({ seq: 0, bootId: state.bootId })}\n\n`
+  }));
+
+  await page.goto('/');
+  await expect(page.locator('#map')).toHaveAttribute('data-view-source', 'home-no-activity');
+});
+
 async function canvasHasPixels(canvas: Locator): Promise<boolean> {
   return canvas.evaluate((node) => {
     const element = node as HTMLCanvasElement;
@@ -385,6 +520,48 @@ function captureMapStyleErrors(page: Page): string[] {
     if (message.type() === 'error' && text.includes('layers.') && text.includes('.paint.')) errors.push(text);
   });
   return errors;
+}
+
+function captureConsoleErrors(page: Page): string[] {
+  const errors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  page.on('pageerror', (error) => errors.push(error.message));
+  return errors;
+}
+
+async function instrumentAudioContext(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const state = { count: 0 };
+    Object.defineProperty(window, '__cartoliteOscillators', {
+      configurable: true,
+      get: () => state.count
+    });
+    const original = window.AudioContext.prototype.createOscillator;
+    window.AudioContext.prototype.createOscillator = function createInstrumentedOscillator(): OscillatorNode {
+      state.count += 1;
+      return original.call(this);
+    };
+  });
+}
+
+async function audioConstructionCount(page: Page): Promise<number> {
+  return page.evaluate(() => (window as unknown as {
+    __cartoliteAudioConstruction: { constructions: number };
+  }).__cartoliteAudioConstruction.constructions);
+}
+
+async function openLayers(page: Page): Promise<void> {
+  const disclosure = page.locator('#layers-disclosure');
+  if (!await disclosure.evaluate((element) => element.hasAttribute('open'))) {
+    await page.locator('#layers-summary').click();
+  }
+  await expect(disclosure).toHaveAttribute('open', '');
+}
+
+function isMobileProject(projectName: string): boolean {
+  return projectName.startsWith('mobile');
 }
 
 function isRegionAssetURL(url: string): boolean {

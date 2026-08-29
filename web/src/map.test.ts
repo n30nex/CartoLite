@@ -5,20 +5,16 @@ import {
   activityHeatCollection,
   applyClusterHighlightFilter,
   applyHeatmapFocus,
-  applyHeatmapLayerVisibility,
   applyNodeFocus,
   applyNeighborRingVisibility,
-  applyRegionLayerVisibility,
-  applyRouteFocusAppearance,
   applyRouteHoverFilter,
   applyRouteHitLayerVisibility,
-  applyRouteLayerVisibility,
   applyRouteSelectionFilter,
   applySelectedNodeFilter,
   canMoveLiveFollow,
   CLUSTER_HIGHLIGHT_LAYER_ID,
-  darkStyle,
   effectiveRouteWindowMS,
+  HEAT_RENDER_BUDGET,
   HEATMAP_LAYER_ID,
   isRouteInspectable,
   isPointInSafeArea,
@@ -33,10 +29,11 @@ import {
   ROUTE_FILTER_LAYER_IDS,
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
-  ROUTE_LAYER_IDS,
-  REGION_LAYER_IDS,
+  ROUTE_RENDER_BUDGET,
   routeCollection,
   routeColorExpression,
+  routeLatticeRoutes,
+  routeRenderCandidates,
   routeVisualProperties,
   routeWindowLabel,
   SELECTED_NODE_OUTER_LAYER_ID,
@@ -46,47 +43,7 @@ import {
 } from './map';
 import { PACKET_KIND_COLORS, ROUTE_MAX_AGE_MS } from './trafficVisuals';
 
-describe('darkStyle', () => {
-  it('uses local fonts without an external glyph dependency', () => {
-    expect(darkStyle().glyphs).toBeUndefined();
-  });
-
-  it('adds the encoded CARTO key to every raster tile URL', () => {
-    const source = darkStyle('test key').sources['carto'];
-    expect(source).toMatchObject({
-      tiles: ['a', 'b', 'c', 'd'].map(
-        (subdomain) => `https://${subdomain}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=test%20key`
-      )
-    });
-  });
-});
-
 describe('route layer visibility', () => {
-  it.each([
-    [true, 'visible'],
-    [false, 'none']
-  ] as const)('applies visible=%s to both stable route layers', (visible, expected) => {
-    const setLayoutProperty = vi.fn();
-    const map = {
-      getLayer: vi.fn(() => ({})),
-      setLayoutProperty
-    } as unknown as Parameters<typeof applyRouteLayerVisibility>[0];
-
-    expect(applyRouteLayerVisibility(map, visible)).toBe(true);
-    expect(setLayoutProperty.mock.calls).toEqual(ROUTE_LAYER_IDS.map((layerID) => [layerID, 'visibility', expected]));
-  });
-
-  it('stores pre-load intent safely by skipping layers that are not installed yet', () => {
-    const setLayoutProperty = vi.fn();
-    const map = {
-      getLayer: vi.fn(() => undefined),
-      setLayoutProperty
-    } as unknown as Parameters<typeof applyRouteLayerVisibility>[0];
-
-    expect(applyRouteLayerVisibility(map, false)).toBe(false);
-    expect(setLayoutProperty).not.toHaveBeenCalled();
-  });
-
   it('shows the wide route hit target only while neighbor routes are interactive', () => {
     const setLayoutProperty = vi.fn();
     const map = {
@@ -116,51 +73,9 @@ describe('route layer visibility', () => {
       [NEIGHBOR_NODE_LAYER_ID, 'visibility', 'none']
     ]);
   });
-
-  it('changes focus emphasis without overwriting packet-driven route colors', () => {
-    const setPaintProperty = vi.fn();
-    const map = {
-      getLayer: vi.fn(() => ({})),
-      setPaintProperty
-    } as unknown as Parameters<typeof applyRouteFocusAppearance>[0];
-
-    expect(applyRouteFocusAppearance(map, true)).toBe(true);
-    expect(applyRouteFocusAppearance(map, false)).toBe(true);
-    expect(setPaintProperty).toHaveBeenCalledWith('route-glow', 'line-width', expect.any(Array));
-    expect(setPaintProperty).toHaveBeenCalledWith('routes', 'line-opacity', expect.any(Array));
-    expect(setPaintProperty.mock.calls.some((call) => call[1] === 'line-color')).toBe(false);
-  });
 });
 
 describe('optional map layers', () => {
-  it.each([
-    [true, 'visible'],
-    [false, 'none']
-  ] as const)('applies visible=%s to the heatmap independently', (visible, expected) => {
-    const setLayoutProperty = vi.fn();
-    const map = {
-      getLayer: vi.fn(() => ({})),
-      setLayoutProperty
-    } as unknown as Parameters<typeof applyHeatmapLayerVisibility>[0];
-
-    expect(applyHeatmapLayerVisibility(map, visible)).toBe(true);
-    expect(setLayoutProperty).toHaveBeenCalledWith(HEATMAP_LAYER_ID, 'visibility', expected);
-  });
-
-  it.each([
-    [true, 'visible'],
-    [false, 'none']
-  ] as const)('applies visible=%s to every regional layer', (visible, expected) => {
-    const setLayoutProperty = vi.fn();
-    const map = {
-      getLayer: vi.fn(() => ({})),
-      setLayoutProperty
-    } as unknown as Parameters<typeof applyRegionLayerVisibility>[0];
-
-    expect(applyRegionLayerVisibility(map, visible)).toBe(true);
-    expect(setLayoutProperty.mock.calls).toEqual(REGION_LAYER_IDS.map((layerID) => [layerID, 'visibility', expected]));
-  });
-
   it('filters heat to the selected node neighborhood and clears on deselect', () => {
     const setFilter = vi.fn();
     const map = {
@@ -176,6 +91,22 @@ describe('optional map layers', () => {
 });
 
 describe('activity heatmap data', () => {
+  it('caps dense heat summaries while retaining the strongest activity', () => {
+    const now = 1_900_000_000_000;
+    const routes = Array.from({ length: HEAT_RENDER_BUDGET + 5 }, (_, index) => route(
+      `heat-${index}`,
+      `node-${String(index).padStart(4, '0')}`,
+      `node-${String(index).padStart(4, '0')}`,
+      now
+    ));
+    routes.push(route('heat-hotspot', 'z-hotspot', 'z-hotspot', now, 'Other', 64));
+
+    const collection = heatCollectionFor(routes, now);
+
+    expect(collection.features).toHaveLength(HEAT_RENDER_BUDGET);
+    expect(collection.features.some((feature) => feature.id === 'z-hotspot')).toBe(true);
+  });
+
   it('deduplicates route endpoints and accumulates repeated activity', () => {
     const now = 1_900_000_000_000;
     const collection = heatCollectionFor([
@@ -223,6 +154,50 @@ describe('activity heatmap data', () => {
 });
 
 describe('stable route visual data', () => {
+  it('preserves every candidate and its exact geometry for the canvas lattice', () => {
+    const now = 1_900_000_000_000;
+    const kinds: readonly RouteV2['lastKind'][] = ['Advert', 'Trace', 'Text', 'ACK', 'Control', 'Other'];
+    const routes = Array.from({ length: ROUTE_RENDER_BUDGET }, (_, index) => route(
+      `bucket-${index}`,
+      `from-${index}`,
+      `to-${index}`,
+      now - (index % 5) * 4 * 60 * 60_000,
+      kinds[index % kinds.length]!,
+      1 + index % 64
+    ));
+
+    const lattice = routeLatticeRoutes(routes, nodesFor(routes), now);
+
+    expect(lattice).toHaveLength(routes.length);
+    expect(lattice.map((item) => item.id)).toEqual(routes.map((item) => item.id));
+    expect(lattice.every((item) => (
+      item.from.length === 2
+      && item.to.length === 2
+      && typeof item.color === 'string'
+      && item.width >= 0.68
+      && item.glowWidth <= 3.4
+      && item.opacity <= 1
+    ))).toBe(true);
+  });
+
+  it('caps the historical lattice while keeping selected-node routes ahead of fresher traffic', () => {
+    const now = 1_900_000_000_000;
+    const routes = Array.from({ length: ROUTE_RENDER_BUDGET + 5 }, (_, index) => route(
+      `route-${String(index).padStart(4, '0')}`,
+      `from-${index}`,
+      `to-${index}`,
+      now - index
+    ));
+    routes.push(route('selected-old', 'selected', 'neighbor', now - ROUTE_MAX_AGE_MS));
+
+    const candidates = routeRenderCandidates(routes, now, ROUTE_MAX_AGE_MS, 'selected');
+
+    expect(candidates).toHaveLength(ROUTE_RENDER_BUDGET);
+    expect(candidates[0]?.id).toBe('selected-old');
+    expect(candidates.some((item) => item.id === 'route-0000')).toBe(true);
+    expect(candidates.some((item) => item.id === 'route-0699')).toBe(false);
+  });
+
   it('uses progressively wider automatic route windows as users zoom in', () => {
     expect(effectiveRouteWindowMS('auto', 4)).toBe(15 * 60_000);
     expect(effectiveRouteWindowMS('auto', 6)).toBe(60 * 60_000);
@@ -271,7 +246,7 @@ describe('stable route visual data', () => {
 });
 
 describe('node neighbor focus', () => {
-  it('filters every route layer to recent edges touching the selected node', () => {
+  it('filters the individual route hit source to recent edges touching the selected node', () => {
     const setFilter = vi.fn();
     const map = {
       getLayer: vi.fn(() => ({})),

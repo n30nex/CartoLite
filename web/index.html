@@ -20,6 +20,8 @@
     <main id="app" aria-label="CartoLite live map">
       <div id="map" aria-label="Live MeshCore route map"></div>
       <div class="map-grade" aria-hidden="true"></div>
+      <canvas id="region-canvas" aria-hidden="true" hidden></canvas>
+      <canvas id="route-canvas" aria-hidden="true" hidden></canvas>
       <canvas id="packet-canvas" aria-hidden="true"></canvas>
       <section id="topbar" class="topbar glass" aria-label="Live status">
         <button id="about-button" class="brand" type="button" aria-haspopup="dialog" title="About CartoLite">
@@ -33,48 +35,69 @@
         <button id="follow-button" class="control-button" type="button" aria-pressed="false" title="Follow live packets">
           <span aria-hidden="true">◎</span><span>Live Follow</span>
         </button>
-        <button id="routes-button" class="control-button" type="button" aria-label="Routes" aria-pressed="false" title="Show routes">
-          <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="6" cy="19" r="3"></circle>
-            <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"></path>
-            <circle cx="18" cy="5" r="3"></circle>
-          </svg>
-          <span>Routes</span>
-        </button>
-        <button id="heatmap-button" class="control-button selected" type="button" aria-label="Heatmap" aria-pressed="true" title="Hide heatmap">
-          <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="2.5"></circle>
-            <circle cx="12" cy="12" r="6"></circle>
-            <path d="M6.3 4.5A9.5 9.5 0 0 1 21.5 12M17.7 19.5A9.5 9.5 0 0 1 2.5 12"></path>
-          </svg>
-          <span>Heatmap</span>
-        </button>
-        <button id="regions-button" class="control-button" type="button" aria-label="Regions" aria-pressed="false" title="Show regions">
-          <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m4 5.5 6-2.5 5 2 5-2v15.5l-5 2-5-2-6 2z"></path>
-            <path d="M10 3v15.5M15 5v15.5"></path>
-          </svg>
-          <span>Regions</span>
-        </button>
-        <button id="sound-button" class="control-button" type="button" aria-label="Sound" aria-pressed="false" title="Turn on route sounds">
-          <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 10v4h3l4 3V7l-4 3z"></path>
-            <path d="M15 9.5a4 4 0 0 1 0 5M17.5 7a7.5 7.5 0 0 1 0 10"></path>
-          </svg>
-          <span>Sound</span>
-        </button>
+        <div id="layers-disclosure" class="layers-disclosure" open>
+          <button id="layers-summary" class="control-button" type="button" aria-label="Layers" aria-expanded="false" aria-controls="layers-panel" title="Map layers" hidden style="display: none">
+            <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m4 7 8-4 8 4-8 4z"></path><path d="m4 12 8 4 8-4M4 17l8 4 8-4"></path>
+            </svg>
+            <span>Layers</span>
+          </button>
+          <div id="layers-panel" class="layers-panel glass">
+            <button id="routes-button" class="control-button" type="button" aria-label="Routes" aria-pressed="false" title="Show routes">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="6" cy="19" r="3"></circle>
+                <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"></path>
+                <circle cx="18" cy="5" r="3"></circle>
+              </svg>
+              <span>Routes</span>
+            </button>
+            <button id="heatmap-button" class="control-button selected" type="button" aria-label="Heatmap" aria-pressed="true" title="Hide heatmap">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="2.5"></circle>
+                <circle cx="12" cy="12" r="6"></circle>
+                <path d="M6.3 4.5A9.5 9.5 0 0 1 21.5 12M17.7 19.5A9.5 9.5 0 0 1 2.5 12"></path>
+              </svg>
+              <span>Heatmap</span>
+            </button>
+            <button id="regions-button" class="control-button" type="button" aria-label="Regions" aria-pressed="false" title="Show regions">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m4 5.5 6-2.5 5 2 5-2v15.5l-5 2-5-2-6 2z"></path>
+                <path d="M10 3v15.5M15 5v15.5"></path>
+              </svg>
+              <span>Regions</span>
+            </button>
+            <label class="route-window" for="route-window">
+              <span>Routes</span>
+              <select id="route-window" aria-label="Route age window">
+                <option value="auto">Auto · 15m</option>
+                <option value="15m">15m</option>
+                <option value="1h">1h</option>
+                <option value="6h">6h</option>
+                <option value="24h">24h</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="sound-control">
+          <button id="sound-button" class="control-button" type="button" aria-label="Sound" aria-pressed="false" aria-expanded="false" aria-controls="sound-panel" title="Sound off">
+            <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 10v4h3l4 3V7l-4 3z"></path>
+              <path d="M15 9.5a4 4 0 0 1 0 5M17.5 7a7.5 7.5 0 0 1 0 10"></path>
+            </svg>
+            <span class="sound-button-label">Sound</span><span id="sound-state" class="sound-state">Off</span>
+          </button>
+          <section id="sound-panel" class="sound-panel glass" aria-label="Sound settings" hidden>
+            <header><strong>Sound</strong><span id="sound-panel-state" aria-live="polite">Off</span></header>
+            <button id="sound-toggle" class="sound-toggle" type="button">Turn sound on</button>
+            <label class="volume-control" for="sound-volume">
+              <span>Volume</span><output id="sound-volume-output" for="sound-volume">80%</output>
+              <input id="sound-volume" type="range" min="0" max="100" step="1" value="80" />
+            </label>
+            <p><span id="sound-activity" class="sound-activity" aria-hidden="true"></span>Visible live hops only</p>
+          </section>
+        </div>
         <button id="reset-button" class="control-button icon-button" type="button" title="Reset map view" aria-label="Reset map view">⌂</button>
       </section>
-      <label class="route-window glass" for="route-window">
-        <span>Routes</span>
-        <select id="route-window" aria-label="Route age window">
-          <option value="auto">Auto · 15m</option>
-          <option value="15m">15m</option>
-          <option value="1h">1h</option>
-          <option value="6h">6h</option>
-          <option value="24h">24h</option>
-        </select>
-      </label>
       <section id="legend" class="legend glass" aria-label="Map legend" data-collapsed="true" data-focused="false">
         <button id="legend-toggle" class="legend-toggle" type="button" aria-label="Show map legend" aria-controls="legend-items" aria-expanded="false">
           <span class="legend-toggle-mark" aria-hidden="true">i</span>
@@ -98,7 +121,7 @@
         <dl>
           <div><dt>Map</dt><dd>Clusters and heat summarize activity. Routes narrow automatically from 15 minutes nationally to 24 hours locally.</dd></div>
           <div><dt>Colours</dt><dd>Route and packet colours show the latest sanitized packet kind, never message content.</dd></div>
-          <div><dt>Sound</dt><dd>Opt in to hear one gentle note for every live hop crossing the current map view. Off-screen hops and observer-only traffic stay silent.</dd></div>
+          <div><dt>Sound</dt><dd>Opt in to hear one warm note for every live hop crossing the current map view. Volume and your choice stay only in this browser; remembered sound always waits for a tap before resuming.</dd></div>
           <div><dt>Privacy</dt><dd>No public keys, packet payloads, message text, raw paths, or visitor analytics are published.</dd></div>
           <div><dt>Updated</dt><dd id="last-update">Waiting for live state…</dd></div>
         </dl>

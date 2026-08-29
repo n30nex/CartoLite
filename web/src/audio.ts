@@ -3,11 +3,46 @@ import { routeDuration, segmentNearViewport, segmentTravelWeights } from './pack
 import type { PacketView } from './types';
 import type { PacketKind } from './trafficVisuals';
 
-const MASTER_LEVEL = 0.82;
-const VOICE_LEVEL = 0.15;
-const MIN_VOICE_LEVEL = 0.03;
+const MASTER_LEVEL = 0.9;
+const VOICE_LEVEL = 0.17;
+const MIN_VOICE_LEVEL = 0.035;
 const MIN_GAIN = 0.0001;
 const LOOKAHEAD_SECONDS = 0.025;
+export const SOUND_STORAGE_KEY = 'cartolite:sound:v1';
+export const DEFAULT_SOUND_VOLUME = 0.8;
+
+export interface SoundPreference {
+  enabled: boolean;
+  volume: number;
+}
+
+export type SoundStatus = 'on' | 'off' | 'resume';
+
+export function loadSoundPreference(storage: Storage): SoundPreference {
+  try {
+    const value = JSON.parse(storage.getItem(SOUND_STORAGE_KEY) ?? 'null') as {
+      enabled?: unknown;
+      volume?: unknown;
+    } | null;
+    if (!value || typeof value.enabled !== 'boolean' || typeof value.volume !== 'number') {
+      return { enabled: false, volume: DEFAULT_SOUND_VOLUME };
+    }
+    return { enabled: value.enabled, volume: clamp(value.volume, 0, 1) };
+  } catch {
+    return { enabled: false, volume: DEFAULT_SOUND_VOLUME };
+  }
+}
+
+export function saveSoundPreference(storage: Storage, preference: SoundPreference): void {
+  try {
+    storage.setItem(SOUND_STORAGE_KEY, JSON.stringify({
+      enabled: preference.enabled,
+      volume: clamp(preference.volume, 0, 1),
+    }));
+  } catch {
+    // Local persistence is optional; private browsing may reject it.
+  }
+}
 
 interface Voice {
   root: number;
@@ -79,14 +114,23 @@ export function routeSoundPlan(
 export class RouteSonifier {
   private context?: AudioContext;
   private master?: GainNode;
+  private ambience?: DelayNode;
   private enabled = false;
+  private preferredEnabled: boolean;
+  private volume: number;
   private paused = false;
   private readonly active = new Set<OscillatorNode>();
+  private statusListener?: (status: SoundStatus) => void;
 
   constructor(
     private readonly map: maplibregl.Map,
     private readonly viewport: HTMLElement,
-  ) {}
+    private readonly storage: Storage = window.localStorage,
+  ) {
+    const preference = loadSoundPreference(storage);
+    this.preferredEnabled = preference.enabled;
+    this.volume = preference.volume;
+  }
 
   supported(): boolean {
     return typeof window.AudioContext === 'function';
@@ -96,29 +140,59 @@ export class RouteSonifier {
     return this.enabled;
   }
 
+  status(): SoundStatus {
+    if (this.enabled && !this.paused && this.context?.state === 'running') return 'on';
+    return this.preferredEnabled ? 'resume' : 'off';
+  }
+
+  getVolume(): number {
+    return this.volume;
+  }
+
+  setStatusListener(listener: (status: SoundStatus) => void): void {
+    this.statusListener = listener;
+    listener(this.status());
+  }
+
+  setVolume(volume: number): void {
+    this.volume = clamp(volume, 0, 1);
+    this.persist();
+    this.setMasterLevel(this.enabled && !this.paused ? MASTER_LEVEL * this.volume : MIN_GAIN);
+    this.notify();
+  }
+
   async setEnabled(enabled: boolean): Promise<boolean> {
     if (!enabled) {
       this.enabled = false;
+      this.preferredEnabled = false;
       this.stopActive();
       this.setMasterLevel(MIN_GAIN);
+      this.persist();
+      this.notify();
       return false;
     }
     if (!this.supported()) return false;
+    this.preferredEnabled = true;
+    this.persist();
     const context = this.context ?? this.createContext();
     try {
       if (context.state === 'suspended') await context.resume();
     } catch {
+      this.enabled = false;
+      this.notify();
       return false;
     }
     this.enabled = context.state === 'running';
-    this.setMasterLevel(this.enabled && !this.paused ? MASTER_LEVEL : MIN_GAIN);
+    this.setMasterLevel(this.enabled && !this.paused ? MASTER_LEVEL * this.volume : MIN_GAIN);
+    this.notify();
     return this.enabled;
   }
 
   setPaused(paused: boolean): void {
     this.paused = paused;
     if (paused) this.stopActive();
-    this.setMasterLevel(this.enabled && !paused ? MASTER_LEVEL : MIN_GAIN);
+    this.setMasterLevel(this.enabled && !paused ? MASTER_LEVEL * this.volume : MIN_GAIN);
+    this.notify();
   }
 
   play(packet: PacketView): number {
@@ -142,6 +216,7 @@ export class RouteSonifier {
     void this.context?.close();
     this.context = undefined;
     this.master = undefined;
+    this.ambience = undefined;
   }
 
   private createContext(): AudioContext {
@@ -155,8 +230,18 @@ export class RouteSonifier {
     compressor.attack.value = 0.003;
     compressor.release.value = 0.2;
     master.connect(compressor).connect(context.destination);
+    const ambience = context.createDelay(0.25);
+    ambience.delayTime.value = 0.105;
+    const ambienceLevel = context.createGain();
+    ambienceLevel.gain.value = 0.12;
+    ambience.connect(ambienceLevel).connect(master);
+    context.onstatechange = () => {
+      if (context.state !== 'running') this.enabled = false;
+      this.notify();
+    };
     this.context = context;
     this.master = master;
+    this.ambience = ambience;
     return context;
   }
 
@@ -164,7 +249,8 @@ export class RouteSonifier {
     const context = this.context!;
     const master = this.master!;
     const starts = context.currentTime + LOOKAHEAD_SECONDS + note.startMS / 1_000;
-    const ends = starts + note.durationMS / 1_000;
+    const audibleDuration = Math.max(0.14, note.durationMS / 1_000 * (0.55 + density * 0.45));
+    const ends = starts + audibleDuration;
     const filter = context.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(note.brightness, starts);
@@ -175,9 +261,10 @@ export class RouteSonifier {
     const peak = Math.max(MIN_VOICE_LEVEL, VOICE_LEVEL * density);
     envelope.gain.setValueAtTime(MIN_GAIN, starts);
     envelope.gain.exponentialRampToValueAtTime(peak, starts + 0.012);
-    envelope.gain.exponentialRampToValueAtTime(Math.max(MIN_GAIN, peak * 0.32), starts + note.durationMS / 2_400);
+    envelope.gain.exponentialRampToValueAtTime(Math.max(MIN_GAIN, peak * 0.32), starts + audibleDuration * 0.42);
     envelope.gain.exponentialRampToValueAtTime(MIN_GAIN, ends);
     filter.connect(panner).connect(envelope).connect(master);
+    if (this.ambience) envelope.connect(this.ambience);
 
     const oscillator = this.oscillator(note.waveform, note.frequency, starts, ends, filter);
     oscillator.onended = () => {
@@ -223,6 +310,14 @@ export class RouteSonifier {
     const now = this.context.currentTime;
     this.master.gain.cancelScheduledValues(now);
     this.master.gain.setTargetAtTime(value, now, 0.018);
+  }
+
+  private persist(): void {
+    saveSoundPreference(this.storage, { enabled: this.preferredEnabled, volume: this.volume });
+  }
+
+  private notify(): void {
+    this.statusListener?.(this.status());
   }
 }
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly CartoLite restic metadata check
+
+[Timer]
+OnCalendar=Sun *-*-* 04:17:00 America/Toronto
+Persistent=true
+Unit=cartolite-backup@weekly.service
+
+[Install]
+WantedBy=timers.target

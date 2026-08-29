@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EndpointV2, RoutePacketView } from './types';
-import { routeSoundPlan } from './audio';
+import {
+  DEFAULT_SOUND_VOLUME,
+  loadSoundPreference,
+  RouteSonifier,
+  routeSoundPlan,
+  SOUND_STORAGE_KEY
+} from './audio';
 
 function endpoint(id: string, x: number, y: number): EndpointV2 {
   return { id, label: id, lng: x, lat: y };
@@ -84,5 +90,37 @@ describe('route hop sonification', () => {
       mode: 'observer',
       observer: endpoint('observer', 50, 50),
     }, projector, 100, 100)).toEqual([]);
+  });
+});
+
+describe('sound preference and autoplay state', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('defaults to 80 percent and stores only enabled and volume', () => {
+    expect(loadSoundPreference(localStorage)).toEqual({ enabled: false, volume: DEFAULT_SOUND_VOLUME });
+    const sonifier = new RouteSonifier({} as never, document.createElement('div'));
+    sonifier.setVolume(0.55);
+
+    expect(JSON.parse(localStorage.getItem(SOUND_STORAGE_KEY) ?? '{}')).toEqual({ enabled: false, volume: 0.55 });
+  });
+
+  it('shows Tap to Resume for remembered sound without constructing an AudioContext', () => {
+    localStorage.setItem(SOUND_STORAGE_KEY, JSON.stringify({ enabled: true, volume: 0.8 }));
+    const audioContext = vi.fn();
+    const original = window.AudioContext;
+    Object.defineProperty(window, 'AudioContext', { configurable: true, value: audioContext });
+    try {
+      const sonifier = new RouteSonifier({} as never, document.createElement('div'));
+      expect(sonifier.status()).toBe('resume');
+      expect(sonifier.getVolume()).toBe(0.8);
+      expect(audioContext).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, 'AudioContext', { configurable: true, value: original });
+    }
+  });
+
+  it('clamps malformed remembered volume while preserving the requested state', () => {
+    localStorage.setItem(SOUND_STORAGE_KEY, JSON.stringify({ enabled: true, volume: 4 }));
+    expect(loadSoundPreference(localStorage)).toEqual({ enabled: true, volume: 1 });
   });
 });

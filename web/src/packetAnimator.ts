@@ -432,7 +432,9 @@ export class PacketAnimator {
     this.renderResidueCache(now);
     this.drawResidueCache();
     this.context.save();
-    this.context.globalCompositeOperation = 'lighter';
+    // Source-over preserves packet hue during bursts; additive blending made
+    // overlapping cyan and amber effects wash out to white.
+    this.context.globalCompositeOperation = 'source-over';
     this.context.lineCap = 'round';
     this.activeRoutes = this.activeRoutes.filter(
       (item) => now - item.started < item.duration + DESTINATION_BLOOM_MS,
@@ -472,7 +474,7 @@ export class PacketAnimator {
     const coreOpacity = this.reducedMotion ? style.life * 0.34 : style.coreOpacity;
     const bloomWidth = this.reducedMotion ? 5.2 : style.bloomWidth;
     const coreWidth = this.reducedMotion ? 1.8 : style.coreWidth;
-    const coreColor = this.reducedMotion ? item.color : blendWithWhite(item.color, style.hot * 0.72);
+    const coreColor = this.reducedMotion ? item.color : blendWithWhite(item.color, style.hot * 0.36);
     context.beginPath();
     context.moveTo(from.x, from.y);
     context.lineTo(to.x, to.y);
@@ -512,7 +514,7 @@ export class PacketAnimator {
 
     this.clearResidueCanvas();
     this.residueContext.save();
-    this.residueContext.globalCompositeOperation = 'lighter';
+    this.residueContext.globalCompositeOperation = 'source-over';
     this.residueContext.lineCap = 'round';
     for (const item of this.residue) {
       const projected = this.projectedResidue.get(item);
@@ -573,7 +575,7 @@ export class PacketAnimator {
     this.context.moveTo(from.x, from.y);
     this.context.lineTo(head.x, head.y);
     this.context.stroke();
-    this.context.strokeStyle = withAlpha(blendWithWhite(color, 0.55), 0.74);
+    this.context.strokeStyle = withAlpha(blendWithWhite(color, 0.3), 0.74);
     this.context.lineWidth = 1.55;
     this.context.beginPath();
     this.context.moveTo(from.x, from.y);
@@ -684,7 +686,7 @@ export class PacketAnimator {
     this.context.moveTo(tailX, tailY);
     this.context.lineTo(x, y);
     this.context.stroke();
-    this.context.fillStyle = '#ffffff';
+    this.context.fillStyle = blendWithWhite(color, 0.34);
     this.context.beginPath();
     this.context.arc(x, y, 1.65, 0, Math.PI * 2);
     this.context.fill();
@@ -700,8 +702,8 @@ export class PacketAnimator {
     if (timing.opacity <= 0) return;
     const radius = startRadius + (endRadius - startRadius) * easeOutCubic(timing.progress);
     const gradient = this.context.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius);
-    gradient.addColorStop(0, withAlpha('#ffffff', timing.opacity * 0.72));
-    gradient.addColorStop(0.2, withAlpha(color, timing.opacity * 0.48));
+    gradient.addColorStop(0, withAlpha(blendWithWhite(color, 0.3), timing.opacity * 0.62));
+    gradient.addColorStop(0.2, withAlpha(color, timing.opacity * 0.5));
     gradient.addColorStop(1, withAlpha(color, 0));
     this.context.fillStyle = gradient;
     this.context.beginPath();
@@ -731,7 +733,7 @@ export class PacketAnimator {
 
   private endpointGlow(point: { x: number; y: number }, color: string, opacity: number): void {
     const gradient = this.context.createRadialGradient(point.x, point.y, 0, point.x, point.y, 14);
-    gradient.addColorStop(0, withAlpha('#ffffff', opacity * 0.82));
+    gradient.addColorStop(0, withAlpha(blendWithWhite(color, 0.28), opacity * 0.72));
     gradient.addColorStop(0.22, withAlpha(color, opacity * 0.58));
     gradient.addColorStop(1, withAlpha(color, 0));
     this.context.fillStyle = gradient;

@@ -41,6 +41,8 @@ jobs:
       - name: Race detector
         working-directory: backend
         run: go test -race ./...
+      - name: Watchdog transition tests
+        run: python3 -m unittest deploy.watchdog.test_cartolite_watchdog deploy.backup.test_cartolite_backup deploy.cloudflare.test_region_cache_rule
 
   frontend:
     name: Frontend test, build, and budget
@@ -61,6 +63,8 @@ jobs:
       - name: Unit tests
         working-directory: web
         run: npm test -- --run
+      - name: MeshMapper snapshot contract
+        run: node scripts/check-meshmapper-regions.mjs
       - name: Production build
         working-directory: web
         run: npm run build
@@ -99,11 +103,20 @@ jobs:
         run: |
           echo "version=$(tr -d '\r\n' < VERSION)" >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - name: Require CARTO basemap key for publishable builds
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Require CARTO basemap key for trusted release candidates
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         env:
           CARTO_BASEMAP_API_KEY: ${{ secrets.CARTO_BASEMAP_API_KEY }}
         run: test -n "$CARTO_BASEMAP_API_KEY"
+      - name: Verify CARTO vector authorization
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          CARTO_BASEMAP_API_KEY: ${{ secrets.CARTO_BASEMAP_API_KEY }}
+        run: node scripts/check-carto-vector.mjs
       - name: Build linux/amd64 image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:

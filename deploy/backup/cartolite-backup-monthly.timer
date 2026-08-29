@@ -1,0 +1,10 @@
+[Unit]
+Description=Monthly CartoLite restic data check and restore verification
+
+[Timer]
+OnCalendar=*-*-01 05:17:00 America/Toronto
+Persistent=true
+Unit=cartolite-backup@monthly.service
+
+[Install]
+WantedBy=timers.target
