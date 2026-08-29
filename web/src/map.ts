@@ -49,7 +49,7 @@ const NODE_CORE_LAYER_ID = 'node-core';
 const NODE_LABEL_LAYER_ID = 'node-labels';
 const NODE_BASE_FILTER = ['!', ['has', 'point_count']] as ActiveLayerFilter;
 const LOCAL_FONTS = ['Open Sans Regular'];
-const ROUTE_HYDRATION_BATCH_SIZE = 200;
+const ROUTE_HYDRATION_BATCH_SIZE = 128;
 export const ROUTE_RENDER_BUDGET = 700;
 
 export interface LiveMapFocus {
@@ -277,7 +277,7 @@ export class LiveMap {
       this.emitRouteWindowChange();
       this.markRendering('routes');
     };
-    const addBatch = (): void => {
+    const addBatch = async (): Promise<void> => {
       if (!active()) return;
       const additions: Feature<LineString>[] = [];
       const end = Math.min(routes.length, offset + ROUTE_HYDRATION_BATCH_SIZE);
@@ -287,19 +287,24 @@ export class LiveMap {
         additions.push(feature);
         this.routeFeatureIDs.add(String(feature.id));
       }
-      // Keep each frame's main-thread work bounded. MapLibre may merge pending
-      // worker diffs, but the historical overlay itself is capped below.
-      if (additions.length > 0) void source.updateData({ add: additions }, true).catch(fail);
+      try {
+        // Await each worker diff so MapLibre cannot merge every frame's routes
+        // back into one large main-thread apply.
+        if (additions.length > 0) await source.updateData({ add: additions }, true);
+      } catch (error) {
+        fail(error);
+        return;
+      }
       if (!active()) return;
       if (offset < routes.length) {
-        window.requestAnimationFrame(addBatch);
+        window.requestAnimationFrame(() => { void addBatch(); });
         return;
       }
       finish();
     };
     void source.updateData({ removeAll: true }, true)
       .then(() => {
-        if (active()) window.requestAnimationFrame(addBatch);
+        if (active()) window.requestAnimationFrame(() => { void addBatch(); });
       })
       .catch(fail);
   }
