@@ -50,6 +50,7 @@ const NODE_LABEL_LAYER_ID = 'node-labels';
 const NODE_BASE_FILTER = ['!', ['has', 'point_count']] as ActiveLayerFilter;
 const LOCAL_FONTS = ['Open Sans Regular'];
 const ROUTE_HYDRATION_BATCH_SIZE = 200;
+export const ROUTE_RENDER_BUDGET = 700;
 
 export interface LiveMapFocus {
   label: string;
@@ -246,9 +247,10 @@ export class LiveMap {
     const source = this.map.getSource('routes') as GeoJSONSource | undefined;
     if (!source) return;
     const hydrationEpoch = ++this.routeHydrationEpoch;
-    const routes = [...this.routesByID.values()];
-    this.routeBaseline = routeTrafficBaseline(routes, now);
     const maxAge = this.effectiveRouteAgeMS();
+    const allRoutes = [...this.routesByID.values()];
+    this.routeBaseline = routeTrafficBaseline(allRoutes, now);
+    const routes = routeRenderCandidates(allRoutes, now, maxAge, this.selectedNodeID);
     this.routeHydrating = true;
     this.routeDataDirty = false;
     this.routeFeatureIDs.clear();
@@ -275,7 +277,7 @@ export class LiveMap {
       this.emitRouteWindowChange();
       this.markRendering('routes');
     };
-    const addBatch = async (): Promise<void> => {
+    const addBatch = (): void => {
       if (!active()) return;
       const additions: Feature<LineString>[] = [];
       const end = Math.min(routes.length, offset + ROUTE_HYDRATION_BATCH_SIZE);
@@ -285,24 +287,19 @@ export class LiveMap {
         additions.push(feature);
         this.routeFeatureIDs.add(String(feature.id));
       }
-      try {
-        // Wait for each worker diff before scheduling the next frame. MapLibre
-        // otherwise merges pending diffs and applies the whole burst at once.
-        if (additions.length > 0) await source.updateData({ add: additions }, true);
-      } catch (error) {
-        fail(error);
-        return;
-      }
+      // Keep each frame's main-thread work bounded. MapLibre may merge pending
+      // worker diffs, but the historical overlay itself is capped below.
+      if (additions.length > 0) void source.updateData({ add: additions }, true).catch(fail);
       if (!active()) return;
       if (offset < routes.length) {
-        window.requestAnimationFrame(() => { void addBatch(); });
+        window.requestAnimationFrame(addBatch);
         return;
       }
       finish();
     };
     void source.updateData({ removeAll: true }, true)
       .then(() => {
-        if (active()) window.requestAnimationFrame(() => { void addBatch(); });
+        if (active()) window.requestAnimationFrame(addBatch);
       })
       .catch(fail);
   }
@@ -1575,6 +1572,25 @@ function heatFeature(
     geometry: { type: 'Point', coordinates: [node.lng, node.lat] },
     properties: { id, weight: Math.round(Math.min(1, Math.log1p(score) / Math.log1p(16)) * 1_000) / 1_000 }
   };
+}
+
+export function routeRenderCandidates(
+  routes: readonly RouteV2[],
+  now = Date.now(),
+  maxAge = ROUTE_MAX_AGE_MS,
+  selectedNodeID: string | null = null
+): RouteV2[] {
+  const eligible = routes.filter((route) => Math.max(0, now - route.lastHeard) <= maxAge);
+  if (eligible.length <= ROUTE_RENDER_BUDGET) return eligible;
+  return eligible
+    .sort((left, right) => {
+      const leftSelected = selectedNodeID !== null && (left.fromId === selectedNodeID || left.toId === selectedNodeID);
+      const rightSelected = selectedNodeID !== null && (right.fromId === selectedNodeID || right.toId === selectedNodeID);
+      if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
+      if (left.lastHeard !== right.lastHeard) return right.lastHeard - left.lastHeard;
+      return left.id.localeCompare(right.id);
+    })
+    .slice(0, ROUTE_RENDER_BUDGET);
 }
 
 export function routeCollection(

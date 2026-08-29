@@ -33,9 +33,11 @@ import {
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
   ROUTE_LAYER_IDS,
+  ROUTE_RENDER_BUDGET,
   REGION_LAYER_IDS,
   routeCollection,
   routeColorExpression,
+  routeRenderCandidates,
   routeVisualProperties,
   routeWindowLabel,
   SELECTED_NODE_OUTER_LAYER_ID,
@@ -207,6 +209,24 @@ describe('activity heatmap data', () => {
 });
 
 describe('stable route visual data', () => {
+  it('caps the historical lattice while keeping selected-node routes ahead of fresher traffic', () => {
+    const now = 1_900_000_000_000;
+    const routes = Array.from({ length: ROUTE_RENDER_BUDGET + 5 }, (_, index) => route(
+      `route-${String(index).padStart(4, '0')}`,
+      `from-${index}`,
+      `to-${index}`,
+      now - index
+    ));
+    routes.push(route('selected-old', 'selected', 'neighbor', now - ROUTE_MAX_AGE_MS));
+
+    const candidates = routeRenderCandidates(routes, now, ROUTE_MAX_AGE_MS, 'selected');
+
+    expect(candidates).toHaveLength(ROUTE_RENDER_BUDGET);
+    expect(candidates[0]?.id).toBe('selected-old');
+    expect(candidates.some((item) => item.id === 'route-0000')).toBe(true);
+    expect(candidates.some((item) => item.id === 'route-0699')).toBe(false);
+  });
+
   it('uses progressively wider automatic route windows as users zoom in', () => {
     expect(effectiveRouteWindowMS('auto', 4)).toBe(15 * 60_000);
     expect(effectiveRouteWindowMS('auto', 6)).toBe(60 * 60_000);
