@@ -37,6 +37,7 @@ const EMPTY_POINTS: FeatureCollection<Point> = { type: 'FeatureCollection', feat
 const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', features: [] };
 const ACTIVITY_HEAT_SOURCE_ID = 'activity-heat-source';
 const REGION_ATTRIBUTION_SOURCE_ID = 'meshmapper-canada-regions';
+const ROUTE_TRUNK_SOURCE_ID = 'route-trunks';
 const ROUTE_DETAIL_SOURCE_ID = 'route-details';
 export const HEATMAP_LAYER_ID = 'activity-heat';
 export const ROUTE_HIT_LAYER_ID = 'route-hit';
@@ -66,6 +67,7 @@ export const HEAT_RENDER_BUDGET = 600;
 const ROUTE_REPRESENTATION_EXACT = 'exact';
 const ROUTE_REPRESENTATION_NATIONAL = 'national';
 const ROUTE_REPRESENTATION_REGIONAL = 'regional';
+const ROUTE_EXACT_SOURCE_MIN_ZOOM = 6.5;
 const ROUTE_TRUNK_LEVELS = [
   { representation: ROUTE_REPRESENTATION_NATIONAL, zoom: 3.6, gridPixels: 52 },
   { representation: ROUTE_REPRESENTATION_REGIONAL, zoom: 5.4, gridPixels: 44 }
@@ -110,6 +112,7 @@ export class LiveMap {
   private routeDataDirty = true;
   private routeHydrating = false;
   private routeHydrationEpoch = 0;
+  private exactRoutesLoaded = false;
   private heatDataDirty = true;
   private routeWindow: RouteWindow = 'auto';
   private routesVisible = true;
@@ -265,7 +268,8 @@ export class LiveMap {
 
   private hydrateRouteSource(now = Date.now()): void {
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
-    if (!detailSource) return;
+    const trunkSource = this.map.getSource(ROUTE_TRUNK_SOURCE_ID) as GeoJSONSource | undefined;
+    if (!detailSource || !trunkSource) return;
     const hydrationEpoch = ++this.routeHydrationEpoch;
     const maxAge = this.effectiveRouteAgeMS();
     const allRoutes = [...this.routesByID.values()];
@@ -278,6 +282,17 @@ export class LiveMap {
     const exactRoutes = details.features.filter((feature) => feature.properties?.representation === ROUTE_REPRESENTATION_EXACT);
     const nationalTrunks = details.features.filter((feature) => feature.properties?.representation === ROUTE_REPRESENTATION_NATIONAL);
     const regionalTrunks = details.features.filter((feature) => feature.properties?.representation === ROUTE_REPRESENTATION_REGIONAL);
+    const loadExactRoutes = this.selectedNodeID !== null || this.map.getZoom() >= ROUTE_EXACT_SOURCE_MIN_ZOOM;
+    const exactCollection: FeatureCollection<LineString> = {
+      type: 'FeatureCollection',
+      features: loadExactRoutes ? exactRoutes : []
+    };
+    const trunkCollection: FeatureCollection<LineString> = {
+      type: 'FeatureCollection',
+      features: [...nationalTrunks, ...regionalTrunks]
+    };
+    this.exactRoutesLoaded = loadExactRoutes;
+    this.container.dataset.exactRoutesLoaded = String(loadExactRoutes);
     this.container.dataset.eligibleRoutes = String(exactRoutes.length);
     this.container.dataset.nationalRouteTrunks = String(nationalTrunks.length);
     this.container.dataset.regionalRouteTrunks = String(regionalTrunks.length);
@@ -288,7 +303,8 @@ export class LiveMap {
     this.markRendering();
 
     const active = (): boolean => hydrationEpoch === this.routeHydrationEpoch
-      && Boolean(this.map.getSource(ROUTE_DETAIL_SOURCE_ID));
+      && Boolean(this.map.getSource(ROUTE_DETAIL_SOURCE_ID))
+      && Boolean(this.map.getSource(ROUTE_TRUNK_SOURCE_ID));
     const fail = (error: unknown): void => {
       if (!active()) return;
       this.routeHydrating = false;
@@ -306,7 +322,10 @@ export class LiveMap {
       this.emitRouteWindowChange();
       this.markRendering();
     };
-    void Promise.all([detailSource.setData(details)])
+    void Promise.all([
+      trunkSource.setData(trunkCollection),
+      detailSource.setData(exactCollection)
+    ])
       .then(finish)
       .catch(fail);
   }
@@ -572,7 +591,8 @@ export class LiveMap {
   };
 
   private handleZoomEnd = (): void => {
-    if (this.routeWindow !== 'auto') {
+    const needsExactRoutes = this.selectedNodeID !== null || this.map.getZoom() >= ROUTE_EXACT_SOURCE_MIN_ZOOM;
+    if (this.routeWindow !== 'auto' && needsExactRoutes === this.exactRoutesLoaded) {
       this.emitRouteWindowChange();
       return;
     }
@@ -632,12 +652,13 @@ export class LiveMap {
         'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.62, 7, 0.53, 10, 0.34, 14, 0.16, 16, 0.08]
       }
     });
+    this.map.addSource(ROUTE_TRUNK_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 8 });
     this.map.addSource(ROUTE_DETAIL_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 16 });
     const routeVisibility = this.routesVisible ? 'visible' : 'none';
     this.map.addLayer({
       id: ROUTE_VISUAL_LAYER_IDS[0],
       type: 'line',
-      source: ROUTE_DETAIL_SOURCE_ID,
+      source: ROUTE_TRUNK_SOURCE_ID,
       maxzoom: 5.25,
       filter: routeRepresentationFilter(ROUTE_REPRESENTATION_NATIONAL),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
@@ -651,7 +672,7 @@ export class LiveMap {
     this.map.addLayer({
       id: ROUTE_VISUAL_LAYER_IDS[1],
       type: 'line',
-      source: ROUTE_DETAIL_SOURCE_ID,
+      source: ROUTE_TRUNK_SOURCE_ID,
       maxzoom: 5.25,
       filter: routeRepresentationFilter(ROUTE_REPRESENTATION_NATIONAL),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
@@ -664,7 +685,7 @@ export class LiveMap {
     this.map.addLayer({
       id: ROUTE_VISUAL_LAYER_IDS[2],
       type: 'line',
-      source: ROUTE_DETAIL_SOURCE_ID,
+      source: ROUTE_TRUNK_SOURCE_ID,
       minzoom: 4.35,
       maxzoom: 7.2,
       filter: routeRepresentationFilter(ROUTE_REPRESENTATION_REGIONAL),
@@ -679,7 +700,7 @@ export class LiveMap {
     this.map.addLayer({
       id: ROUTE_VISUAL_LAYER_IDS[3],
       type: 'line',
-      source: ROUTE_DETAIL_SOURCE_ID,
+      source: ROUTE_TRUNK_SOURCE_ID,
       minzoom: 4.35,
       maxzoom: 7.2,
       filter: routeRepresentationFilter(ROUTE_REPRESENTATION_REGIONAL),
@@ -694,7 +715,7 @@ export class LiveMap {
       id: ROUTE_VISUAL_LAYER_IDS[4],
       type: 'line',
       source: ROUTE_DETAIL_SOURCE_ID,
-      minzoom: 5.8,
+      minzoom: ROUTE_EXACT_SOURCE_MIN_ZOOM,
       filter: routeRepresentationFilter(ROUTE_REPRESENTATION_EXACT),
       layout: {
         'line-cap': 'round',
@@ -713,7 +734,7 @@ export class LiveMap {
       id: ROUTE_VISUAL_LAYER_IDS[5],
       type: 'line',
       source: ROUTE_DETAIL_SOURCE_ID,
-      minzoom: 5.8,
+      minzoom: ROUTE_EXACT_SOURCE_MIN_ZOOM,
       filter: routeRepresentationFilter(ROUTE_REPRESENTATION_EXACT),
       layout: {
         'line-cap': 'round',

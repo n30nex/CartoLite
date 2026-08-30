@@ -39,12 +39,16 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
     await page.locator('#layers-summary').click();
     await expect(page.locator('#layers-disclosure')).toHaveAttribute('open', '');
   }
+  await resetLongTasks(page);
   await page.locator('#route-window').selectOption('24h');
   await expect.poll(() => map.getAttribute('data-eligible-routes').then(Number), {
     message: 'the 24-hour source must keep every route, with no visual cap'
   }).toBe(7_000);
   await expect.poll(async () => Number(await map.getAttribute('data-national-routes-represented'))).toBe(7_000);
   await expect.poll(async () => Number(await map.getAttribute('data-regional-routes-represented'))).toBe(7_000);
+  await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+  await expect(map).toHaveAttribute('data-exact-routes-loaded', 'false');
+  expect(await maximumLongTask(page), 'selecting the complete 24-hour window must not block the main thread for 100 ms').toBeLessThan(100);
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
   const routesButton = page.locator('#routes-button');
