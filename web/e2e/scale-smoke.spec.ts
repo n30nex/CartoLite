@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test';
 import type { NodeV2, RouteV2, StateV2 } from '../src/types';
 
+// Playwright trace screencasts read back the WebGL canvas and create synthetic
+// GPU stalls. Keep this timing gate capture-free; it writes evidence explicitly
+// after every timing assertion has completed.
+test.use({ screenshot: 'off', trace: 'off' });
+
 test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testInfo) => {
   const state = scaleState();
   const firstRoute = state.routes[0];

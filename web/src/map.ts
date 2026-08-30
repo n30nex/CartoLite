@@ -1249,27 +1249,14 @@ export class LiveMap {
     this.container.dataset.renderState = 'rendering';
     if (sourceIDs?.length) {
       const sourceEpoch = this.routeHydrationEpoch;
-      let repaintRequested = false;
-      let settledFrames = 0;
       const settleSource = (): void => {
         if (epoch !== this.renderEpoch || sourceEpoch !== this.routeHydrationEpoch) return;
         const settled = sourceIDs.every((sourceID) => (
           Boolean(this.map.getSource(sourceID)) && this.map.isSourceLoaded(sourceID)
         ));
         if (!this.routeHydrating && settled && this.map.loaded()) {
-          if (!repaintRequested) {
-            repaintRequested = true;
-            this.map.triggerRepaint();
-          } else {
-            settledFrames += 1;
-            if (settledFrames >= 2) {
-              this.container.dataset.renderState = 'idle';
-              return;
-            }
-          }
-        } else {
-          repaintRequested = false;
-          settledFrames = 0;
+          this.container.dataset.renderState = 'idle';
+          return;
         }
         window.requestAnimationFrame(settleSource);
       };
