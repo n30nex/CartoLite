@@ -597,13 +597,19 @@ export class LiveMap {
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
     const needsHydration = visible && this.routeDataDirty && Boolean(detailSource);
     const visualApplied = applyRouteVisualLayerVisibility(this.map, visible);
-    const exactApplied = visible && applyRouteExactWindowVisibility(this.map, true, this.effectiveRouteAgeMS());
+    const maxAge = this.effectiveRouteAgeMS();
+    const exactApplied = visible && applyRouteExactWindowVisibility(this.map, true, maxAge);
+    let paintApplied = false;
+    if (visible && this.appliedRouteWindowMS !== maxAge) {
+      this.appliedRouteWindowMS = maxAge;
+      paintApplied = applyRouteTrunkWindowPaint(this.map, maxAge);
+    }
     const hitApplied = this.selectedNodeID !== null && applyRouteHitLayerVisibility(this.map, visible);
     const neighborsApplied = this.selectedNodeID !== null && applyNeighborRingVisibility(this.map, visible);
     if (needsHydration) this.hydrateRouteSource();
     if (!visible) this.clearRouteInspection();
     if (!visible) this.map.getCanvas().style.cursor = '';
-    if (!needsHydration && (visualApplied || exactApplied || Boolean(detailSource) || hitApplied || neighborsApplied)) this.markRendering();
+    if (!needsHydration && (visualApplied || exactApplied || paintApplied || Boolean(detailSource) || hitApplied || neighborsApplied)) this.markRendering();
   }
 
   setHeatmapVisible(visible: boolean): void {
@@ -726,10 +732,10 @@ export class LiveMap {
       if (refreshClock || this.routeClock === 0) {
         this.routeClock = now;
       }
-      if (this.appliedRouteWindowMS !== maxAge) {
+      if (this.routesVisible && this.appliedRouteWindowMS !== maxAge) {
         this.appliedRouteWindowMS = maxAge;
         applyRouteTrunkWindowPaint(this.map, maxAge);
-        if (this.routesVisible) applyRouteExactWindowVisibility(this.map, true, maxAge);
+        applyRouteExactWindowVisibility(this.map, true, maxAge);
       }
     }
     this.updateRouteWindowDiagnostics(this.routeClock || now, maxAge);
