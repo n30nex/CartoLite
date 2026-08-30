@@ -1256,7 +1256,8 @@ export class LiveMap {
       const sourcesSettled = !sourceIDs?.length || sourceIDs.every((sourceID) => (
         Boolean(this.map.getSource(sourceID)) && this.map.isSourceLoaded(sourceID)
       ));
-      if (this.routeHydrating || !sourcesSettled) {
+      const awaitingInitialRoutes = !this.lastState || this.container.dataset.exactRoutesLoaded !== 'true';
+      if (awaitingInitialRoutes || this.routeHydrating || !sourcesSettled) {
         settledFrames = 0;
         window.requestAnimationFrame(settle);
         return;
