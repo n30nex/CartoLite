@@ -10,6 +10,7 @@ import {
   applyRouteHoverFilter,
   applyRouteHitLayerVisibility,
   applyRouteSelectionFilter,
+  applyRouteVisualLayerVisibility,
   applySelectedNodeFilter,
   canMoveLiveFollow,
   CLUSTER_HIGHLIGHT_LAYER_ID,
@@ -30,11 +31,12 @@ import {
   ROUTE_FILTER_LAYER_IDS,
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
-  ROUTE_RENDER_BUDGET,
+  ROUTE_VISUAL_LAYER_IDS,
   routeCollection,
   routeColorExpression,
-  routeLatticeRoutes,
   routeRenderCandidates,
+  routeRepresentationForZoom,
+  routeVisualCollection,
   routeVisualProperties,
   routeWindowLabel,
   SELECTED_NODE_OUTER_LAYER_ID,
@@ -45,6 +47,21 @@ import {
 import { PACKET_KIND_COLORS, ROUTE_MAX_AGE_MS } from './trafficVisuals';
 
 describe('route layer visibility', () => {
+  it('toggles every native stable-route layer together', () => {
+    const setLayoutProperty = vi.fn();
+    const map = {
+      getLayer: vi.fn(() => ({})),
+      setLayoutProperty
+    } as unknown as Parameters<typeof applyRouteVisualLayerVisibility>[0];
+
+    expect(applyRouteVisualLayerVisibility(map, true)).toBe(true);
+    expect(applyRouteVisualLayerVisibility(map, false)).toBe(true);
+    expect(setLayoutProperty.mock.calls).toEqual([
+      ...ROUTE_VISUAL_LAYER_IDS.map((layerID) => [layerID, 'visibility', 'visible']),
+      ...ROUTE_VISUAL_LAYER_IDS.map((layerID) => [layerID, 'visibility', 'none'])
+    ]);
+  });
+
   it('shows the wide route hit target only while neighbor routes are interactive', () => {
     const setLayoutProperty = vi.fn();
     const map = {
@@ -155,60 +172,64 @@ describe('activity heatmap data', () => {
 });
 
 describe('stable route visual data', () => {
-  it('preserves every candidate and its exact geometry for the canvas lattice', () => {
+  it('keeps every eligible route exact while low zooms represent all of them in trunks', () => {
     const now = 1_900_000_000_000;
     const kinds: readonly RouteV2['lastKind'][] = ['Advert', 'Trace', 'Text', 'ACK', 'Control', 'Other'];
-    const routes = Array.from({ length: ROUTE_RENDER_BUDGET }, (_, index) => route(
+    const routes = Array.from({ length: 1_405 }, (_, index) => route(
       `bucket-${index}`,
-      `from-${index}`,
-      `to-${index}`,
+      `from-${index % 120}`,
+      `to-${(index * 17 + 23) % 120}`,
       now - (index % 5) * 4 * 60 * 60_000,
       kinds[index % kinds.length]!,
       1 + index % 64
     ));
 
-    const lattice = routeLatticeRoutes(routes, nodesFor(routes), now);
+    const candidates = routeRenderCandidates(routes, now);
+    const collection = routeVisualCollection(candidates, nodesFor(routes), now);
+    const exact = collection.features.filter((feature) => feature.properties?.representation === 'exact');
+    const national = collection.features.filter((feature) => feature.properties?.representation === 'national');
+    const regional = collection.features.filter((feature) => feature.properties?.representation === 'regional');
 
-    expect(lattice).toHaveLength(routes.length);
-    expect(lattice.map((item) => item.id)).toEqual(routes.map((item) => item.id));
-    expect(lattice.every((item) => (
-      item.from.length === 2
-      && item.to.length === 2
-      && typeof item.color === 'string'
-      && item.width >= 0.68
-      && item.glowWidth <= 3.4
-      && item.opacity <= 1
-    ))).toBe(true);
+    expect(candidates).toHaveLength(routes.length);
+    expect(exact).toHaveLength(routes.length);
+    expect(new Set(exact.map((item) => item.id)).size).toBe(routes.length);
+    expect(national.reduce((sum, feature) => sum + Number(feature.properties?.routeCount), 0)).toBe(routes.length);
+    expect(regional.reduce((sum, feature) => sum + Number(feature.properties?.routeCount), 0)).toBe(routes.length);
+    expect(national.length).toBeLessThan(exact.length);
+    expect(regional.length).toBeLessThan(exact.length);
+    expect(national.every((item) => Number(item.properties?.width) > 0 && Number(item.properties?.opacity) <= 1)).toBe(true);
   });
 
-  it('caps the historical lattice while keeping selected-node, newest, and oldest routes represented', () => {
+  it('never caps a selected route window and keeps its exact boundary', () => {
     const now = 1_900_000_000_000;
-    const routes = Array.from({ length: ROUTE_RENDER_BUDGET + 5 }, (_, index) => route(
+    const routes = Array.from({ length: 2_405 }, (_, index) => route(
       `route-${String(index).padStart(4, '0')}`,
       `from-${index}`,
       `to-${index}`,
       now - index
     ));
-    routes.push(route('selected-old', 'selected', 'neighbor', now - ROUTE_MAX_AGE_MS));
+    routes.push(route('boundary', 'boundary-a', 'boundary-b', now - ROUTE_MAX_AGE_MS));
+    routes.push(route('expired', 'expired-a', 'expired-b', now - ROUTE_MAX_AGE_MS - 1));
 
-    const candidates = routeRenderCandidates(routes, now, ROUTE_MAX_AGE_MS, 'selected');
+    const candidates = routeRenderCandidates(routes, now, ROUTE_MAX_AGE_MS);
 
-    expect(candidates).toHaveLength(ROUTE_RENDER_BUDGET);
-    expect(candidates[0]?.id).toBe('selected-old');
+    expect(candidates).toHaveLength(2_406);
+    expect(candidates[0]?.id).toBe('boundary');
     expect(candidates.some((item) => item.id === 'route-0000')).toBe(true);
-    expect(candidates.some((item) => item.id === 'route-0704')).toBe(true);
-    expect(new Set(candidates.map((item) => item.id)).size).toBe(ROUTE_RENDER_BUDGET);
+    expect(candidates.some((item) => item.id === 'route-2404')).toBe(true);
+    expect(candidates.some((item) => item.id === 'expired')).toBe(false);
+    expect(new Set(candidates.map((item) => item.id)).size).toBe(candidates.length);
   });
 
-  it('samples the full selected age window after the route budget is saturated', () => {
+  it('returns every route in each selected age window instead of sampling', () => {
     const now = 1_900_000_000_000;
-    const recent = Array.from({ length: ROUTE_RENDER_BUDGET * 2 }, (_, index) => route(
+    const recent = Array.from({ length: 1_400 }, (_, index) => route(
       `recent-${index}`,
       `recent-from-${index}`,
       `recent-to-${index}`,
       now - index * 500
     ));
-    const historical = Array.from({ length: ROUTE_RENDER_BUDGET * 2 }, (_, index) => route(
+    const historical = Array.from({ length: 1_400 }, (_, index) => route(
       `historical-${index}`,
       `historical-from-${index}`,
       `historical-to-${index}`,
@@ -218,11 +239,12 @@ describe('stable route visual data', () => {
     const fifteenMinutes = routeRenderCandidates([...recent, ...historical], now, 15 * 60_000);
     const fullDay = routeRenderCandidates([...recent, ...historical], now, ROUTE_MAX_AGE_MS);
 
-    expect(fifteenMinutes).toHaveLength(ROUTE_RENDER_BUDGET);
-    expect(fullDay).toHaveLength(ROUTE_RENDER_BUDGET);
+    expect(fifteenMinutes).toHaveLength(recent.length);
+    expect(fullDay).toHaveLength(recent.length + historical.length);
     expect(fifteenMinutes.every((item) => now - item.lastHeard <= 15 * 60_000)).toBe(true);
     expect(fullDay.some((item) => now - item.lastHeard > 15 * 60_000)).toBe(true);
-    expect(fullDay.map((item) => item.id)).not.toEqual(fifteenMinutes.map((item) => item.id));
+    expect(fullDay.map((item) => item.id)).toEqual(expect.arrayContaining(recent.map((item) => item.id)));
+    expect(fullDay.map((item) => item.id)).toEqual(expect.arrayContaining(historical.map((item) => item.id)));
   });
 
   it('uses progressively wider automatic route windows as users zoom in', () => {
@@ -232,6 +254,9 @@ describe('stable route visual data', () => {
     expect(effectiveRouteWindowMS('auto', 11)).toBe(ROUTE_MAX_AGE_MS);
     expect(routeWindowLabel('auto', 4)).toBe('Auto · 15m');
     expect(routeWindowLabel('24h', 4)).toBe('24h');
+    expect(routeRepresentationForZoom(3.4)).toBe('national-trunks');
+    expect(routeRepresentationForZoom(5.5)).toBe('regional-trunks');
+    expect(routeRepresentationForZoom(8)).toBe('individual-routes');
   });
 
   it('keeps the exact 24-hour boundary, expires older routes, and assigns trail colors', () => {

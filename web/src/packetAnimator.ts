@@ -416,12 +416,16 @@ export class PacketAnimator {
 
   private resize(): void {
     const rect = this.canvas.getBoundingClientRect();
-    this.dpr = Math.min(this.qualityMode() === 'low' ? 1.25 : 1.5, window.devicePixelRatio || 1);
-    this.canvas.dataset.pixelRatio = String(this.dpr);
-    this.canvas.width = Math.max(1, Math.floor(rect.width * this.dpr));
-    this.canvas.height = Math.max(1, Math.floor(rect.height * this.dpr));
-    this.residueCanvas.width = this.canvas.width;
-    this.residueCanvas.height = this.canvas.height;
+    const dpr = Math.min(this.qualityMode() === 'low' ? 1.25 : 1.5, window.devicePixelRatio || 1);
+    const width = Math.max(1, Math.floor(rect.width * dpr));
+    const height = Math.max(1, Math.floor(rect.height * dpr));
+    this.canvas.dataset.pixelRatio = String(dpr);
+    if (this.dpr === dpr && this.canvas.width === width && this.canvas.height === height) return;
+    this.dpr = dpr;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.residueCanvas.width = width;
+    this.residueCanvas.height = height;
     this.context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.residueContext.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.residueProjectionDirty = true;

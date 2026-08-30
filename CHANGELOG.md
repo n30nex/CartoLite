@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.4 - 2026-08-29
+
+### Fixed
+
+- Remove the 700-route ceiling completely: every valid route inside the selected 15-minute, one-hour, six-hour, or 24-hour window is retained in the map source.
+- Replace the screen-fixed historical route canvas with native MapLibre line layers so routes remain locked to geography throughout camera movement instead of hiding, jumping, or jiggling after pan and zoom.
+- Stop live traffic from applying full-canvas filters to the route and region overlays, and avoid clearing the packet canvas when a resize event does not change its dimensions.
+
+### Changed
+
+- Combine nearby low-zoom links into fixed national and regional trunks whose counts account for every eligible route, then crossfade into individual lines as the map zooms in.
+- Extend the 4,000-node/7,000-route browser gate to require all 7,000 routes in the 24-hour source, complete trunk accounting, camera responsiveness, and no task longer than 100 ms.
+
 ## 0.6.3 - 2026-08-29
 
 ### Fixed

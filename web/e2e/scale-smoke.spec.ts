@@ -29,12 +29,9 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-quality-mode', testInfo.project.name.startsWith('mobile') ? 'low' : 'full');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(Date.now() - started, 'large topology should hydrate inside the first-view budget').toBeLessThan(10_000);
-  const routeCanvas = page.locator('#route-canvas');
-  await expect(routeCanvas).toBeHidden();
-  await expect.poll(() => routeCanvas.getAttribute('data-rendered-routes').then(Number), {
-    message: 'the hidden stable route lattice should be pre-rendered before interaction'
-  }).toBeGreaterThan(0);
-  expect(await canvasHasPixels(routeCanvas), 'the pre-rendered route lattice should contain visible route pixels').toBe(true);
+  const map = page.locator('#map');
+  await expect(page.locator('#route-canvas')).toHaveCount(0);
+  await expect(map).toHaveAttribute('data-route-renderer', 'maplibre');
   await installLongTaskObserver(page);
 
   const heatmapButton = page.locator('#heatmap-button');
@@ -42,16 +39,35 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
     await page.locator('#layers-summary').click();
     await expect(page.locator('#layers-disclosure')).toHaveAttribute('open', '');
   }
+  await page.locator('#route-window').selectOption('24h');
+  await expect.poll(() => map.getAttribute('data-eligible-routes').then(Number), {
+    message: 'the 24-hour source must keep every route, with no visual cap'
+  }).toBe(7_000);
+  await expect.poll(async () => Number(await map.getAttribute('data-national-routes-represented'))).toBe(7_000);
+  await expect.poll(async () => Number(await map.getAttribute('data-regional-routes-represented'))).toBe(7_000);
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
   const routesButton = page.locator('#routes-button');
   await resetLongTasks(page);
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
-  await expect(routeCanvas).toBeVisible();
-  await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+  await expect(map).toHaveAttribute('data-routes-visible', 'true');
+  await expect(map).toHaveAttribute('data-route-representation', 'national-trunks');
+  await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(await maximumLongTask(page), 'enabling Routes must not block the main thread for 100 ms').toBeLessThan(100);
+
+  const mapBox = await page.locator('#map .maplibregl-canvas').boundingBox();
+  expect(mapBox).not.toBeNull();
+  if (mapBox) {
+    await resetLongTasks(page);
+    await page.mouse.move(mapBox.x + mapBox.width * 0.58, mapBox.y + mapBox.height * 0.52);
+    await page.mouse.down();
+    await page.mouse.move(mapBox.x + mapBox.width * 0.42, mapBox.y + mapBox.height * 0.45, { steps: 8 });
+    await page.mouse.up();
+    await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+    await expect(map).toHaveAttribute('data-eligible-routes', '7000');
+    expect(await maximumLongTask(page), 'camera movement with all routes visible must stay responsive').toBeLessThan(100);
+  }
 
   const regionStarted = Date.now();
   const regionsButton = page.locator('#regions-button');
