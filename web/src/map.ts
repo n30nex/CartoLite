@@ -934,7 +934,7 @@ export class LiveMap {
       paint: {
         'line-color': activeRouteTrunkColorExpression(),
         'line-width': ['interpolate', ['linear'], ['zoom'], 3, ['*', activeRouteTrunkMetricExpression('glowWidth'), 0.72], 5.25, ['*', activeRouteTrunkMetricExpression('glowWidth'), 0.46]],
-        'line-opacity': ['*', routeVisibilityOpacityExpression(), ['interpolate', ['linear'], ['zoom'], 3, ['*', activeRouteTrunkMetricExpression('opacity'), 0.34], 4.45, ['*', activeRouteTrunkMetricExpression('opacity'), 0.28], 5.25, 0]],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, ['*', routeVisibilityOpacityExpression(), activeRouteTrunkMetricExpression('opacity'), 0.34], 4.45, ['*', routeVisibilityOpacityExpression(), activeRouteTrunkMetricExpression('opacity'), 0.28], 5.25, 0],
         'line-blur': ['interpolate', ['linear'], ['zoom'], 3, 2.4, 5.25, 1.5]
       }
     });
@@ -948,7 +948,7 @@ export class LiveMap {
       paint: {
         'line-color': activeRouteTrunkColorExpression(),
         'line-width': ['interpolate', ['linear'], ['zoom'], 3, ['*', activeRouteTrunkMetricExpression('width'), 0.72], 5.25, ['*', activeRouteTrunkMetricExpression('width'), 0.9]],
-        'line-opacity': ['*', routeVisibilityOpacityExpression(), ['interpolate', ['linear'], ['zoom'], 3, ['*', activeRouteTrunkMetricExpression('opacity'), 0.72], 4.45, ['*', activeRouteTrunkMetricExpression('opacity'), 0.58], 5.25, 0]]
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, ['*', routeVisibilityOpacityExpression(), activeRouteTrunkMetricExpression('opacity'), 0.72], 4.45, ['*', routeVisibilityOpacityExpression(), activeRouteTrunkMetricExpression('opacity'), 0.58], 5.25, 0]
       }
     });
     this.map.addLayer({
@@ -962,7 +962,7 @@ export class LiveMap {
       paint: {
         'line-color': activeRouteTrunkColorExpression(),
         'line-width': ['interpolate', ['linear'], ['zoom'], 4.35, ['*', activeRouteTrunkMetricExpression('glowWidth'), 0.38], 5.2, ['*', activeRouteTrunkMetricExpression('glowWidth'), 0.66], 7.2, ['*', activeRouteTrunkMetricExpression('glowWidth'), 0.42]],
-        'line-opacity': ['*', routeVisibilityOpacityExpression(), ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, ['*', activeRouteTrunkMetricExpression('opacity'), 0.3], 6.35, ['*', activeRouteTrunkMetricExpression('opacity'), 0.24], 7.2, 0]],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, ['*', routeVisibilityOpacityExpression(), activeRouteTrunkMetricExpression('opacity'), 0.3], 6.35, ['*', routeVisibilityOpacityExpression(), activeRouteTrunkMetricExpression('opacity'), 0.24], 7.2, 0],
         'line-blur': ['interpolate', ['linear'], ['zoom'], 4.35, 1.5, 7.2, 2.1]
       }
     });
@@ -977,7 +977,7 @@ export class LiveMap {
       paint: {
         'line-color': activeRouteTrunkColorExpression(),
         'line-width': ['interpolate', ['linear'], ['zoom'], 4.35, ['*', activeRouteTrunkMetricExpression('width'), 0.58], 5.2, ['*', activeRouteTrunkMetricExpression('width'), 0.88], 7.2, activeRouteTrunkMetricExpression('width')],
-        'line-opacity': ['*', routeVisibilityOpacityExpression(), ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, ['*', activeRouteTrunkMetricExpression('opacity'), 0.68], 6.35, ['*', activeRouteTrunkMetricExpression('opacity'), 0.6], 7.2, 0]]
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, ['*', routeVisibilityOpacityExpression(), activeRouteTrunkMetricExpression('opacity'), 0.68], 6.35, ['*', routeVisibilityOpacityExpression(), activeRouteTrunkMetricExpression('opacity'), 0.6], 7.2, 0]
       }
     });
     for (const band of [0, 1, 2, 3] as const) {
@@ -996,7 +996,7 @@ export class LiveMap {
         paint: {
           'line-color': routeColorExpression(),
           'line-width': ['interpolate', ['linear'], ['zoom'], 5.8, ['*', ['get', 'glowWidth'], 0.48], 8, ['*', ['get', 'glowWidth'], 0.78], 12, ['get', 'glowWidth']],
-          'line-opacity': ['*', routeVisibilityOpacityExpression(), routeWindowBandOpacityExpression(band), ['interpolate', ['linear'], ['zoom'], 5.8, 0, 6.55, ['*', ['get', 'opacity'], 0.08], 8, ['*', ['get', 'opacity'], 0.16], 12, ['*', ['get', 'opacity'], 0.2]]],
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 5.8, 0, 6.55, ['*', routeVisibilityOpacityExpression(), routeWindowBandOpacityExpression(band), ['get', 'opacity'], 0.08], 8, ['*', routeVisibilityOpacityExpression(), routeWindowBandOpacityExpression(band), ['get', 'opacity'], 0.16], 12, ['*', routeVisibilityOpacityExpression(), routeWindowBandOpacityExpression(band), ['get', 'opacity'], 0.2]],
           'line-blur': ['interpolate', ['linear'], ['zoom'], 5.8, 1.2, 9, 2.2, 14, 2.8]
         }
       });
@@ -1015,7 +1015,7 @@ export class LiveMap {
         paint: {
           'line-color': routeColorExpression(),
           'line-width': ['interpolate', ['linear'], ['zoom'], 5.8, ['*', ['get', 'width'], 0.58], 8, ['*', ['get', 'width'], 0.78], 12, ['*', ['get', 'width'], 1.08], 16, ['*', ['get', 'width'], 1.18]],
-          'line-opacity': ['*', routeVisibilityOpacityExpression(), routeWindowBandOpacityExpression(band), ['interpolate', ['linear'], ['zoom'], 5.8, 0, 6.55, ['*', ['get', 'opacity'], 0.34], 8, ['*', ['get', 'opacity'], 0.64], 12, ['*', ['get', 'opacity'], 0.82]]]
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 5.8, 0, 6.55, ['*', routeVisibilityOpacityExpression(), routeWindowBandOpacityExpression(band), ['get', 'opacity'], 0.34], 8, ['*', routeVisibilityOpacityExpression(), routeWindowBandOpacityExpression(band), ['get', 'opacity'], 0.64], 12, ['*', routeVisibilityOpacityExpression(), routeWindowBandOpacityExpression(band), ['get', 'opacity'], 0.82]]
         }
       });
     }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.5 - 2026-08-30
+
+### Fixed
+
+- Keep every route layer's zoom interpolation at the top level of its MapLibre opacity expression so the renderer accepts the layers and the Routes control draws national trunks, regional trunks, and individual routes again.
+
 ## 0.6.4 - 2026-08-30
 
 ### Fixed
