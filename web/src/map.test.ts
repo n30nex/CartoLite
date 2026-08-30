@@ -89,7 +89,7 @@ describe('route layer visibility', () => {
   });
 
   it('activates only the stable route representation visible at the current zoom', () => {
-    const visibility = new Map(ROUTE_VISUAL_LAYER_IDS.map((layerID) => [layerID, 'none']));
+    const visibility = new Map<string, string>(ROUTE_VISUAL_LAYER_IDS.map((layerID) => [layerID, 'none']));
     const setLayoutProperty = vi.fn((layerID: string, _property: string, value: string) => {
       visibility.set(layerID, value);
     });
