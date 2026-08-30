@@ -7,6 +7,7 @@
 - Remove the 700-route ceiling completely: every valid route from the complete 24-hour public topology is retained in the map source and the selected window reveals all matching routes.
 - Replace the screen-fixed historical route canvas with native MapLibre line layers so routes remain locked to geography throughout camera movement instead of hiding, jumping, or jiggling after pan and zoom.
 - Stop live traffic from applying full-canvas filters to the route and region overlays, and avoid clearing the packet canvas when a resize event does not change its dimensions.
+- Keep the map in its loading state until MapLibre has actually settled both complete route sources, preventing deferred source ingestion from interrupting the first route-window interaction.
 - Update the build-only PostCSS dependency past its source-map file disclosure advisory; the runtime continues to serve compiled static assets without Node.js.
 
 ### Changed

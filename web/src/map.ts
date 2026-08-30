@@ -327,7 +327,7 @@ export class LiveMap {
         return;
       }
       this.emitRouteWindowChange();
-      this.markRendering();
+      this.markRendering([ROUTE_TRUNK_SOURCE_ID, ROUTE_DETAIL_SOURCE_ID]);
     };
     void buildRouteSourceCollections(
       allRoutes,
@@ -623,6 +623,7 @@ export class LiveMap {
 
   setRouteWindow(window: RouteWindow): void {
     if (this.routeWindow === window) return;
+    const started = performance.now();
     this.routeWindow = window;
     this.applyRouteTimeState();
     if (this.selectedNodeID) {
@@ -637,6 +638,7 @@ export class LiveMap {
       this.effectiveRouteAgeMS()
     )) this.clearRouteInspection();
     this.emitRouteWindowChange();
+    this.container.dataset.routeWindowApplyMs = (performance.now() - started).toFixed(1);
     this.markRendering();
   }
 
@@ -1227,15 +1229,17 @@ export class LiveMap {
     });
   }
 
-  private markRendering(sourceID?: string): void {
+  private markRendering(sourceIDs?: readonly string[]): void {
     const epoch = ++this.renderEpoch;
     this.container.dataset.renderState = 'rendering';
-    if (sourceID) {
+    if (sourceIDs?.length) {
       const sourceEpoch = this.routeHydrationEpoch;
       const settleSource = (): void => {
-        if (sourceEpoch !== this.routeHydrationEpoch) return;
-        const source = this.map.getSource(sourceID) as GeoJSONSource | undefined;
-        if (!this.routeHydrating && source && this.map.isSourceLoaded(sourceID)) {
+        if (epoch !== this.renderEpoch || sourceEpoch !== this.routeHydrationEpoch) return;
+        const settled = sourceIDs.every((sourceID) => (
+          Boolean(this.map.getSource(sourceID)) && this.map.isSourceLoaded(sourceID)
+        ));
+        if (!this.routeHydrating && settled && this.map.loaded()) {
           this.container.dataset.renderState = 'idle';
           return;
         }

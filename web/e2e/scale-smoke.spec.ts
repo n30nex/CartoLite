@@ -66,6 +66,7 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   const routeTimings = await map.evaluate((element) => ({
     buildMaxSliceMS: element.dataset.routeBuildMaxSliceMs,
     sourceDispatchMS: element.dataset.routeSourceDispatchMs,
+    windowApplyMS: element.dataset.routeWindowApplyMs,
     nationalTrunks: element.dataset.nationalRouteTrunks,
     regionalTrunks: element.dataset.regionalRouteTrunks
   }));
