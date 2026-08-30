@@ -1246,30 +1246,29 @@ export class LiveMap {
 
   private markRendering(sourceIDs?: readonly string[]): void {
     const epoch = ++this.renderEpoch;
+    const sourceEpoch = this.routeHydrationEpoch;
+    let settledFrames = 0;
     this.container.dataset.renderState = 'rendering';
-    if (sourceIDs?.length) {
-      const sourceEpoch = this.routeHydrationEpoch;
-      const settleSource = (): void => {
-        if (epoch !== this.renderEpoch || sourceEpoch !== this.routeHydrationEpoch) return;
-        const settled = sourceIDs.every((sourceID) => (
-          Boolean(this.map.getSource(sourceID)) && this.map.isSourceLoaded(sourceID)
-        ));
-        if (!this.routeHydrating && settled && this.map.loaded()) {
-          this.container.dataset.renderState = 'idle';
-          return;
-        }
-        window.requestAnimationFrame(settleSource);
-      };
-      window.requestAnimationFrame(settleSource);
-      return;
-    }
-    if (!this.routeHydrating && this.map.loaded()) {
+    // Basemap tiles and live packets can keep MapLibre's global loaded/idle
+    // state false indefinitely. Gate readiness on CartoLite's own sources.
+    const settle = (): void => {
+      if (epoch !== this.renderEpoch || sourceEpoch !== this.routeHydrationEpoch) return;
+      const sourcesSettled = !sourceIDs?.length || sourceIDs.every((sourceID) => (
+        Boolean(this.map.getSource(sourceID)) && this.map.isSourceLoaded(sourceID)
+      ));
+      if (this.routeHydrating || !sourcesSettled) {
+        settledFrames = 0;
+        window.requestAnimationFrame(settle);
+        return;
+      }
+      settledFrames += 1;
+      if (settledFrames < 2) {
+        window.requestAnimationFrame(settle);
+        return;
+      }
       this.container.dataset.renderState = 'idle';
-      return;
-    }
-    this.map.once('idle', () => {
-      if (epoch === this.renderEpoch && !this.routeHydrating) this.container.dataset.renderState = 'idle';
-    });
+    };
+    window.requestAnimationFrame(settle);
   }
 
   private async expandCluster(event: MapMouseEvent): Promise<void> {
