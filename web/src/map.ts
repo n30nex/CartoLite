@@ -330,7 +330,7 @@ export class LiveMap {
       this.container.dataset.nationalRoutesRepresented = String(routeCount(collections.national.features));
       this.container.dataset.regionalRoutesRepresented = String(routeCount(collections.regional.features));
       this.container.dataset.routeBuildMaxSliceMs = collections.maxSliceMS.toFixed(1);
-      const updates = [this.updateRouteTrunkSource(
+      const updates: unknown[] = [this.updateRouteTrunkSource(
         trunkSource,
         [...collections.national.features, ...collections.regional.features]
       )];
@@ -431,7 +431,7 @@ export class LiveMap {
   private updateRouteTrunkSource(
     source: GeoJSONSource,
     features: readonly Feature<LineString>[]
-  ): Promise<void> {
+  ): void {
     const previousIDs = [...this.routeTrunkFeatureIDs];
     const nextIDs = new Set<string>();
     const diff: GeoJSONSourceDiff = {};
@@ -452,18 +452,17 @@ export class LiveMap {
     for (const id of this.routeTrunkFeatureIDs) {
       if (!nextIDs.has(id)) (diff.remove ??= []).push(id);
     }
-    if (!diff.add?.length && !diff.update?.length && !diff.remove?.length) return Promise.resolve();
+    if (!diff.add?.length && !diff.update?.length && !diff.remove?.length) return;
     const started = performance.now();
     try {
       source.updateData(diff);
       this.container.dataset.routeSourceDispatchMs = (performance.now() - started).toFixed(1);
       this.routeTrunkFeatureIDs.clear();
       for (const id of nextIDs) this.routeTrunkFeatureIDs.add(id);
-      return Promise.resolve();
     } catch (error: unknown) {
       this.routeTrunkFeatureIDs.clear();
       for (const id of previousIDs) this.routeTrunkFeatureIDs.add(id);
-      return Promise.reject(error);
+      throw error;
     }
   }
 
