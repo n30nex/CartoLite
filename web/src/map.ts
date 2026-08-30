@@ -78,7 +78,6 @@ const ROUTE_NATIONAL_MAX_ZOOM = 5.25;
 const ROUTE_REGIONAL_MIN_ZOOM = 4.35;
 const ROUTE_REGIONAL_MAX_ZOOM = 7.2;
 const ROUTE_SOURCE_BUILD_BATCH = 256;
-const ROUTE_GLOBAL_WINDOW_MS = 'routeWindowMS';
 const ROUTE_WINDOW_BUCKETS = [
   { key: '15m', suffix: '15m', ms: 15 * 60_000 },
   { key: '1h', suffix: '1h', ms: 60 * 60_000 },
@@ -598,12 +597,13 @@ export class LiveMap {
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
     const needsHydration = visible && this.routeDataDirty && Boolean(detailSource);
     const visualApplied = applyRouteVisualLayerVisibility(this.map, visible);
+    const exactApplied = visible && applyRouteExactWindowVisibility(this.map, true, this.effectiveRouteAgeMS());
     const hitApplied = this.selectedNodeID !== null && applyRouteHitLayerVisibility(this.map, visible);
     const neighborsApplied = this.selectedNodeID !== null && applyNeighborRingVisibility(this.map, visible);
     if (needsHydration) this.hydrateRouteSource();
     if (!visible) this.clearRouteInspection();
     if (!visible) this.map.getCanvas().style.cursor = '';
-    if (!needsHydration && (visualApplied || Boolean(detailSource) || hitApplied || neighborsApplied)) this.markRendering();
+    if (!needsHydration && (visualApplied || exactApplied || Boolean(detailSource) || hitApplied || neighborsApplied)) this.markRendering();
   }
 
   setHeatmapVisible(visible: boolean): void {
@@ -726,7 +726,8 @@ export class LiveMap {
       }
       if (this.appliedRouteWindowMS !== maxAge) {
         this.appliedRouteWindowMS = maxAge;
-        this.map.setGlobalStateProperty(ROUTE_GLOBAL_WINDOW_MS, maxAge);
+        applyRouteTrunkWindowPaint(this.map, maxAge);
+        applyRouteExactWindowVisibility(this.map, this.routesVisible, maxAge);
       }
     }
     this.updateRouteWindowDiagnostics(this.routeClock || now, maxAge);
@@ -792,6 +793,7 @@ export class LiveMap {
     this.map.addSource(ROUTE_TRUNK_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 8 });
     this.map.addSource(ROUTE_DETAIL_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 16 });
     this.applyRouteTimeState(Date.now(), true);
+    const routeMaxAge = this.effectiveRouteAgeMS();
     const routeVisibility = this.routesVisible ? 'visible' : 'none';
     this.map.addLayer({
       id: ROUTE_VISUAL_LAYER_IDS[0],
@@ -801,9 +803,9 @@ export class LiveMap {
       filter: routeTrunkFilter(ROUTE_REPRESENTATION_NATIONAL),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
       paint: {
-        'line-color': routeTrunkColorExpression(),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 3, ['*', routeTrunkMetricExpression('glowWidth'), 0.72], 5.25, ['*', routeTrunkMetricExpression('glowWidth'), 0.46]],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, ['*', routeTrunkMetricExpression('opacity'), 0.34], 4.45, ['*', routeTrunkMetricExpression('opacity'), 0.28], 5.25, 0],
+        'line-color': routeTrunkColorExpression(routeMaxAge),
+        'line-width': ['interpolate', ['linear'], ['zoom'], 3, ['*', routeTrunkMetricExpression('glowWidth', routeMaxAge), 0.72], 5.25, ['*', routeTrunkMetricExpression('glowWidth', routeMaxAge), 0.46]],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, ['*', routeTrunkMetricExpression('opacity', routeMaxAge), 0.34], 4.45, ['*', routeTrunkMetricExpression('opacity', routeMaxAge), 0.28], 5.25, 0],
         'line-blur': ['interpolate', ['linear'], ['zoom'], 3, 2.4, 5.25, 1.5]
       }
     });
@@ -815,9 +817,9 @@ export class LiveMap {
       filter: routeTrunkFilter(ROUTE_REPRESENTATION_NATIONAL),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
       paint: {
-        'line-color': routeTrunkColorExpression(),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 3, ['*', routeTrunkMetricExpression('width'), 0.72], 5.25, ['*', routeTrunkMetricExpression('width'), 0.9]],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, ['*', routeTrunkMetricExpression('opacity'), 0.72], 4.45, ['*', routeTrunkMetricExpression('opacity'), 0.58], 5.25, 0]
+        'line-color': routeTrunkColorExpression(routeMaxAge),
+        'line-width': ['interpolate', ['linear'], ['zoom'], 3, ['*', routeTrunkMetricExpression('width', routeMaxAge), 0.72], 5.25, ['*', routeTrunkMetricExpression('width', routeMaxAge), 0.9]],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, ['*', routeTrunkMetricExpression('opacity', routeMaxAge), 0.72], 4.45, ['*', routeTrunkMetricExpression('opacity', routeMaxAge), 0.58], 5.25, 0]
       }
     });
     this.map.addLayer({
@@ -829,9 +831,9 @@ export class LiveMap {
       filter: routeTrunkFilter(ROUTE_REPRESENTATION_REGIONAL),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
       paint: {
-        'line-color': routeTrunkColorExpression(),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4.35, ['*', routeTrunkMetricExpression('glowWidth'), 0.38], 5.2, ['*', routeTrunkMetricExpression('glowWidth'), 0.66], 7.2, ['*', routeTrunkMetricExpression('glowWidth'), 0.42]],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, ['*', routeTrunkMetricExpression('opacity'), 0.3], 6.35, ['*', routeTrunkMetricExpression('opacity'), 0.24], 7.2, 0],
+        'line-color': routeTrunkColorExpression(routeMaxAge),
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4.35, ['*', routeTrunkMetricExpression('glowWidth', routeMaxAge), 0.38], 5.2, ['*', routeTrunkMetricExpression('glowWidth', routeMaxAge), 0.66], 7.2, ['*', routeTrunkMetricExpression('glowWidth', routeMaxAge), 0.42]],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, ['*', routeTrunkMetricExpression('opacity', routeMaxAge), 0.3], 6.35, ['*', routeTrunkMetricExpression('opacity', routeMaxAge), 0.24], 7.2, 0],
         'line-blur': ['interpolate', ['linear'], ['zoom'], 4.35, 1.5, 7.2, 2.1]
       }
     });
@@ -844,13 +846,12 @@ export class LiveMap {
       filter: routeTrunkFilter(ROUTE_REPRESENTATION_REGIONAL),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
       paint: {
-        'line-color': routeTrunkColorExpression(),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4.35, ['*', routeTrunkMetricExpression('width'), 0.58], 5.2, ['*', routeTrunkMetricExpression('width'), 0.88], 7.2, routeTrunkMetricExpression('width')],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, ['*', routeTrunkMetricExpression('opacity'), 0.68], 6.35, ['*', routeTrunkMetricExpression('opacity'), 0.6], 7.2, 0]
+        'line-color': routeTrunkColorExpression(routeMaxAge),
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4.35, ['*', routeTrunkMetricExpression('width', routeMaxAge), 0.58], 5.2, ['*', routeTrunkMetricExpression('width', routeMaxAge), 0.88], 7.2, routeTrunkMetricExpression('width', routeMaxAge)],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, ['*', routeTrunkMetricExpression('opacity', routeMaxAge), 0.68], 6.35, ['*', routeTrunkMetricExpression('opacity', routeMaxAge), 0.6], 7.2, 0]
       }
     });
     for (const band of [0, 1, 2, 3] as const) {
-      const active = routeWindowBandActiveExpression(band);
       this.map.addLayer({
         id: `route-exact-glow-${band}`,
         type: 'line',
@@ -866,7 +867,7 @@ export class LiveMap {
         paint: {
           'line-color': routeColorExpression(),
           'line-width': ['interpolate', ['linear'], ['zoom'], 5.8, ['*', ['get', 'glowWidth'], 0.48], 8, ['*', ['get', 'glowWidth'], 0.78], 12, ['get', 'glowWidth']],
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 5.8, 0, 6.55, ['*', ['*', ['get', 'opacity'], 0.08], active], 8, ['*', ['*', ['get', 'opacity'], 0.16], active], 12, ['*', ['*', ['get', 'opacity'], 0.2], active]],
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 5.8, 0, 6.55, ['*', ['get', 'opacity'], 0.08], 8, ['*', ['get', 'opacity'], 0.16], 12, ['*', ['get', 'opacity'], 0.2]],
           'line-blur': ['interpolate', ['linear'], ['zoom'], 5.8, 1.2, 9, 2.2, 14, 2.8]
         }
       });
@@ -885,7 +886,7 @@ export class LiveMap {
         paint: {
           'line-color': routeColorExpression(),
           'line-width': ['interpolate', ['linear'], ['zoom'], 5.8, ['*', ['get', 'width'], 0.58], 8, ['*', ['get', 'width'], 0.78], 12, ['*', ['get', 'width'], 1.08], 16, ['*', ['get', 'width'], 1.18]],
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 5.8, 0, 6.55, ['*', ['*', ['get', 'opacity'], 0.34], active], 8, ['*', ['*', ['get', 'opacity'], 0.64], active], 12, ['*', ['*', ['get', 'opacity'], 0.82], active]]
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 5.8, 0, 6.55, ['*', ['get', 'opacity'], 0.34], 8, ['*', ['get', 'opacity'], 0.64], 12, ['*', ['get', 'opacity'], 0.82]]
         }
       });
     }
@@ -926,6 +927,7 @@ export class LiveMap {
       }
     });
     applyRouteVisualLayerVisibility(this.map, this.routesVisible);
+    applyRouteExactWindowVisibility(this.map, this.routesVisible, this.effectiveRouteAgeMS());
     applyRouteSelectionFilter(this.map, this.selectedNodeID);
     applyRouteHitLayerVisibility(this.map, this.routesVisible && this.selectedNodeID !== null);
     applyRouteHoverFilter(this.map, null);
@@ -1456,6 +1458,7 @@ export class LiveMap {
 
 type RouteLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setLayoutProperty'>;
 type RouteFilterMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter'>;
+type RoutePaintMap = Pick<maplibregl.Map, 'getLayer' | 'setPaintProperty'>;
 type FocusMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setPaintProperty' | 'setLayoutProperty'>;
 type InteractiveLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setLayoutProperty'>;
 type LayerFilter = Parameters<maplibregl.Map['setFilter']>[1];
@@ -1472,6 +1475,57 @@ export function applyRouteVisualLayerVisibility(map: RouteLayerMap, visible: boo
   for (const layerID of ROUTE_VISUAL_LAYER_IDS) {
     if (!map.getLayer(layerID)) continue;
     map.setLayoutProperty(layerID, 'visibility', visible ? 'visible' : 'none');
+    applied = true;
+  }
+  return applied;
+}
+
+export function applyRouteExactWindowVisibility(map: RouteLayerMap, routesVisible: boolean, maxAge: number): boolean {
+  let applied = false;
+  for (const band of [0, 1, 2, 3] as const) {
+    const visible = routesVisible && maxAge >= ROUTE_WINDOW_BUCKETS[band].ms;
+    for (const layerID of [`route-exact-glow-${band}`, `route-exact-core-${band}`]) {
+      if (!map.getLayer(layerID)) continue;
+      map.setLayoutProperty(layerID, 'visibility', visible ? 'visible' : 'none');
+      applied = true;
+    }
+  }
+  return applied;
+}
+
+export function applyRouteTrunkWindowPaint(map: RoutePaintMap, maxAge: number): boolean {
+  const color = routeTrunkColorExpression(maxAge);
+  const glowWidth = routeTrunkMetricExpression('glowWidth', maxAge);
+  const width = routeTrunkMetricExpression('width', maxAge);
+  const opacity = routeTrunkMetricExpression('opacity', maxAge);
+  const paint = [
+    {
+      id: ROUTE_VISUAL_LAYER_IDS[0],
+      width: ['interpolate', ['linear'], ['zoom'], 3, ['*', glowWidth, 0.72], 5.25, ['*', glowWidth, 0.46]],
+      opacity: ['interpolate', ['linear'], ['zoom'], 3, ['*', opacity, 0.34], 4.45, ['*', opacity, 0.28], 5.25, 0]
+    },
+    {
+      id: ROUTE_VISUAL_LAYER_IDS[1],
+      width: ['interpolate', ['linear'], ['zoom'], 3, ['*', width, 0.72], 5.25, ['*', width, 0.9]],
+      opacity: ['interpolate', ['linear'], ['zoom'], 3, ['*', opacity, 0.72], 4.45, ['*', opacity, 0.58], 5.25, 0]
+    },
+    {
+      id: ROUTE_VISUAL_LAYER_IDS[2],
+      width: ['interpolate', ['linear'], ['zoom'], 4.35, ['*', glowWidth, 0.38], 5.2, ['*', glowWidth, 0.66], 7.2, ['*', glowWidth, 0.42]],
+      opacity: ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, ['*', opacity, 0.3], 6.35, ['*', opacity, 0.24], 7.2, 0]
+    },
+    {
+      id: ROUTE_VISUAL_LAYER_IDS[3],
+      width: ['interpolate', ['linear'], ['zoom'], 4.35, ['*', width, 0.58], 5.2, ['*', width, 0.88], 7.2, width],
+      opacity: ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, ['*', opacity, 0.68], 6.35, ['*', opacity, 0.6], 7.2, 0]
+    }
+  ] as const;
+  let applied = false;
+  for (const layer of paint) {
+    if (!map.getLayer(layer.id)) continue;
+    map.setPaintProperty(layer.id, 'line-color', color);
+    map.setPaintProperty(layer.id, 'line-width', layer.width as unknown as ExpressionSpecification);
+    map.setPaintProperty(layer.id, 'line-opacity', layer.opacity as unknown as ExpressionSpecification);
     applied = true;
   }
   return applied;
@@ -1594,18 +1648,6 @@ export function routeExactBandFilter(band: 0 | 1 | 2 | 3): ActiveLayerFilter {
 
 export function routeTrunkFilter(representation: string): ActiveLayerFilter {
   return routeRepresentationFilter(representation);
-}
-
-export function routeWindowBandActiveExpression(band: 0 | 1 | 2 | 3): ExpressionSpecification {
-  return [
-    'case',
-    ['>=',
-      ['number', ['global-state', ROUTE_GLOBAL_WINDOW_MS], ROUTE_MAX_AGE_MS],
-      ROUTE_WINDOW_BUCKETS[band].ms
-    ],
-    1,
-    0
-  ];
 }
 
 export function clusterIDFilter(clusterID: number | null): ActiveLayerFilter {
@@ -1735,18 +1777,15 @@ export function routeColorExpression(): ExpressionSpecification {
 }
 
 export function routeTrunkMetricExpression(
-  metric: 'routeCount' | 'width' | 'glowWidth' | 'opacity' | 'color'
+  metric: 'routeCount' | 'width' | 'glowWidth' | 'opacity' | 'color',
+  maxAge = ROUTE_MAX_AGE_MS
 ): ExpressionSpecification {
-  return [
-    'match',
-    ['number', ['global-state', ROUTE_GLOBAL_WINDOW_MS], ROUTE_MAX_AGE_MS],
-    ...ROUTE_WINDOW_BUCKETS.flatMap((bucket) => [bucket.ms, ['get', `${metric}${bucket.suffix}`]]),
-    ['get', `${metric}24h`]
-  ] as unknown as ExpressionSpecification;
+  const suffix = ROUTE_WINDOW_BUCKETS.find((bucket) => bucket.ms === maxAge)?.suffix ?? '24h';
+  return ['get', `${metric}${suffix}`];
 }
 
-export function routeTrunkColorExpression(): ExpressionSpecification {
-  return ['to-color', routeTrunkMetricExpression('color')];
+export function routeTrunkColorExpression(maxAge = ROUTE_MAX_AGE_MS): ExpressionSpecification {
+  return ['to-color', routeTrunkMetricExpression('color', maxAge)];
 }
 
 export function nodeLabelPriority(node: Pick<NodeV2, 'role' | 'observer' | 'lastSeen'>, now: number): number {

@@ -9,7 +9,9 @@ import {
   applyNeighborRingVisibility,
   applyRouteHoverFilter,
   applyRouteHitLayerVisibility,
+  applyRouteExactWindowVisibility,
   applyRouteSelectionFilter,
+  applyRouteTrunkWindowPaint,
   applyRouteVisualLayerVisibility,
   applySelectedNodeFilter,
   canMoveLiveFollow,
@@ -41,7 +43,6 @@ import {
   routeVisualCollection,
   routeVisualProperties,
   routeWindowBand,
-  routeWindowBandActiveExpression,
   routeWindowLabel,
   SELECTED_NODE_OUTER_LAYER_ID,
   SELECTED_NODE_LAYER_ID,
@@ -64,6 +65,44 @@ describe('route layer visibility', () => {
       ...ROUTE_VISUAL_LAYER_IDS.map((layerID) => [layerID, 'visibility', 'visible']),
       ...ROUTE_VISUAL_LAYER_IDS.map((layerID) => [layerID, 'visibility', 'none'])
     ]);
+  });
+
+  it('reveals complete exact-route age bands without changing feature filters', () => {
+    const setLayoutProperty = vi.fn();
+    const map = {
+      getLayer: vi.fn(() => ({})),
+      setLayoutProperty
+    } as unknown as Parameters<typeof applyRouteExactWindowVisibility>[0];
+
+    expect(applyRouteExactWindowVisibility(map, true, 60 * 60_000)).toBe(true);
+    expect(setLayoutProperty.mock.calls).toEqual([
+      ['route-exact-glow-0', 'visibility', 'visible'],
+      ['route-exact-core-0', 'visibility', 'visible'],
+      ['route-exact-glow-1', 'visibility', 'visible'],
+      ['route-exact-core-1', 'visibility', 'visible'],
+      ['route-exact-glow-2', 'visibility', 'none'],
+      ['route-exact-core-2', 'visibility', 'none'],
+      ['route-exact-glow-3', 'visibility', 'none'],
+      ['route-exact-core-3', 'visibility', 'none']
+    ]);
+  });
+
+  it('updates only compact trunk paint when the route window changes', () => {
+    const setPaintProperty = vi.fn();
+    const map = {
+      getLayer: vi.fn((layerID: string) => layerID === ROUTE_VISUAL_LAYER_IDS[0] ? {} : undefined),
+      setPaintProperty
+    } as unknown as Parameters<typeof applyRouteTrunkWindowPaint>[0];
+
+    expect(applyRouteTrunkWindowPaint(map, 60 * 60_000)).toBe(true);
+    expect(setPaintProperty).toHaveBeenCalledTimes(3);
+    expect(setPaintProperty.mock.calls[0]).toEqual([
+      ROUTE_VISUAL_LAYER_IDS[0],
+      'line-color',
+      ['to-color', ['get', 'color1h']]
+    ]);
+    expect(JSON.stringify(setPaintProperty.mock.calls)).toContain('glowWidth1h');
+    expect(JSON.stringify(setPaintProperty.mock.calls)).toContain('opacity1h');
   });
 
   it('shows the wide route hit target only while neighbor routes are interactive', () => {
@@ -269,13 +308,12 @@ describe('stable route visual data', () => {
       routeCount: 2
     });
     expect(national[0]?.geometry.coordinates).toHaveLength(2);
-    expect(JSON.stringify(routeTrunkMetricExpression('routeCount'))).toContain('["global-state","routeWindowMS"]');
+    expect(routeTrunkMetricExpression('routeCount', 60 * 60_000)).toEqual(['get', 'routeCount1h']);
     expect(routeExactBandFilter(2)).toEqual([
       'all',
       ['==', ['get', 'representation'], 'exact'],
       ['==', ['get', 'windowBand'], 2]
     ]);
-    expect(JSON.stringify(routeWindowBandActiveExpression(2))).toContain('["global-state","routeWindowMS"]');
     expect(routeWindowBand(15 * 60_000)).toBe(0);
     expect(routeWindowBand(15 * 60_000 + 1)).toBe(1);
     expect(routeWindowBand(60 * 60_000 + 1)).toBe(2);

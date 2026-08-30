@@ -12,7 +12,7 @@
 ### Changed
 
 - Combine nearby low-zoom links into national and regional trunks with fixed geographic cell anchors and per-window counts, then resolve them into individual lines at detail zoom without moving the underlying topology.
-- Build the complete 24-hour topology once in animation-frame slices, divide exact lines into static age bands, and switch route windows through MapLibre paint state. Window changes, automatic zoom windows, node focus, pan, and zoom do not rebuild or replace route geometry; actual live topology and age-boundary deltas use incremental feature updates.
+- Build the complete 24-hour topology once in animation-frame slices, divide exact lines into static age bands, and switch route windows by revealing complete bands rather than reevaluating every line. Window changes, automatic zoom windows, node focus, pan, and zoom do not rebuild or replace route geometry; actual live topology and age-boundary deltas use incremental feature updates.
 - Extend the 4,000-node/7,000-route browser gate to require all 7,000 routes in the 24-hour source, complete trunk accounting, unchanged source revisions across window and camera interactions, camera responsiveness, and no task longer than 100 ms.
 
 ## 0.6.3 - 2026-08-29
