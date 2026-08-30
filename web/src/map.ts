@@ -729,7 +729,7 @@ export class LiveMap {
       if (this.appliedRouteWindowMS !== maxAge) {
         this.appliedRouteWindowMS = maxAge;
         applyRouteTrunkWindowPaint(this.map, maxAge);
-        applyRouteExactWindowVisibility(this.map, this.routesVisible, maxAge);
+        if (this.routesVisible) applyRouteExactWindowVisibility(this.map, true, maxAge);
       }
     }
     this.updateRouteWindowDiagnostics(this.routeClock || now, maxAge);
