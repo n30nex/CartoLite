@@ -68,6 +68,7 @@ const ROUTE_REPRESENTATION_EXACT = 'exact';
 const ROUTE_REPRESENTATION_NATIONAL = 'national';
 const ROUTE_REPRESENTATION_REGIONAL = 'regional';
 const ROUTE_EXACT_SOURCE_MIN_ZOOM = 6.5;
+const ROUTE_SOURCE_BUILD_BATCH = 256;
 const ROUTE_TRUNK_LEVELS = [
   { representation: ROUTE_REPRESENTATION_NATIONAL, zoom: 3.6, gridPixels: 52 },
   { representation: ROUTE_REPRESENTATION_REGIONAL, zoom: 5.4, gridPixels: 44 }
@@ -278,26 +279,7 @@ export class LiveMap {
       ? recentNeighborRoutes(allRoutes, this.selectedNodeID, now, maxAge)
       : allRoutes;
     const routes = routeRenderCandidates(eligibleRoutes, now, maxAge);
-    const details = routeVisualCollection(routes, this.nodesByID, now, maxAge, routeBaseline);
-    const exactRoutes = details.features.filter((feature) => feature.properties?.representation === ROUTE_REPRESENTATION_EXACT);
-    const nationalTrunks = details.features.filter((feature) => feature.properties?.representation === ROUTE_REPRESENTATION_NATIONAL);
-    const regionalTrunks = details.features.filter((feature) => feature.properties?.representation === ROUTE_REPRESENTATION_REGIONAL);
     const loadExactRoutes = this.selectedNodeID !== null || this.map.getZoom() >= ROUTE_EXACT_SOURCE_MIN_ZOOM;
-    const exactCollection: FeatureCollection<LineString> = {
-      type: 'FeatureCollection',
-      features: loadExactRoutes ? exactRoutes : []
-    };
-    const trunkCollection: FeatureCollection<LineString> = {
-      type: 'FeatureCollection',
-      features: [...nationalTrunks, ...regionalTrunks]
-    };
-    this.exactRoutesLoaded = loadExactRoutes;
-    this.container.dataset.exactRoutesLoaded = String(loadExactRoutes);
-    this.container.dataset.eligibleRoutes = String(exactRoutes.length);
-    this.container.dataset.nationalRouteTrunks = String(nationalTrunks.length);
-    this.container.dataset.regionalRouteTrunks = String(regionalTrunks.length);
-    this.container.dataset.nationalRoutesRepresented = String(routeCount(nationalTrunks));
-    this.container.dataset.regionalRoutesRepresented = String(routeCount(regionalTrunks));
     this.routeHydrating = true;
     this.routeDataDirty = false;
     this.markRendering();
@@ -322,10 +304,31 @@ export class LiveMap {
       this.emitRouteWindowChange();
       this.markRendering();
     };
-    void Promise.all([
-      trunkSource.setData(trunkCollection),
-      detailSource.setData(exactCollection)
-    ])
+    void buildRouteSourceCollections(
+      routes,
+      this.nodesByID,
+      now,
+      maxAge,
+      routeBaseline,
+      loadExactRoutes,
+      active
+    ).then((collections) => {
+      if (!collections || !active()) return;
+      this.exactRoutesLoaded = loadExactRoutes;
+      this.container.dataset.exactRoutesLoaded = String(loadExactRoutes);
+      this.container.dataset.eligibleRoutes = String(collections.exactCount);
+      this.container.dataset.nationalRouteTrunks = String(collections.national.features.length);
+      this.container.dataset.regionalRouteTrunks = String(collections.regional.features.length);
+      this.container.dataset.nationalRoutesRepresented = String(routeCount(collections.national.features));
+      this.container.dataset.regionalRoutesRepresented = String(routeCount(collections.regional.features));
+      return Promise.all([
+        trunkSource.setData({
+          type: 'FeatureCollection',
+          features: [...collections.national.features, ...collections.regional.features]
+        }),
+        detailSource.setData(collections.exact)
+      ]);
+    })
       .then(finish)
       .catch(fail);
   }
@@ -1774,54 +1777,114 @@ interface RouteTrunkAccumulator {
   opacity: number;
 }
 
+interface RouteSourceCollections {
+  exact: FeatureCollection<LineString>;
+  national: FeatureCollection<LineString>;
+  regional: FeatureCollection<LineString>;
+  exactCount: number;
+}
+
+async function buildRouteSourceCollections(
+  routes: readonly RouteV2[],
+  nodes: ReadonlyMap<string, NodeV2>,
+  now: number,
+  maxAge: number,
+  trafficBaseline: number,
+  includeExact: boolean,
+  active: () => boolean
+): Promise<RouteSourceCollections | undefined> {
+  const exact: Feature<LineString>[] = [];
+  const national = new Map<string, RouteTrunkAccumulator>();
+  const regional = new Map<string, RouteTrunkAccumulator>();
+  let exactCount = 0;
+
+  for (let offset = 0; offset < routes.length; offset += ROUTE_SOURCE_BUILD_BATCH) {
+    await nextAnimationFrame();
+    if (!active()) return undefined;
+    const end = Math.min(routes.length, offset + ROUTE_SOURCE_BUILD_BATCH);
+    for (let index = offset; index < end; index += 1) {
+      const feature = routeFeature(routes[index], nodes, now, trafficBaseline, maxAge);
+      if (!feature) continue;
+      exactCount += 1;
+      if (includeExact) exact.push(feature);
+      addRouteToTrunks(national, feature, ROUTE_TRUNK_LEVELS[0]);
+      addRouteToTrunks(regional, feature, ROUTE_TRUNK_LEVELS[1]);
+    }
+  }
+
+  if (!active()) return undefined;
+  return {
+    exact: { type: 'FeatureCollection', features: exact },
+    national: { type: 'FeatureCollection', features: routeTrunksFromMap(national, ROUTE_TRUNK_LEVELS[0]) },
+    regional: { type: 'FeatureCollection', features: routeTrunksFromMap(regional, ROUTE_TRUNK_LEVELS[1]) },
+    exactCount
+  };
+}
+
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+}
+
 function routeTrunkFeatures(
   routes: readonly Feature<LineString>[],
   level: typeof ROUTE_TRUNK_LEVELS[number]
 ): Feature<LineString>[] {
   const trunks = new Map<string, RouteTrunkAccumulator>();
-  for (const route of routes) {
-    const first = route.geometry.coordinates[0];
-    const last = route.geometry.coordinates[route.geometry.coordinates.length - 1];
-    if (!first || !last) continue;
-    let from = [first[0]!, first[1]!] as [number, number];
-    let to = [last[0]!, last[1]!] as [number, number];
-    let fromCell = routeCellKey(from, level.zoom, level.gridPixels);
-    let toCell = routeCellKey(to, level.zoom, level.gridPixels);
-    if (fromCell > toCell || (fromCell === toCell && compareCoordinates(from, to) > 0)) {
-      [from, to] = [to, from];
-      [fromCell, toCell] = [toCell, fromCell];
-    }
-    const key = `${fromCell}|${toCell}`;
-    const properties = route.properties ?? {};
-    const lastHeard = Number(properties.lastHeard ?? 0);
-    const opacity = Number(properties.opacity ?? 0);
-    const existing = trunks.get(key);
-    if (!existing) {
-      trunks.set(key, {
-        key,
-        count: 1,
-        fromLng: from[0],
-        fromLat: from[1],
-        toLng: to[0],
-        toLat: to[1],
-        newestAt: lastHeard,
-        color: String(properties.color ?? '#73d9cf'),
-        opacity
-      });
-      continue;
-    }
-    existing.count += 1;
-    existing.fromLng += from[0];
-    existing.fromLat += from[1];
-    existing.toLng += to[0];
-    existing.toLat += to[1];
-    existing.opacity = Math.max(existing.opacity, opacity);
-    if (lastHeard >= existing.newestAt) {
-      existing.newestAt = lastHeard;
-      existing.color = String(properties.color ?? existing.color);
-    }
-  }
+  for (const route of routes) addRouteToTrunks(trunks, route, level);
+  return routeTrunksFromMap(trunks, level);
+}
 
+function addRouteToTrunks(
+  trunks: Map<string, RouteTrunkAccumulator>,
+  route: Feature<LineString>,
+  level: typeof ROUTE_TRUNK_LEVELS[number]
+): void {
+  const first = route.geometry.coordinates[0];
+  const last = route.geometry.coordinates[route.geometry.coordinates.length - 1];
+  if (!first || !last) return;
+  let from = [first[0]!, first[1]!] as [number, number];
+  let to = [last[0]!, last[1]!] as [number, number];
+  let fromCell = routeCellKey(from, level.zoom, level.gridPixels);
+  let toCell = routeCellKey(to, level.zoom, level.gridPixels);
+  if (fromCell > toCell || (fromCell === toCell && compareCoordinates(from, to) > 0)) {
+    [from, to] = [to, from];
+    [fromCell, toCell] = [toCell, fromCell];
+  }
+  const key = `${fromCell}|${toCell}`;
+  const properties = route.properties ?? {};
+  const lastHeard = Number(properties.lastHeard ?? 0);
+  const opacity = Number(properties.opacity ?? 0);
+  const existing = trunks.get(key);
+  if (!existing) {
+    trunks.set(key, {
+      key,
+      count: 1,
+      fromLng: from[0],
+      fromLat: from[1],
+      toLng: to[0],
+      toLat: to[1],
+      newestAt: lastHeard,
+      color: String(properties.color ?? '#73d9cf'),
+      opacity
+    });
+    return;
+  }
+  existing.count += 1;
+  existing.fromLng += from[0];
+  existing.fromLat += from[1];
+  existing.toLng += to[0];
+  existing.toLat += to[1];
+  existing.opacity = Math.max(existing.opacity, opacity);
+  if (lastHeard >= existing.newestAt) {
+    existing.newestAt = lastHeard;
+    existing.color = String(properties.color ?? existing.color);
+  }
+}
+
+function routeTrunksFromMap(
+  trunks: ReadonlyMap<string, RouteTrunkAccumulator>,
+  level: typeof ROUTE_TRUNK_LEVELS[number]
+): Feature<LineString>[] {
   return [...trunks.values()]
     .sort((left, right) => left.key.localeCompare(right.key))
     .map((trunk): Feature<LineString> => {
