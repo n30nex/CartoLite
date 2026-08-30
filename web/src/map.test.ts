@@ -9,11 +9,9 @@ import {
   applyNeighborRingVisibility,
   applyRouteHoverFilter,
   applyRouteHitLayerVisibility,
-  applyRouteExactWindowVisibility,
   applyRouteSelectionFilter,
   applyRouteTrunkWindowState,
   applyRouteVisibilityForZoom,
-  applyRouteVisualLayerVisibility,
   applySelectedNodeFilter,
   canMoveLiveFollow,
   CLUSTER_HIGHLIGHT_LAYER_ID,
@@ -34,7 +32,6 @@ import {
   ROUTE_FILTER_LAYER_IDS,
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
-  ROUTE_VISUAL_LAYER_IDS,
   routeCollection,
   routeColorExpression,
   routeExactBandFilter,
@@ -53,57 +50,18 @@ import {
 import { PACKET_KIND_COLORS, ROUTE_MAX_AGE_MS } from './trafficVisuals';
 
 describe('route layer visibility', () => {
-  it('toggles every native stable-route layer together', () => {
-    const setLayoutProperty = vi.fn();
+  it('switches every prewarmed route layer with one global visibility state', () => {
+    const globalState: Record<string, unknown> = { 'cartolite-routes-visible': false };
+    const setGlobalStateProperty = vi.fn((name: string, value: unknown) => { globalState[name] = value; });
     const map = {
-      getLayer: vi.fn(() => ({})),
-      setLayoutProperty
-    } as unknown as Parameters<typeof applyRouteVisualLayerVisibility>[0];
-
-    expect(applyRouteVisualLayerVisibility(map, true)).toBe(true);
-    expect(applyRouteVisualLayerVisibility(map, false)).toBe(true);
-    expect(setLayoutProperty.mock.calls).toEqual([
-      ...ROUTE_VISUAL_LAYER_IDS.map((layerID) => [layerID, 'visibility', 'visible']),
-      ...ROUTE_VISUAL_LAYER_IDS.map((layerID) => [layerID, 'visibility', 'none'])
-    ]);
-  });
-
-  it('reveals complete exact-route age bands without changing feature filters', () => {
-    const setLayoutProperty = vi.fn();
-    const map = {
-      getLayer: vi.fn(() => ({})),
-      setLayoutProperty
-    } as unknown as Parameters<typeof applyRouteExactWindowVisibility>[0];
-
-    expect(applyRouteExactWindowVisibility(map, true, 60 * 60_000)).toBe(true);
-    expect(setLayoutProperty.mock.calls).toEqual([
-      ['route-exact-glow-0', 'visibility', 'visible'],
-      ['route-exact-core-0', 'visibility', 'visible'],
-      ['route-exact-glow-1', 'visibility', 'visible'],
-      ['route-exact-core-1', 'visibility', 'visible'],
-      ['route-exact-glow-2', 'visibility', 'none'],
-      ['route-exact-core-2', 'visibility', 'none'],
-      ['route-exact-glow-3', 'visibility', 'none'],
-      ['route-exact-core-3', 'visibility', 'none']
-    ]);
-  });
-
-  it('activates only the stable route representation visible at the current zoom', () => {
-    const visibility = new Map<string, string>(ROUTE_VISUAL_LAYER_IDS.map((layerID) => [layerID, 'none']));
-    const setLayoutProperty = vi.fn((layerID: string, _property: string, value: string) => {
-      visibility.set(layerID, value);
-    });
-    const map = {
-      getLayer: vi.fn(() => ({})),
-      getLayoutProperty: vi.fn((layerID: string) => visibility.get(layerID)),
-      setLayoutProperty
+      getGlobalState: vi.fn(() => globalState),
+      setGlobalStateProperty
     } as unknown as Parameters<typeof applyRouteVisibilityForZoom>[0];
 
     expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 3.4)).toBe(true);
-    expect(setLayoutProperty.mock.calls).toEqual([
-      ['route-national-glow', 'visibility', 'visible'],
-      ['route-national-core', 'visibility', 'visible']
-    ]);
+    expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 3.4)).toBe(false);
+    expect(setGlobalStateProperty).toHaveBeenCalledOnce();
+    expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-routes-visible', true);
   });
 
   it('switches every compact trunk with one global route-window state', () => {
