@@ -62,6 +62,13 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   }
   await expect(routeWindow).toBeVisible();
   await expect(routeWindow).toHaveValue('auto');
+  const autoRouteWindow = routeWindow.locator('option[value="auto"]');
+  await expect(autoRouteWindow).toHaveText(/^Auto · (?:15m|1h|6h|24h)$/);
+  await routeWindow.selectOption('15m');
+  await expect(routeWindow).toHaveValue('15m');
+  await expect(autoRouteWindow).toHaveText(/^Auto · (?:15m|1h|6h|24h)$/);
+  await routeWindow.selectOption('auto');
+  await expect(routeWindow).toHaveValue('auto');
   const aboutDialog = page.locator('#about-dialog');
   await page.locator('#about-button').click();
   await expect(aboutDialog).toBeVisible();
