@@ -75,7 +75,7 @@ const ROUTE_SOURCE_PRELOAD_MARGIN = 0.15;
 const ROUTE_SOURCE_BUILD_BATCH = 256;
 const ROUTE_TRUNK_LEVELS = [
   { representation: ROUTE_REPRESENTATION_NATIONAL, zoom: 3.6, gridPixels: 52 },
-  { representation: ROUTE_REPRESENTATION_REGIONAL, zoom: 5.4, gridPixels: 44 }
+  { representation: ROUTE_REPRESENTATION_REGIONAL, zoom: 5.4, gridPixels: 80 }
 ] as const;
 
 export interface LiveMapFocus {

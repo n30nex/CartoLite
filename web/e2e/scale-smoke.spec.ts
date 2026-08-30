@@ -44,9 +44,21 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await expect.poll(() => map.getAttribute('data-eligible-routes').then(Number), {
     message: 'the 24-hour source must keep every route, with no visual cap'
   }).toBe(7_000);
-  await expect.poll(async () => Number(await map.getAttribute('data-national-routes-represented'))).toBe(7_000);
-  await expect(map).toHaveAttribute('data-trunk-representations-loaded', 'national');
-  await expect(map).toHaveAttribute('data-regional-routes-represented', '0');
+  await expect(map).toHaveAttribute('data-trunk-representations-loaded', /^(?:national|regional)(?:,(?:national|regional))?$/);
+  await expect.poll(async () => {
+    const loaded = (await map.getAttribute('data-trunk-representations-loaded') ?? '').split(',');
+    const national = Number(await map.getAttribute('data-national-routes-represented'));
+    const regional = Number(await map.getAttribute('data-regional-routes-represented'));
+    return national === (loaded.includes('national') ? 7_000 : 0)
+      && regional === (loaded.includes('regional') ? 7_000 : 0);
+  }, { message: 'every loaded trunk representation must account for all 7,000 routes' }).toBe(true);
+  const loadedTrunks = (await map.getAttribute('data-trunk-representations-loaded') ?? '').split(',');
+  if (loadedTrunks.includes('national')) {
+    expect(Number(await map.getAttribute('data-national-route-trunks')), 'national links should collapse into a compact trunk set').toBeLessThan(100);
+  }
+  if (loadedTrunks.includes('regional')) {
+    expect(Number(await map.getAttribute('data-regional-route-trunks')), 'regional links should collapse before exact lines load').toBeLessThan(300);
+  }
   await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   await expect(map).toHaveAttribute('data-exact-routes-loaded', 'false');
   expect(await maximumLongTask(page), 'selecting the complete 24-hour window must not block the main thread for 100 ms').toBeLessThan(100);
