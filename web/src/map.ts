@@ -68,6 +68,10 @@ const ROUTE_REPRESENTATION_EXACT = 'exact';
 const ROUTE_REPRESENTATION_NATIONAL = 'national';
 const ROUTE_REPRESENTATION_REGIONAL = 'regional';
 const ROUTE_EXACT_SOURCE_MIN_ZOOM = 6.5;
+const ROUTE_NATIONAL_MAX_ZOOM = 5.25;
+const ROUTE_REGIONAL_MIN_ZOOM = 4.35;
+const ROUTE_REGIONAL_MAX_ZOOM = 7.2;
+const ROUTE_SOURCE_PRELOAD_MARGIN = 0.15;
 const ROUTE_SOURCE_BUILD_BATCH = 256;
 const ROUTE_TRUNK_LEVELS = [
   { representation: ROUTE_REPRESENTATION_NATIONAL, zoom: 3.6, gridPixels: 52 },
@@ -113,7 +117,7 @@ export class LiveMap {
   private routeDataDirty = true;
   private routeHydrating = false;
   private routeHydrationEpoch = 0;
-  private exactRoutesLoaded = false;
+  private routeSourcePlanSignature = '';
   private heatDataDirty = true;
   private routeWindow: RouteWindow = 'auto';
   private routesVisible = true;
@@ -278,8 +282,7 @@ export class LiveMap {
     const eligibleRoutes = this.selectedNodeID
       ? recentNeighborRoutes(allRoutes, this.selectedNodeID, now, maxAge)
       : allRoutes;
-    const routes = routeRenderCandidates(eligibleRoutes, now, maxAge);
-    const loadExactRoutes = this.selectedNodeID !== null || this.map.getZoom() >= ROUTE_EXACT_SOURCE_MIN_ZOOM;
+    const sourcePlan = routeSourcePlan(this.map.getZoom(), this.selectedNodeID !== null);
     this.routeHydrating = true;
     this.routeDataDirty = false;
     this.markRendering();
@@ -296,6 +299,7 @@ export class LiveMap {
     };
     const finish = (): void => {
       if (!active()) return;
+      this.routeSourcePlanSignature = sourcePlan.signature;
       this.routeHydrating = false;
       if (this.routeDataDirty) {
         this.hydrateRouteSource();
@@ -305,29 +309,33 @@ export class LiveMap {
       this.markRendering();
     };
     void buildRouteSourceCollections(
-      routes,
+      eligibleRoutes,
       this.nodesByID,
       now,
       maxAge,
       routeBaseline,
-      loadExactRoutes,
+      sourcePlan,
       active
     ).then((collections) => {
       if (!collections || !active()) return;
-      this.exactRoutesLoaded = loadExactRoutes;
-      this.container.dataset.exactRoutesLoaded = String(loadExactRoutes);
+      this.container.dataset.exactRoutesLoaded = String(sourcePlan.exact);
+      this.container.dataset.trunkRepresentationsLoaded = [
+        sourcePlan.national ? ROUTE_REPRESENTATION_NATIONAL : '',
+        sourcePlan.regional ? ROUTE_REPRESENTATION_REGIONAL : ''
+      ].filter(Boolean).join(',') || 'none';
       this.container.dataset.eligibleRoutes = String(collections.exactCount);
       this.container.dataset.nationalRouteTrunks = String(collections.national.features.length);
       this.container.dataset.regionalRouteTrunks = String(collections.regional.features.length);
       this.container.dataset.nationalRoutesRepresented = String(routeCount(collections.national.features));
       this.container.dataset.regionalRoutesRepresented = String(routeCount(collections.regional.features));
-      return Promise.all([
-        trunkSource.setData({
-          type: 'FeatureCollection',
-          features: [...collections.national.features, ...collections.regional.features]
-        }),
-        detailSource.setData(collections.exact)
-      ]);
+      const updates = [trunkSource.setData({
+        type: 'FeatureCollection',
+        features: [...collections.national.features, ...collections.regional.features]
+      })];
+      if (sourcePlan.exact || this.routeSourcePlanSignature.includes('e')) {
+        updates.push(detailSource.setData(collections.exact));
+      }
+      return Promise.all(updates);
     })
       .then(finish)
       .catch(fail);
@@ -594,8 +602,8 @@ export class LiveMap {
   };
 
   private handleZoomEnd = (): void => {
-    const needsExactRoutes = this.selectedNodeID !== null || this.map.getZoom() >= ROUTE_EXACT_SOURCE_MIN_ZOOM;
-    if (this.routeWindow !== 'auto' && needsExactRoutes === this.exactRoutesLoaded) {
+    const sourcePlan = routeSourcePlan(this.map.getZoom(), this.selectedNodeID !== null);
+    if (this.routeWindow !== 'auto' && sourcePlan.signature === this.routeSourcePlanSignature) {
       this.emitRouteWindowChange();
       return;
     }
@@ -662,7 +670,7 @@ export class LiveMap {
       id: ROUTE_VISUAL_LAYER_IDS[0],
       type: 'line',
       source: ROUTE_TRUNK_SOURCE_ID,
-      maxzoom: 5.25,
+      maxzoom: ROUTE_NATIONAL_MAX_ZOOM,
       filter: routeRepresentationFilter(ROUTE_REPRESENTATION_NATIONAL),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
       paint: {
@@ -676,7 +684,7 @@ export class LiveMap {
       id: ROUTE_VISUAL_LAYER_IDS[1],
       type: 'line',
       source: ROUTE_TRUNK_SOURCE_ID,
-      maxzoom: 5.25,
+      maxzoom: ROUTE_NATIONAL_MAX_ZOOM,
       filter: routeRepresentationFilter(ROUTE_REPRESENTATION_NATIONAL),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
       paint: {
@@ -689,8 +697,8 @@ export class LiveMap {
       id: ROUTE_VISUAL_LAYER_IDS[2],
       type: 'line',
       source: ROUTE_TRUNK_SOURCE_ID,
-      minzoom: 4.35,
-      maxzoom: 7.2,
+      minzoom: ROUTE_REGIONAL_MIN_ZOOM,
+      maxzoom: ROUTE_REGIONAL_MAX_ZOOM,
       filter: routeRepresentationFilter(ROUTE_REPRESENTATION_REGIONAL),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
       paint: {
@@ -704,8 +712,8 @@ export class LiveMap {
       id: ROUTE_VISUAL_LAYER_IDS[3],
       type: 'line',
       source: ROUTE_TRUNK_SOURCE_ID,
-      minzoom: 4.35,
-      maxzoom: 7.2,
+      minzoom: ROUTE_REGIONAL_MIN_ZOOM,
+      maxzoom: ROUTE_REGIONAL_MAX_ZOOM,
       filter: routeRepresentationFilter(ROUTE_REPRESENTATION_REGIONAL),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
       paint: {
@@ -1784,13 +1792,33 @@ interface RouteSourceCollections {
   exactCount: number;
 }
 
+interface RouteSourcePlan {
+  national: boolean;
+  regional: boolean;
+  exact: boolean;
+  signature: string;
+}
+
+function routeSourcePlan(zoom: number, selectedNode: boolean): RouteSourcePlan {
+  const national = zoom < ROUTE_NATIONAL_MAX_ZOOM + ROUTE_SOURCE_PRELOAD_MARGIN;
+  const regional = zoom >= ROUTE_REGIONAL_MIN_ZOOM - ROUTE_SOURCE_PRELOAD_MARGIN
+    && zoom < ROUTE_REGIONAL_MAX_ZOOM + ROUTE_SOURCE_PRELOAD_MARGIN;
+  const exact = selectedNode || zoom >= ROUTE_EXACT_SOURCE_MIN_ZOOM;
+  return {
+    national,
+    regional,
+    exact,
+    signature: `${national ? 'n' : ''}${regional ? 'r' : ''}${exact ? 'e' : ''}`
+  };
+}
+
 async function buildRouteSourceCollections(
   routes: readonly RouteV2[],
   nodes: ReadonlyMap<string, NodeV2>,
   now: number,
   maxAge: number,
   trafficBaseline: number,
-  includeExact: boolean,
+  sourcePlan: RouteSourcePlan,
   active: () => boolean
 ): Promise<RouteSourceCollections | undefined> {
   const exact: Feature<LineString>[] = [];
@@ -1806,9 +1834,9 @@ async function buildRouteSourceCollections(
       const feature = routeFeature(routes[index], nodes, now, trafficBaseline, maxAge);
       if (!feature) continue;
       exactCount += 1;
-      if (includeExact) exact.push(feature);
-      addRouteToTrunks(national, feature, ROUTE_TRUNK_LEVELS[0]);
-      addRouteToTrunks(regional, feature, ROUTE_TRUNK_LEVELS[1]);
+      if (sourcePlan.exact) exact.push(feature);
+      if (sourcePlan.national) addRouteToTrunks(national, feature, ROUTE_TRUNK_LEVELS[0]);
+      if (sourcePlan.regional) addRouteToTrunks(regional, feature, ROUTE_TRUNK_LEVELS[1]);
     }
   }
 

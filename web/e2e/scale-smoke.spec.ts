@@ -45,7 +45,8 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
     message: 'the 24-hour source must keep every route, with no visual cap'
   }).toBe(7_000);
   await expect.poll(async () => Number(await map.getAttribute('data-national-routes-represented'))).toBe(7_000);
-  await expect.poll(async () => Number(await map.getAttribute('data-regional-routes-represented'))).toBe(7_000);
+  await expect(map).toHaveAttribute('data-trunk-representations-loaded', 'national');
+  await expect(map).toHaveAttribute('data-regional-routes-represented', '0');
   await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   await expect(map).toHaveAttribute('data-exact-routes-loaded', 'false');
   expect(await maximumLongTask(page), 'selecting the complete 24-hour window must not block the main thread for 100 ms').toBeLessThan(100);

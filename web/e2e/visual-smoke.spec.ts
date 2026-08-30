@@ -176,9 +176,12 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect.poll(async () => {
     const map = page.locator('#map');
     const eligible = Number(await map.getAttribute('data-eligible-routes'));
-    return Number(await map.getAttribute('data-national-routes-represented')) === eligible
-      && Number(await map.getAttribute('data-regional-routes-represented')) === eligible;
-  }, { message: 'every trunk level must account for every eligible route' }).toBe(true);
+    const loaded = (await map.getAttribute('data-trunk-representations-loaded') ?? '').split(',');
+    const national = Number(await map.getAttribute('data-national-routes-represented'));
+    const regional = Number(await map.getAttribute('data-regional-routes-represented'));
+    return national === (loaded.includes('national') ? eligible : 0)
+      && regional === (loaded.includes('regional') ? eligible : 0);
+  }, { message: 'every loaded trunk level must account for every eligible route' }).toBe(true);
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   if (mobile) await openLayers(page);
   await routesButton.click();
