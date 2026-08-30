@@ -388,9 +388,13 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
 
   await clickPoint(page, { x: alphaPoint.x + (mobile ? 12 : 0), y: alphaPoint.y }, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'a');
+  await expect(map).toHaveAttribute('data-neighbor-route-count', '1');
+  await expect(focusChip).toBeVisible();
+  await expect(focusChip).toContainText('Alpha · 1 neighbor');
+  if (mobile) await openLayers(page);
+  await page.locator('#route-window').selectOption('24h');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '2');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
-  await expect(focusChip).toBeVisible();
   await expect(focusChip).toContainText('Alpha · 2 neighbors');
   await expect(page.locator('#legend')).toHaveAttribute('data-focused', 'true');
   await expect(page.locator('#legend-items')).toBeHidden();
