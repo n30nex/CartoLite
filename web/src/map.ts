@@ -454,15 +454,17 @@ export class LiveMap {
     }
     if (!diff.add?.length && !diff.update?.length && !diff.remove?.length) return Promise.resolve();
     const started = performance.now();
-    const update = source.updateData(diff);
-    this.container.dataset.routeSourceDispatchMs = (performance.now() - started).toFixed(1);
-    this.routeTrunkFeatureIDs.clear();
-    for (const id of nextIDs) this.routeTrunkFeatureIDs.add(id);
-    return update.catch((error: unknown) => {
+    try {
+      source.updateData(diff);
+      this.container.dataset.routeSourceDispatchMs = (performance.now() - started).toFixed(1);
+      this.routeTrunkFeatureIDs.clear();
+      for (const id of nextIDs) this.routeTrunkFeatureIDs.add(id);
+      return Promise.resolve();
+    } catch (error: unknown) {
       this.routeTrunkFeatureIDs.clear();
       for (const id of previousIDs) this.routeTrunkFeatureIDs.add(id);
-      throw error;
-    });
+      return Promise.reject(error);
+    }
   }
 
   reset(center: [number, number] = DEFAULT_CENTER, zoom = DEFAULT_ZOOM): void {
