@@ -1716,7 +1716,7 @@ export function routeTrunkMetricExpression(
     ['number', ['global-state', ROUTE_GLOBAL_WINDOW_MS], ROUTE_MAX_AGE_MS],
     ...ROUTE_WINDOW_BUCKETS.flatMap((bucket) => [bucket.ms, ['get', `${metric}${bucket.suffix}`]]),
     ['get', `${metric}24h`]
-  ] as ExpressionSpecification;
+  ] as unknown as ExpressionSpecification;
 }
 
 export function routeTrunkColorExpression(): ExpressionSpecification {
