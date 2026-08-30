@@ -61,7 +61,16 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   }
   await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   await expect(map).toHaveAttribute('data-exact-routes-loaded', 'false');
-  expect(await maximumLongTask(page), 'selecting the complete 24-hour window must not block the main thread for 100 ms').toBeLessThan(100);
+  const routeTimings = await map.evaluate((element) => ({
+    buildMaxSliceMS: element.dataset.routeBuildMaxSliceMs,
+    sourceDispatchMS: element.dataset.routeSourceDispatchMs,
+    nationalTrunks: element.dataset.nationalRouteTrunks,
+    regionalTrunks: element.dataset.regionalRouteTrunks
+  }));
+  expect(
+    await maximumLongTask(page),
+    `selecting the complete 24-hour window must not block the main thread for 100 ms; ${JSON.stringify(routeTimings)}`
+  ).toBeLessThan(100);
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
   const routesButton = page.locator('#routes-button');

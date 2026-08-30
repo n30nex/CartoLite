@@ -12,7 +12,7 @@
 ### Changed
 
 - Combine nearby low-zoom links into fixed national and regional trunks whose counts account for every eligible route, loading only the current and adjacent crossfade levels before resolving into individual lines as the map zooms in.
-- Build large route-source updates in animation-frame slices and keep the previous source visible until the complete replacement is ready, so changing the time window does not freeze interaction or flash a partial network.
+- Build large route-source updates in animation-frame slices, apply trunk changes as incremental MapLibre feature diffs, and keep the previous source visible until the complete replacement is ready so changing the time window does not freeze interaction or flash a partial network.
 - Extend the 4,000-node/7,000-route browser gate to require all 7,000 routes in the 24-hour source, complete trunk accounting, camera responsiveness, and no task longer than 100 ms.
 
 ## 0.6.3 - 2026-08-29

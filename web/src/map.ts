@@ -118,6 +118,7 @@ export class LiveMap {
   private routeHydrating = false;
   private routeHydrationEpoch = 0;
   private routeSourcePlanSignature = '';
+  private routeTrunkFeatureIDs = new Set<string>();
   private heatDataDirty = true;
   private routeWindow: RouteWindow = 'auto';
   private routesVisible = true;
@@ -328,10 +329,11 @@ export class LiveMap {
       this.container.dataset.regionalRouteTrunks = String(collections.regional.features.length);
       this.container.dataset.nationalRoutesRepresented = String(routeCount(collections.national.features));
       this.container.dataset.regionalRoutesRepresented = String(routeCount(collections.regional.features));
-      const updates = [trunkSource.setData({
-        type: 'FeatureCollection',
-        features: [...collections.national.features, ...collections.regional.features]
-      })];
+      this.container.dataset.routeBuildMaxSliceMs = collections.maxSliceMS.toFixed(1);
+      const updates = [this.updateRouteTrunkSource(
+        trunkSource,
+        [...collections.national.features, ...collections.regional.features]
+      )];
       if (sourcePlan.exact || this.routeSourcePlanSignature.includes('e')) {
         updates.push(detailSource.setData(collections.exact));
       }
@@ -424,6 +426,43 @@ export class LiveMap {
       if (sourceID === ACTIVITY_HEAT_SOURCE_ID) this.heatDataDirty = true;
     }
     return true;
+  }
+
+  private updateRouteTrunkSource(
+    source: GeoJSONSource,
+    features: readonly Feature<LineString>[]
+  ): Promise<void> {
+    const previousIDs = [...this.routeTrunkFeatureIDs];
+    const nextIDs = new Set<string>();
+    const diff: GeoJSONSourceDiff = {};
+    for (const feature of features) {
+      if (feature.id === undefined) continue;
+      const id = String(feature.id);
+      nextIDs.add(id);
+      if (!this.routeTrunkFeatureIDs.has(id)) {
+        (diff.add ??= []).push(feature);
+        continue;
+      }
+      (diff.update ??= []).push({
+        id,
+        newGeometry: feature.geometry,
+        addOrUpdateProperties: Object.entries(feature.properties ?? {}).map(([key, value]) => ({ key, value }))
+      });
+    }
+    for (const id of this.routeTrunkFeatureIDs) {
+      if (!nextIDs.has(id)) (diff.remove ??= []).push(id);
+    }
+    if (!diff.add?.length && !diff.update?.length && !diff.remove?.length) return Promise.resolve();
+    const started = performance.now();
+    const update = source.updateData(diff);
+    this.container.dataset.routeSourceDispatchMs = (performance.now() - started).toFixed(1);
+    this.routeTrunkFeatureIDs.clear();
+    for (const id of nextIDs) this.routeTrunkFeatureIDs.add(id);
+    return update.catch((error: unknown) => {
+      this.routeTrunkFeatureIDs.clear();
+      for (const id of previousIDs) this.routeTrunkFeatureIDs.add(id);
+      throw error;
+    });
   }
 
   reset(center: [number, number] = DEFAULT_CENTER, zoom = DEFAULT_ZOOM): void {
@@ -1790,6 +1829,7 @@ interface RouteSourceCollections {
   national: FeatureCollection<LineString>;
   regional: FeatureCollection<LineString>;
   exactCount: number;
+  maxSliceMS: number;
 }
 
 interface RouteSourcePlan {
@@ -1825,10 +1865,12 @@ async function buildRouteSourceCollections(
   const national = new Map<string, RouteTrunkAccumulator>();
   const regional = new Map<string, RouteTrunkAccumulator>();
   let exactCount = 0;
+  let maxSliceMS = 0;
 
   for (let offset = 0; offset < routes.length; offset += ROUTE_SOURCE_BUILD_BATCH) {
     await nextAnimationFrame();
     if (!active()) return undefined;
+    const sliceStarted = performance.now();
     const end = Math.min(routes.length, offset + ROUTE_SOURCE_BUILD_BATCH);
     for (let index = offset; index < end; index += 1) {
       const feature = routeFeature(routes[index], nodes, now, trafficBaseline, maxAge);
@@ -1838,6 +1880,7 @@ async function buildRouteSourceCollections(
       if (sourcePlan.national) addRouteToTrunks(national, feature, ROUTE_TRUNK_LEVELS[0]);
       if (sourcePlan.regional) addRouteToTrunks(regional, feature, ROUTE_TRUNK_LEVELS[1]);
     }
+    maxSliceMS = Math.max(maxSliceMS, performance.now() - sliceStarted);
   }
 
   if (!active()) return undefined;
@@ -1845,7 +1888,8 @@ async function buildRouteSourceCollections(
     exact: { type: 'FeatureCollection', features: exact },
     national: { type: 'FeatureCollection', features: routeTrunksFromMap(national, ROUTE_TRUNK_LEVELS[0]) },
     regional: { type: 'FeatureCollection', features: routeTrunksFromMap(regional, ROUTE_TRUNK_LEVELS[1]) },
-    exactCount
+    exactCount,
+    maxSliceMS
   };
 }
 
