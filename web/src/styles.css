@@ -1,6 +1,6 @@
 :root {
   color: #d9e8ee;
-  background: #071016;
+  background: #0b151b;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   color-scheme: dark;
@@ -15,7 +15,7 @@ html, body, #app, #map {
   overflow: hidden;
 }
 
-body { background: #071016; }
+body { background: #0b151b; }
 button { font: inherit; }
 
 #app { position: relative; isolation: isolate; }
@@ -25,17 +25,16 @@ button { font: inherit; }
 #app[data-traffic-kind="ack"] { --traffic-rgb: 139, 212, 255; }
 #app[data-traffic-kind="control"],
 #app[data-traffic-kind="other"] { --traffic-rgb: 125, 191, 255; }
-#map { position: absolute; inset: 0; background: #071016; }
+#map { position: absolute; inset: 0; background: #0b151b; }
 
 .map-grade {
   position: absolute;
   z-index: 1;
   inset: 0;
   background:
-    radial-gradient(circle at 52% 42%, rgba(39, 143, 146, 0.055), transparent 50%),
-    radial-gradient(ellipse at center, transparent 55%, rgba(1, 7, 12, 0.28) 100%),
-    linear-gradient(145deg, rgba(9, 36, 42, 0.035), rgba(2, 9, 14, 0.055));
-  box-shadow: inset 0 0 120px rgba(0, 4, 8, 0.28);
+    radial-gradient(circle at 52% 42%, rgba(39, 143, 146, 0.03), transparent 54%),
+    radial-gradient(ellipse at center, transparent 64%, rgba(1, 7, 12, 0.14) 100%);
+  box-shadow: inset 0 0 96px rgba(0, 4, 8, 0.14);
   overflow: hidden;
   pointer-events: none;
   transition: box-shadow 500ms ease, background-color 500ms ease;
@@ -51,10 +50,10 @@ button { font: inherit; }
   background: repeating-linear-gradient(90deg, transparent 0 72px, rgba(130, 220, 225, 0.018) 73px 74px);
   -webkit-mask-image: radial-gradient(ellipse at center, black, transparent 78%);
   mask-image: radial-gradient(ellipse at center, black, transparent 78%);
-  opacity: 0.48;
+  opacity: 0.24;
 }
-#app.focus-active .map-grade { box-shadow: inset 0 0 190px rgba(0, 3, 7, 0.56), inset 0 0 68px rgba(var(--traffic-rgb), 0.06); }
-#map[data-camera-mode="director"] + .map-grade { box-shadow: inset 0 0 150px rgba(4, 32, 39, 0.38), inset 0 0 42px rgba(var(--traffic-rgb), 0.08); }
+#app.focus-active .map-grade { box-shadow: inset 0 0 150px rgba(0, 3, 7, 0.34), inset 0 0 54px rgba(var(--traffic-rgb), 0.04); }
+#map[data-camera-mode="director"] + .map-grade { box-shadow: inset 0 0 120px rgba(4, 32, 39, 0.22), inset 0 0 36px rgba(var(--traffic-rgb), 0.05); }
 
 #region-canvas,
 #packet-canvas {
@@ -448,7 +447,7 @@ button { font: inherit; }
 :root[data-view-class="mobile"] .legend-items span { gap: 4px; }
 :root[data-view-class="mobile"] .legend[data-collapsed="true"] .legend-items { display: none; }
 :root[data-view-class="mobile"] .legend[data-focused="true"] { max-width: calc(100vw - 16px); padding: 8px 10px; }
-:root[data-view-class="mobile"] .route-legend { right: 8px; bottom: max(38px, calc(env(safe-area-inset-bottom) + 34px)); gap: 7px; padding: 6px 8px; }
+:root[data-view-class="mobile"] .route-legend { right: 8px; bottom: max(38px, calc(env(safe-area-inset-bottom) + 34px)); gap: 5px; padding: 5px 7px; opacity: 0.88; }
 :root[data-view-class="mobile"] .route-legend-label { font-size: 0; }
 :root[data-view-class="mobile"] .route-legend-label::after { content: attr(data-short); font-size: 10px; }
 :root[data-view-class="mobile"] .route-legend-swatch { width: 10px; }

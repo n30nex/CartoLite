@@ -83,7 +83,8 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(nodeLegend).not.toContainText('RF route');
   const routeLegend = page.locator('#route-legend');
   await expect(routeLegend).toBeHidden();
-  await expect(routeLegend.locator('.route-legend-item')).toHaveCount(5);
+  await expect(routeLegend).toHaveAttribute('aria-label', 'Grouped route colors show connection density');
+  await expect(routeLegend.locator('.route-legend-item')).toHaveCount(2);
   if (mobile) {
     const targetSizes = await page.locator('#about-button, .control-button:visible, #route-window, #legend-toggle').evaluateAll((elements) => elements.map((element) => {
       const bounds = element.getBoundingClientRect();
@@ -189,7 +190,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(routesButton).toHaveAttribute('title', 'Show routes');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
   await expect(routeLegend).toBeHidden();
-  await expect(routeLegend.locator('.route-legend-item')).toHaveCount(5);
+  await expect(routeLegend.locator('.route-legend-item')).toHaveCount(2);
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
   await expect.poll(() => canvasHasPixels(page.locator('#packet-canvas')), { message: 'packet animation canvas should receive a live frame while routes are hidden', timeout: 15_000 }).toBe(true);

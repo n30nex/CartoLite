@@ -31,7 +31,24 @@ describe('CARTO vector basemap', () => {
       'basemap-country-boundary',
       'basemap-region-boundary',
       'basemap-major-roads',
-      'basemap-place-labels'
+      'basemap-city-labels',
+      'basemap-town-labels'
     ]));
+  });
+
+  it('keeps national labels readable without repeating tile-edge water names', () => {
+    const style = cartoVectorStyle();
+    expect(style.layers.find((layer) => layer.id === 'basemap-water-labels')).toMatchObject({
+      minzoom: 5.5,
+      layout: {
+        'symbol-avoid-edges': true,
+        'text-allow-overlap': false
+      }
+    });
+    expect(style.layers.find((layer) => layer.id === 'basemap-city-labels')).toMatchObject({
+      minzoom: 3.25,
+      layout: { 'symbol-avoid-edges': true }
+    });
+    expect(style.layers.find((layer) => layer.id === 'basemap-town-labels')).toMatchObject({ minzoom: 6 });
   });
 });
