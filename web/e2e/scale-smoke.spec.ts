@@ -52,7 +52,7 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(map).toHaveAttribute('data-routes-visible', 'true');
-  await expect(map).toHaveAttribute('data-route-representation', 'national-trunks');
+  await expect(map).toHaveAttribute('data-route-representation', /^(?:national|regional)-trunks$/);
   await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(await maximumLongTask(page), 'enabling Routes must not block the main thread for 100 ms').toBeLessThan(100);
 

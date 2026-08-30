@@ -643,8 +643,8 @@ export class LiveMap {
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
       paint: {
         'line-color': routeColorExpression(),
-        'line-width': ['*', ['get', 'glowWidth'], ['interpolate', ['linear'], ['zoom'], 3, 0.72, 5.25, 0.46]],
-        'line-opacity': ['*', ['get', 'opacity'], ['interpolate', ['linear'], ['zoom'], 3, 0.34, 4.45, 0.28, 5.25, 0]],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 3, ['*', ['get', 'glowWidth'], 0.72], 5.25, ['*', ['get', 'glowWidth'], 0.46]],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, ['*', ['get', 'opacity'], 0.34], 4.45, ['*', ['get', 'opacity'], 0.28], 5.25, 0],
         'line-blur': ['interpolate', ['linear'], ['zoom'], 3, 2.4, 5.25, 1.5]
       }
     });
@@ -657,8 +657,8 @@ export class LiveMap {
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
       paint: {
         'line-color': routeColorExpression(),
-        'line-width': ['*', ['get', 'width'], ['interpolate', ['linear'], ['zoom'], 3, 0.72, 5.25, 0.9]],
-        'line-opacity': ['*', ['get', 'opacity'], ['interpolate', ['linear'], ['zoom'], 3, 0.72, 4.45, 0.58, 5.25, 0]]
+        'line-width': ['interpolate', ['linear'], ['zoom'], 3, ['*', ['get', 'width'], 0.72], 5.25, ['*', ['get', 'width'], 0.9]],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, ['*', ['get', 'opacity'], 0.72], 4.45, ['*', ['get', 'opacity'], 0.58], 5.25, 0]
       }
     });
     this.map.addLayer({
@@ -671,8 +671,8 @@ export class LiveMap {
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
       paint: {
         'line-color': routeColorExpression(),
-        'line-width': ['*', ['get', 'glowWidth'], ['interpolate', ['linear'], ['zoom'], 4.35, 0.38, 5.2, 0.66, 7.2, 0.42]],
-        'line-opacity': ['*', ['get', 'opacity'], ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, 0.3, 6.35, 0.24, 7.2, 0]],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4.35, ['*', ['get', 'glowWidth'], 0.38], 5.2, ['*', ['get', 'glowWidth'], 0.66], 7.2, ['*', ['get', 'glowWidth'], 0.42]],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, ['*', ['get', 'opacity'], 0.3], 6.35, ['*', ['get', 'opacity'], 0.24], 7.2, 0],
         'line-blur': ['interpolate', ['linear'], ['zoom'], 4.35, 1.5, 7.2, 2.1]
       }
     });
@@ -686,8 +686,8 @@ export class LiveMap {
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: routeVisibility },
       paint: {
         'line-color': routeColorExpression(),
-        'line-width': ['*', ['get', 'width'], ['interpolate', ['linear'], ['zoom'], 4.35, 0.58, 5.2, 0.88, 7.2, 1]],
-        'line-opacity': ['*', ['get', 'opacity'], ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, 0.68, 6.35, 0.6, 7.2, 0]]
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4.35, ['*', ['get', 'width'], 0.58], 5.2, ['*', ['get', 'width'], 0.88], 7.2, ['get', 'width']],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.35, 0, 5.1, ['*', ['get', 'opacity'], 0.68], 6.35, ['*', ['get', 'opacity'], 0.6], 7.2, 0]
       }
     });
     this.map.addLayer({
@@ -704,8 +704,8 @@ export class LiveMap {
       },
       paint: {
         'line-color': routeColorExpression(),
-        'line-width': ['*', ['get', 'glowWidth'], ['interpolate', ['linear'], ['zoom'], 5.8, 0.48, 8, 0.78, 12, 1]],
-        'line-opacity': ['*', ['get', 'opacity'], ['interpolate', ['linear'], ['zoom'], 5.8, 0, 6.55, 0.08, 8, 0.16, 12, 0.2]],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 5.8, ['*', ['get', 'glowWidth'], 0.48], 8, ['*', ['get', 'glowWidth'], 0.78], 12, ['get', 'glowWidth']],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 5.8, 0, 6.55, ['*', ['get', 'opacity'], 0.08], 8, ['*', ['get', 'opacity'], 0.16], 12, ['*', ['get', 'opacity'], 0.2]],
         'line-blur': ['interpolate', ['linear'], ['zoom'], 5.8, 1.2, 9, 2.2, 14, 2.8]
       }
     });
@@ -723,8 +723,8 @@ export class LiveMap {
       },
       paint: {
         'line-color': routeColorExpression(),
-        'line-width': ['*', ['get', 'width'], ['interpolate', ['linear'], ['zoom'], 5.8, 0.58, 8, 0.78, 12, 1.08, 16, 1.18]],
-        'line-opacity': ['*', ['get', 'opacity'], ['interpolate', ['linear'], ['zoom'], 5.8, 0, 6.55, 0.34, 8, 0.64, 12, 0.82]]
+        'line-width': ['interpolate', ['linear'], ['zoom'], 5.8, ['*', ['get', 'width'], 0.58], 8, ['*', ['get', 'width'], 0.78], 12, ['*', ['get', 'width'], 1.08], 16, ['*', ['get', 'width'], 1.18]],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 5.8, 0, 6.55, ['*', ['get', 'opacity'], 0.34], 8, ['*', ['get', 'opacity'], 0.64], 12, ['*', ['get', 'opacity'], 0.82]]
       }
     });
     this.map.addLayer({

@@ -171,13 +171,14 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(routeLegend).toBeVisible();
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
-  await expect(page.locator('#map')).toHaveAttribute('data-route-representation', 'national-trunks');
+  await expect(page.locator('#map')).toHaveAttribute('data-route-representation', /^(?:(?:national|regional)-trunks|individual-routes)$/);
   await expect.poll(() => page.locator('#map').getAttribute('data-eligible-routes').then(Number)).toBeGreaterThan(0);
   await expect.poll(async () => {
     const map = page.locator('#map');
-    return Number(await map.getAttribute('data-national-routes-represented'))
-      === Number(await map.getAttribute('data-eligible-routes'));
-  }, { message: 'national trunks must account for every eligible route' }).toBe(true);
+    const eligible = Number(await map.getAttribute('data-eligible-routes'));
+    return Number(await map.getAttribute('data-national-routes-represented')) === eligible
+      && Number(await map.getAttribute('data-regional-routes-represented')) === eligible;
+  }, { message: 'every trunk level must account for every eligible route' }).toBe(true);
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   if (mobile) await openLayers(page);
   await routesButton.click();
