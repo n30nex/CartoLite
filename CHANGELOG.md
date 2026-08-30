@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.3 - 2026-08-29
+
+### Fixed
+
+- Make 15-minute, one-hour, six-hour, and 24-hour route windows visibly distinct even when live traffic exceeds the 700-route render budget by retaining the newest half and sampling the rest across the complete selected period.
+- Apply the selected route window to focused-node connections, neighbor counts, and route inspection instead of silently expanding focused nodes to 24 hours.
+- Keep the Auto option labelled with its zoom-derived window instead of renaming it to the currently selected fixed duration.
+
 ## 0.6.2 - 2026-08-29
 
 ### Changed

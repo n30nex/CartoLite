@@ -207,7 +207,13 @@ export class LiveMap {
     }
     if (changes?.nodes?.length || changes?.routes?.length || routeFeatureIDs.size > 0) {
       this.updateFocusData();
-      if (this.hoveredRouteID && !isRouteInspectable(state.routes, this.selectedNodeID, this.hoveredRouteID)) this.clearRouteInspection();
+      if (this.hoveredRouteID && !isRouteInspectable(
+        state.routes,
+        this.selectedNodeID,
+        this.hoveredRouteID,
+        Date.now(),
+        this.effectiveRouteAgeMS()
+      )) this.clearRouteInspection();
       if (this.selectedNodeID) this.applyFocusState();
     }
     if (changed) this.markRendering();
@@ -252,7 +258,7 @@ export class LiveMap {
     const allRoutes = [...this.routesByID.values()];
     const routeBaseline = routeTrafficBaseline(allRoutes, now);
     const eligibleRoutes = this.selectedNodeID
-      ? recentNeighborRoutes(allRoutes, this.selectedNodeID, now)
+      ? recentNeighborRoutes(allRoutes, this.selectedNodeID, now, maxAge)
       : allRoutes;
     const routes = routeRenderCandidates(eligibleRoutes, now, maxAge, this.selectedNodeID);
     const visual = routeLatticeRoutes(routes, this.nodesByID, now, routeBaseline, maxAge);
@@ -503,6 +509,17 @@ export class LiveMap {
     if (this.routeWindow === window) return;
     this.routeWindow = window;
     this.routeDataDirty = true;
+    if (this.selectedNodeID) {
+      this.updateFocusData();
+      this.applyFocusState();
+    }
+    if (this.hoveredRouteID && !isRouteInspectable(
+      this.lastState?.routes ?? [],
+      this.selectedNodeID,
+      this.hoveredRouteID,
+      Date.now(),
+      this.effectiveRouteAgeMS()
+    )) this.clearRouteInspection();
     if (this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) {
       this.hydrateRouteSource();
     } else {
@@ -536,8 +553,15 @@ export class LiveMap {
   }
 
   private handleZoomEnd = (): void => {
-    if (this.routeWindow !== 'auto') return;
+    if (this.routeWindow !== 'auto') {
+      this.emitRouteWindowChange();
+      return;
+    }
     this.routeDataDirty = true;
+    if (this.selectedNodeID) {
+      this.updateFocusData();
+      this.applyFocusState();
+    }
     if (this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) {
       this.hydrateRouteSource();
     } else {
@@ -546,11 +570,11 @@ export class LiveMap {
   };
 
   private emitRouteWindowChange(): void {
-    this.options.onRouteWindowChange?.(routeWindowLabel(this.routeWindow, this.map.getZoom()));
+    this.options.onRouteWindowChange?.(routeWindowLabel('auto', this.map.getZoom()));
   }
 
   private effectiveRouteAgeMS(): number {
-    return this.selectedNodeID ? ROUTE_MAX_AGE_MS : effectiveRouteWindowMS(this.routeWindow, this.map.getZoom());
+    return effectiveRouteWindowMS(this.routeWindow, this.map.getZoom());
   }
 
   private installLayers(): void {
@@ -1014,7 +1038,12 @@ export class LiveMap {
   }
 
   private updateFocusData(): void {
-    const routes = recentNeighborRoutes(this.lastState?.routes ?? [], this.selectedNodeID);
+    const routes = recentNeighborRoutes(
+      this.lastState?.routes ?? [],
+      this.selectedNodeID,
+      Date.now(),
+      this.effectiveRouteAgeMS()
+    );
     this.neighborNodeIDs = neighborNodeIDs(routes, this.selectedNodeID);
     this.container.dataset.neighborRouteCount = String(routes.length);
     const stateLabel = this.lastState?.nodes.find((node) => node.id === this.selectedNodeID)?.label;
@@ -1290,10 +1319,11 @@ export function isRouteInspectable(
   routes: readonly RouteV2[],
   selectedNodeID: string | null,
   routeID: string | null,
-  now = Date.now()
+  now = Date.now(),
+  maxAge = ROUTE_MAX_AGE_MS
 ): boolean {
   if (!routeID) return false;
-  return recentNeighborRoutes(routes, selectedNodeID, now).some((route) => route.id === routeID);
+  return recentNeighborRoutes(routes, selectedNodeID, now, maxAge).some((route) => route.id === routeID);
 }
 
 export function packetEndpoints(packet: PacketView): EndpointV2[] {
@@ -1515,15 +1545,22 @@ export function routeRenderCandidates(
 ): RouteV2[] {
   const eligible = routes.filter((route) => Math.max(0, now - route.lastHeard) <= maxAge);
   if (eligible.length <= ROUTE_RENDER_BUDGET) return eligible;
-  return eligible
-    .sort((left, right) => {
-      const leftSelected = selectedNodeID !== null && (left.fromId === selectedNodeID || left.toId === selectedNodeID);
-      const rightSelected = selectedNodeID !== null && (right.fromId === selectedNodeID || right.toId === selectedNodeID);
-      if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
-      if (left.lastHeard !== right.lastHeard) return right.lastHeard - left.lastHeard;
-      return left.id.localeCompare(right.id);
-    })
-    .slice(0, ROUTE_RENDER_BUDGET);
+  const ranked = eligible.sort((left, right) => {
+    const leftSelected = selectedNodeID !== null && (left.fromId === selectedNodeID || left.toId === selectedNodeID);
+    const rightSelected = selectedNodeID !== null && (right.fromId === selectedNodeID || right.toId === selectedNodeID);
+    if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
+    if (left.lastHeard !== right.lastHeard) return right.lastHeard - left.lastHeard;
+    return left.id.localeCompare(right.id);
+  });
+  const recentBudget = Math.ceil(ROUTE_RENDER_BUDGET / 2);
+  const candidates = ranked.slice(0, recentBudget);
+  const historical = ranked.slice(recentBudget);
+  const historicalBudget = ROUTE_RENDER_BUDGET - candidates.length;
+  const finalIndex = historical.length - 1;
+  for (let index = 0; index < historicalBudget; index += 1) {
+    candidates.push(historical[Math.round(index * finalIndex / (historicalBudget - 1))]!);
+  }
+  return candidates;
 }
 
 export function routeLatticeRoutes(

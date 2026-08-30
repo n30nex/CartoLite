@@ -54,6 +54,10 @@ Before changing `/opt/CartoLite`, record the running container ID/image, copy Co
 
 Acceptance requires exact version/SHA/image identity; ready MQTT/checkpoint/queue with zero drops; public schema v2 privacy; live SSE, animation, and scheduled sound; vector TileJSON/PBF/glyph success with no raster request; desktop and both phone orientations; regional MIME/cache proof; watchdog outage/recovery proof; restic backup/check/restore checksum; and a 20-minute soak with zero restarts/drops and no sustained CPU or memory regression.
 
+## v0.6.3 route-window correction
+
+v0.6.3 keeps the 700-route performance ceiling while sampling across the complete chosen age window after the ceiling is reached. Verify that 15m, 1h, 6h, and 24h produce distinct candidate sets under saturated traffic, fixed selections do not rename the Auto option, and selected-node routes and neighbor counts obey the same window.
+
 ## v0.6.2 full-map pulse removal
 
 v0.6.2 removes the traffic-reactive aurora pseudo-layer and its repeated full-map colour wash. Verify that live packets still produce localized ribbons, signatures, wakes, layer emphasis, meter activity, and sound while `#map-grade::before` has no background or animation.

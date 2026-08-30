@@ -181,7 +181,7 @@ describe('stable route visual data', () => {
     ))).toBe(true);
   });
 
-  it('caps the historical lattice while keeping selected-node routes ahead of fresher traffic', () => {
+  it('caps the historical lattice while keeping selected-node, newest, and oldest routes represented', () => {
     const now = 1_900_000_000_000;
     const routes = Array.from({ length: ROUTE_RENDER_BUDGET + 5 }, (_, index) => route(
       `route-${String(index).padStart(4, '0')}`,
@@ -196,7 +196,33 @@ describe('stable route visual data', () => {
     expect(candidates).toHaveLength(ROUTE_RENDER_BUDGET);
     expect(candidates[0]?.id).toBe('selected-old');
     expect(candidates.some((item) => item.id === 'route-0000')).toBe(true);
-    expect(candidates.some((item) => item.id === 'route-0699')).toBe(false);
+    expect(candidates.some((item) => item.id === 'route-0704')).toBe(true);
+    expect(new Set(candidates.map((item) => item.id)).size).toBe(ROUTE_RENDER_BUDGET);
+  });
+
+  it('samples the full selected age window after the route budget is saturated', () => {
+    const now = 1_900_000_000_000;
+    const recent = Array.from({ length: ROUTE_RENDER_BUDGET * 2 }, (_, index) => route(
+      `recent-${index}`,
+      `recent-from-${index}`,
+      `recent-to-${index}`,
+      now - index * 500
+    ));
+    const historical = Array.from({ length: ROUTE_RENDER_BUDGET * 2 }, (_, index) => route(
+      `historical-${index}`,
+      `historical-from-${index}`,
+      `historical-to-${index}`,
+      now - 60 * 60_000 - index * 30_000
+    ));
+
+    const fifteenMinutes = routeRenderCandidates([...recent, ...historical], now, 15 * 60_000);
+    const fullDay = routeRenderCandidates([...recent, ...historical], now, ROUTE_MAX_AGE_MS);
+
+    expect(fifteenMinutes).toHaveLength(ROUTE_RENDER_BUDGET);
+    expect(fullDay).toHaveLength(ROUTE_RENDER_BUDGET);
+    expect(fifteenMinutes.every((item) => now - item.lastHeard <= 15 * 60_000)).toBe(true);
+    expect(fullDay.some((item) => now - item.lastHeard > 15 * 60_000)).toBe(true);
+    expect(fullDay.map((item) => item.id)).not.toEqual(fifteenMinutes.map((item) => item.id));
   });
 
   it('uses progressively wider automatic route windows as users zoom in', () => {
@@ -294,10 +320,12 @@ describe('node neighbor focus', () => {
     ];
 
     expect(recentNeighborRoutes(routes, 'a', now).map((item) => item.id)).toEqual(['a-b', 'c-a']);
+    expect(recentNeighborRoutes(routes, 'a', now, 15 * 60_000).map((item) => item.id)).toEqual(['a-b']);
     expect(recentNeighborRoutes(routes, null, now)).toEqual([]);
     expect(isRouteInspectable(routes, 'a', 'a-b', now)).toBe(true);
     expect(isRouteInspectable(routes, 'a', 'a-d-stale', now)).toBe(false);
     expect(isRouteInspectable(routes, 'a', 'b-c', now)).toBe(false);
+    expect(isRouteInspectable(routes, 'a', 'c-a', now, 15 * 60_000)).toBe(false);
   });
 
   it('deduplicates and sorts the neighbor node IDs without including the selected node', () => {

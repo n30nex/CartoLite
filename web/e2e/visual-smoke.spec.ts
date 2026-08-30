@@ -62,6 +62,13 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   }
   await expect(routeWindow).toBeVisible();
   await expect(routeWindow).toHaveValue('auto');
+  const autoRouteWindow = routeWindow.locator('option[value="auto"]');
+  await expect(autoRouteWindow).toHaveText(/^Auto · (?:15m|1h|6h|24h)$/);
+  await routeWindow.selectOption('15m');
+  await expect(routeWindow).toHaveValue('15m');
+  await expect(autoRouteWindow).toHaveText(/^Auto · (?:15m|1h|6h|24h)$/);
+  await routeWindow.selectOption('auto');
+  await expect(routeWindow).toHaveValue('auto');
   const aboutDialog = page.locator('#about-dialog');
   await page.locator('#about-button').click();
   await expect(aboutDialog).toBeVisible();
@@ -381,9 +388,13 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
 
   await clickPoint(page, { x: alphaPoint.x + (mobile ? 12 : 0), y: alphaPoint.y }, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'a');
+  await expect(map).toHaveAttribute('data-neighbor-route-count', '1');
+  await expect(focusChip).toBeVisible();
+  await expect(focusChip).toContainText('Alpha · 1 neighbor');
+  if (mobile) await openLayers(page);
+  await page.locator('#route-window').selectOption('24h');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '2');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
-  await expect(focusChip).toBeVisible();
   await expect(focusChip).toContainText('Alpha · 2 neighbors');
   await expect(page.locator('#legend')).toHaveAttribute('data-focused', 'true');
   await expect(page.locator('#legend-items')).toBeHidden();
@@ -423,6 +434,11 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await expect(map).toHaveAttribute('data-hovered-route-id', 'a-c');
   await expect(tooltip).toHaveAttribute('data-kind', 'route');
   await expect(tooltip).toContainText('Alpha ↔ Charlie');
+  if (mobile) await openLayers(page);
+  await page.locator('#route-window').selectOption('15m');
+  await expect(map).toHaveAttribute('data-hovered-route-id', '');
+  await expect(tooltip).toBeHidden();
+  await page.locator('#route-window').selectOption('24h');
 
   await clickPoint(page, bravoPoint, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'b');
