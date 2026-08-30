@@ -55,7 +55,6 @@ button { font: inherit; }
 #app.focus-active .map-grade { box-shadow: inset 0 0 150px rgba(0, 3, 7, 0.34), inset 0 0 54px rgba(var(--traffic-rgb), 0.04); }
 #map[data-camera-mode="director"] + .map-grade { box-shadow: inset 0 0 120px rgba(4, 32, 39, 0.22), inset 0 0 36px rgba(var(--traffic-rgb), 0.05); }
 
-#region-canvas,
 #packet-canvas {
   position: absolute;
   inset: 0;
@@ -64,7 +63,6 @@ button { font: inherit; }
   pointer-events: none;
 }
 
-#region-canvas { z-index: 2; }
 #packet-canvas { z-index: 4; }
 
 .glass {

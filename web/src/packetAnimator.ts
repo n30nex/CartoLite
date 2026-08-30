@@ -679,6 +679,9 @@ export class PacketAnimator {
       const curve = routeCurve(from, to, `${segment.routeId}|${item.signature}`, 0);
       const slice = quadraticSlice(curve, motion.localProgress);
       this.drawProgressiveTrail(curve.from, slice.control, slice.head, item.color, item.signature, quality);
+      if (quality !== 'low') {
+        this.drawTrailSparks(curve.from, slice.control, slice.head, item.color, item.packet.id, elapsed);
+      }
       this.comet(slice.tangent.x, slice.tangent.y, slice.head.x, slice.head.y, item.color, quality);
       if (quality !== 'low') {
         this.drawPacketSignature(slice.head, slice.tangent, item.color, item.signature, elapsed);
@@ -708,20 +711,42 @@ export class PacketAnimator {
     quality: VisualQuality,
   ): void {
     if (Math.hypot(head.x - from.x, head.y - from.y) <= 0.01) return;
-    this.context.strokeStyle = withAlpha(color, 0.19);
-    this.context.lineWidth = quality === 'full' ? 7.4 : quality === 'balanced' ? 5.8 : 4.2;
+    this.context.strokeStyle = withAlpha(color, quality === 'low' ? 0.2 : 0.27);
+    this.context.lineWidth = quality === 'full' ? 8.4 : quality === 'balanced' ? 6.6 : 4.4;
     this.context.beginPath();
     this.context.moveTo(from.x, from.y);
     this.context.quadraticCurveTo(control.x, control.y, head.x, head.y);
     this.context.stroke();
-    this.context.strokeStyle = withAlpha(quality === 'low' ? color : blendWithWhite(color, 0.3), quality === 'low' ? 0.84 : 0.74);
-    this.context.lineWidth = 1.55;
+    this.context.strokeStyle = withAlpha(quality === 'low' ? color : blendWithWhite(color, 0.48), quality === 'low' ? 0.86 : 0.92);
+    this.context.lineWidth = quality === 'full' ? 1.85 : 1.68;
     this.context.setLineDash(signature === 'echo' ? [7, 5] : []);
     this.context.beginPath();
     this.context.moveTo(from.x, from.y);
     this.context.quadraticCurveTo(control.x, control.y, head.x, head.y);
     this.context.stroke();
     this.context.setLineDash([]);
+  }
+
+  private drawTrailSparks(
+    from: ScreenPoint,
+    control: ScreenPoint,
+    head: ScreenPoint,
+    color: string,
+    seed: string,
+    elapsed: number,
+  ): void {
+    const route = { from, control, to: head };
+    const hash = stableVisualHash(seed);
+    for (let index = 0; index < 3; index += 1) {
+      const progress = 0.48 + index * 0.19;
+      const point = quadraticPoint(route, progress);
+      const shimmer = 0.35 + 0.65 * Math.abs(Math.sin(elapsed / 150 + (hash % 17) + index * 1.8));
+      const radius = 0.65 + ((hash >>> (index * 3)) & 3) * 0.18;
+      this.context.fillStyle = withAlpha(blendWithWhite(color, 0.72), shimmer * 0.88);
+      this.context.beginPath();
+      this.context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      this.context.fill();
+    }
   }
 
   private drawStaticRoute(item: ActiveRoute, opacity: number, motion?: RouteMotion): void {

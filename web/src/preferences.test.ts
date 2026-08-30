@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { loadSavedView, saveView, viewClass, viewStorageKey } from './preferences';
+import {
+  DEFAULT_UI_PREFERENCES,
+  loadSavedView,
+  loadUiPreferences,
+  saveUiPreferences,
+  saveView,
+  UI_STORAGE_KEY,
+  viewClass,
+  viewStorageKey
+} from './preferences';
 
 describe('viewport preferences', () => {
   beforeEach(() => localStorage.clear());
@@ -25,5 +34,22 @@ describe('viewport preferences', () => {
   it('fails closed on malformed or out-of-bounds saved views', () => {
     localStorage.setItem(viewStorageKey('mobile'), JSON.stringify({ center: [0, 0], zoom: 20 }));
     expect(loadSavedView(localStorage, 'mobile')).toBeNull();
+  });
+
+  it('remembers privacy-safe layer, route-window, and legend settings', () => {
+    const preferences = {
+      routes: true,
+      heatmap: false,
+      regions: true,
+      routeWindow: '24h' as const,
+      legendExpanded: true
+    };
+    saveUiPreferences(localStorage, preferences);
+    expect(loadUiPreferences(localStorage)).toEqual(preferences);
+  });
+
+  it('uses safe defaults for malformed UI preferences', () => {
+    localStorage.setItem(UI_STORAGE_KEY, JSON.stringify({ routes: 'yes', routeWindow: 'forever' }));
+    expect(loadUiPreferences(localStorage)).toEqual(DEFAULT_UI_PREFERENCES);
   });
 });

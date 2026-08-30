@@ -1,4 +1,4 @@
-import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon, Position } from 'geojson';
+import type { Feature, FeatureCollection, LineString, MultiPolygon, Point, Polygon, Position } from 'geojson';
 
 export const EXPECTED_REGION_CODES = [
   'XCM', 'XPH', 'YBL', 'YCD', 'YEG', 'YGK', 'YKA', 'YKF', 'YLK', 'YML', 'YOW', 'YPA',
@@ -6,59 +6,39 @@ export const EXPECTED_REGION_CODES = [
   'YVR', 'YWG', 'YWS', 'YXU', 'YXX', 'YYB', 'YYC', 'YYJ', 'YYY', 'YYZ'
 ] as const;
 
-export const REGION_LINE_PIECE_VERTEX_LIMIT = 512;
-export const REGION_WORKER_MESSAGE_VERTEX_LIMIT = 2_048;
-
 type RegionGeometry = Polygon | MultiPolygon;
 type RegionFeature = Feature<RegionGeometry>;
 
-export interface RegionLinePiece {
-  code: string;
-  coordinates: Position[];
-}
-
-export interface RegionCanvasData {
-  pieces: RegionLinePiece[];
-  labels: FeatureCollection<Point>;
-}
-
 export type RegionWorkerOutput =
-  | { type: 'labels'; labels: FeatureCollection<Point> }
-  | { type: 'pieces'; pieces: RegionLinePiece[] }
-  | { type: 'done' }
+  | { type: 'data'; data: FeatureCollection<LineString | Point> }
   | { type: 'error'; message: string };
 
-export function regionCanvasData(value: unknown): RegionCanvasData {
+export function regionMapData(value: unknown): FeatureCollection<LineString | Point> {
   const snapshot = assertRegionSnapshot(value);
-  const pieces: RegionLinePiece[] = [];
-  const labels: Array<Feature<Point>> = [];
+  const features: Array<Feature<LineString | Point>> = [];
 
   for (const feature of snapshot.features) {
     const properties = feature.properties!;
     const code = String(properties.code);
     const name = String(properties.name);
     const center = properties.center as Position;
-    labels.push({
-      type: 'Feature',
-      id: code,
-      geometry: { type: 'Point', coordinates: center },
-      properties: { code, name }
+    polygonRings(feature.geometry).forEach((coordinates, index) => {
+      features.push({
+        type: 'Feature',
+        id: `${code}:boundary:${index}`,
+        geometry: { type: 'LineString', coordinates },
+        properties: { kind: 'boundary', code, name }
+      });
     });
-
-    for (const ring of polygonRings(feature.geometry)) {
-      let start = 0;
-      while (start < ring.length - 1) {
-        const end = Math.min(ring.length, start + REGION_LINE_PIECE_VERTEX_LIMIT);
-        const coordinates = ring.slice(start, end);
-        if (coordinates.length < 2) break;
-        pieces.push({ code, coordinates });
-        if (end === ring.length) break;
-        start = end - 1;
-      }
-    }
+    features.push({
+      type: 'Feature',
+      id: `${code}:label`,
+      geometry: { type: 'Point', coordinates: center },
+      properties: { kind: 'label', code, name }
+    });
   }
 
-  return { pieces, labels: { type: 'FeatureCollection', features: labels } };
+  return { type: 'FeatureCollection', features };
 }
 
 function assertRegionSnapshot(value: unknown): FeatureCollection<RegionGeometry> {

@@ -36,10 +36,10 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect.poll(() => cartoResponses.vector, { message: 'CARTO vector PBF tiles should load' }).toBeGreaterThan(0);
   await expect.poll(() => cartoResponses.glyph, { message: 'CARTO glyph PBFs should load' }).toBeGreaterThan(0);
   expect(rasterRequests, 'the vector-only release must not request a raster basemap').toEqual([]);
-  const regionCanvas = page.locator('#region-canvas');
-  await expect(regionCanvas).toBeHidden();
+  await expect(page.locator('#region-canvas')).toHaveCount(0);
   await expect(page.locator('#route-canvas')).toHaveCount(0);
   await expect(page.locator('#map')).toHaveAttribute('data-route-renderer', 'maplibre');
+  await expect(page.locator('#map')).toHaveAttribute('data-region-renderer', 'maplibre');
   await expect(page.locator('#packet-canvas')).toBeVisible();
   await expect(page.locator('#traffic-meter i')).toHaveCount(5);
   expect(await page.locator('#map-grade').evaluate((element) => {
@@ -214,9 +214,8 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'true');
   await expect(page.locator('.maplibregl-ctrl-attrib-inner')).toContainText('MeshMapper');
-  await expect(regionCanvas).toBeVisible();
-  await expect.poll(() => regionCanvas.getAttribute('data-rendered-vertices').then(Number)).toBeGreaterThan(0);
-  expect(await canvasHasPixels(regionCanvas), 'exact regional boundaries should paint on their dedicated canvas').toBe(true);
+  await expect(page.locator('#map')).toHaveAttribute('data-region-feature-count', '68');
+  await expect(page.locator('#map')).toHaveAttribute('data-region-source-revision', '1');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   expect(regionAssetRequests).toHaveLength(1);
   await heatmapButton.click();
@@ -227,8 +226,8 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(regionsButton).toHaveAttribute('aria-pressed', 'false');
   await expect(regionsButton).toHaveAttribute('title', 'Show regions');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'false');
-  await expect(regionCanvas).toBeHidden();
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true');
+  await expect(page.locator('#map')).toHaveAttribute('data-region-source-revision', '1');
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await heatmapButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'false');
@@ -399,11 +398,13 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await clickPoint(page, { x: alphaPoint.x + (mobile ? 12 : 0), y: alphaPoint.y }, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'a');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '1');
+  await expect(map).toHaveAttribute('data-focused-route-count', '1');
   await expect(focusChip).toBeVisible();
   await expect(focusChip).toContainText('Alpha · 1 neighbor');
   if (mobile) await openLayers(page);
   await page.locator('#route-window').selectOption('24h');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '2');
+  await expect(map).toHaveAttribute('data-focused-route-count', '2');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
   await expect(focusChip).toContainText('Alpha · 2 neighbors');
   await expect(page.locator('#legend')).toHaveAttribute('data-focused', 'true');
@@ -453,6 +454,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await clickPoint(page, bravoPoint, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'b');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '2');
+  await expect(map).toHaveAttribute('data-focused-route-count', '2');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
   await expect(focusChip).toContainText('Bravo · 2 neighbors');
   await inspectRoute(page, bravoPoint, charliePoint, mobile);
@@ -467,6 +469,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await clickPoint(page, { x: box.x + box.width * 0.84, y: box.y + box.height * 0.82 }, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', '');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '0');
+  await expect(map).toHaveAttribute('data-focused-route-count', '0');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
   await expect(tooltip).toBeHidden();
   await expect(focusChip).toBeHidden();
@@ -479,6 +482,63 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
     await expect(page.locator('#legend-items')).toBeVisible();
   }
   await page.screenshot({ path: testInfo.outputPath('cartolite-neighbors.png') });
+});
+
+test('keeps regions camera-locked and restores map controls', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'one browser covers native region motion and shared UI persistence');
+  const now = Date.now();
+  const state: StateV2 = {
+    schemaVersion: 2,
+    bootId: 'region-stability-smoke',
+    seq: 0,
+    serverTime: now,
+    status: { feed: 'connected', activity: 'active', lastPacketAt: now, dropped: 0, version: 'test', gitSha: 'regions' },
+    map: { center: [-80.35, 43.45], zoom: 8.25 },
+    nodes: [{ id: 'a', label: 'Alpha', role: 'repeater', observer: false, lat: 43.45, lng: -80.35, lastSeen: now }],
+    routes: []
+  };
+  await page.route('**/api/state', (route) => route.fulfill({ json: state }));
+  await page.route('**/api/events**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `retry: 60000\n\nevent: hello\ndata: ${JSON.stringify({ seq: 0, bootId: state.bootId })}\n\n`
+  }));
+
+  await page.goto('/');
+  const map = page.locator('#map');
+  const routesButton = page.locator('#routes-button');
+  const heatmapButton = page.locator('#heatmap-button');
+  const regionsButton = page.locator('#regions-button');
+  await expect(map).toHaveAttribute('data-render-state', 'idle');
+  await routesButton.click();
+  await heatmapButton.click();
+  await page.locator('#route-window').selectOption('24h');
+  await regionsButton.click();
+  await expect(map).toHaveAttribute('data-regions-loaded', 'true', { timeout: 10_000 });
+  await expect(map).toHaveAttribute('data-region-renderer', 'maplibre');
+  await expect(map).toHaveAttribute('data-region-feature-count', '68');
+  await expect(map).toHaveAttribute('data-region-source-revision', '1');
+
+  const box = await page.locator('#map .maplibregl-canvas').boundingBox();
+  expect(box).not.toBeNull();
+  if (box) {
+    await page.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.52);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.45, box.y + box.height * 0.46, { steps: 8 });
+    await page.mouse.up();
+  }
+  await expect(map).toHaveAttribute('data-render-state', 'idle');
+  await expect(map).toHaveAttribute('data-region-source-revision', '1');
+  await page.screenshot({ path: testInfo.outputPath('cartolite-regions-camera-locked.png') });
+
+  await page.reload();
+  await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+  await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(heatmapButton).toHaveAttribute('aria-pressed', 'false');
+  await expect(regionsButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#route-window')).toHaveValue('24h');
+  await expect(map).toHaveAttribute('data-regions-loaded', 'true');
+  await expect(map).toHaveAttribute('data-region-source-revision', '1');
 });
 
 test('restores remembered sound as Tap to Resume without autoplay', async ({ page }, testInfo) => {

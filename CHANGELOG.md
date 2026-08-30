@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.9 - 2026-08-30
+
+### Fixed
+
+- Render the validated 34-region MeshMapper snapshot as native MapLibre geometry so boundaries and labels stay locked to geography while the camera moves.
+- Make Live Follow react to valid off-screen traffic, narrow to a selected node when present, and stop cleanly after a visitor pans or zooms the map.
+- Give selected nodes a dedicated connected-route glow that remains clear above the historical network without filtering or rebuilding the complete route source.
+- Remove same-cell trunk loop glyphs and switch national, regional, and exact route representations at non-overlapping zoom boundaries so layers no longer fight or jump.
+- Restore saved map controls only after their required sources exist, preventing reloads from touching MapLibre style state too early.
+
+### Changed
+
+- Strengthen live packet trails with restrained glow and traveling sparks while preserving the existing fade, reduced-motion behavior, and one musical note per visible hop.
+- Give packet kinds warmer sine and triangle voice shading, and persist Routes, Heatmap, Regions, route window, and legend state locally alongside the existing separate desktop and mobile views.
+
+### Performance
+
+- Select precomputed trunk counts for each route window without replacing trunk geometry, and enable only the route representation used at the current zoom.
+
 ## 0.6.8 - 2026-08-30
 
 ### Performance
