@@ -34,10 +34,13 @@ import {
   ROUTE_VISUAL_LAYER_IDS,
   routeCollection,
   routeColorExpression,
+  routeHoverFilter,
   routeRenderCandidates,
   routeRepresentationForZoom,
+  routeTrunkMetricExpression,
   routeVisualCollection,
   routeVisualProperties,
+  routeWindowFilter,
   routeWindowLabel,
   SELECTED_NODE_OUTER_LAYER_ID,
   SELECTED_NODE_LAYER_ID,
@@ -247,6 +250,32 @@ describe('stable route visual data', () => {
     expect(fullDay.map((item) => item.id)).toEqual(expect.arrayContaining(historical.map((item) => item.id)));
   });
 
+  it('keeps one fixed trunk geometry and carries every time-window count in its properties', () => {
+    const now = 1_900_000_000_000;
+    const routes = [
+      route('fresh', 'a', 'b', now - 5 * 60_000, 'Text', 8),
+      route('historical', 'a', 'b', now - 12 * 60 * 60_000, 'Trace', 4)
+    ];
+    const collection = routeVisualCollection(routes, nodesFor(routes), now);
+    const national = collection.features.filter((feature) => feature.properties?.representation === 'national');
+
+    expect(national).toHaveLength(1);
+    expect(national[0]?.properties).toMatchObject({
+      routeCount15m: 1,
+      routeCount1h: 1,
+      routeCount6h: 1,
+      routeCount24h: 2,
+      routeCount: 2
+    });
+    expect(national[0]?.geometry.coordinates).toHaveLength(2);
+    expect(JSON.stringify(routeTrunkMetricExpression('routeCount'))).toContain('["global-state","routeWindowMS"]');
+    expect(routeWindowFilter()).toEqual([
+      '>=',
+      ['get', 'lastHeard'],
+      ['-', ['number', ['global-state', 'routeNow'], 0], ['number', ['global-state', 'routeWindowMS'], ROUTE_MAX_AGE_MS]]
+    ]);
+  });
+
   it('uses progressively wider automatic route windows as users zoom in', () => {
     expect(effectiveRouteWindowMS('auto', 4)).toBe(15 * 60_000);
     expect(effectiveRouteWindowMS('auto', 6)).toBe(60 * 60_000);
@@ -307,11 +336,14 @@ describe('node neighbor focus', () => {
     const expected = neighborRouteFilter('node-a');
 
     expect(applyRouteSelectionFilter(map, 'node-a')).toBe(true);
-    expect(setFilter.mock.calls).toEqual(ROUTE_FILTER_LAYER_IDS.map((layerID) => [layerID, expected]));
+    expect(setFilter.mock.calls).toEqual(ROUTE_FILTER_LAYER_IDS.map((layerID) => [
+      layerID,
+      ['all', routeWindowFilter(), expected]
+    ]));
 
     setFilter.mockClear();
     expect(applyRouteSelectionFilter(map, null)).toBe(true);
-    expect(setFilter.mock.calls).toEqual(ROUTE_FILTER_LAYER_IDS.map((layerID) => [layerID, null]));
+    expect(setFilter.mock.calls).toEqual(ROUTE_FILTER_LAYER_IDS.map((layerID) => [layerID, routeWindowFilter()]));
   });
 
   it('highlights only the selected node and safely skips a missing layer', () => {
@@ -396,7 +428,7 @@ describe('node neighbor focus', () => {
     } as unknown as Parameters<typeof applyRouteHoverFilter>[0];
 
     expect(applyRouteHoverFilter(map, 'route-a')).toBe(true);
-    expect(setFilter.mock.calls).toEqual(ROUTE_HOVER_LAYER_IDS.map((layerID) => [layerID, ['==', ['get', 'id'], 'route-a']]));
+    expect(setFilter.mock.calls).toEqual(ROUTE_HOVER_LAYER_IDS.map((layerID) => [layerID, routeHoverFilter('route-a')]));
     expect(setLayoutProperty.mock.calls).toEqual(ROUTE_HOVER_LAYER_IDS.map((layerID) => [layerID, 'visibility', 'visible']));
 
     setFilter.mockClear();

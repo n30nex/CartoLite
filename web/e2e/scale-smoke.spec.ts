@@ -39,12 +39,13 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
     await page.locator('#layers-summary').click();
     await expect(page.locator('#layers-disclosure')).toHaveAttribute('open', '');
   }
+  const routeSourceRevision = await map.getAttribute('data-route-source-revision');
   await resetLongTasks(page);
   await page.locator('#route-window').selectOption('24h');
   await expect.poll(() => map.getAttribute('data-eligible-routes').then(Number), {
     message: 'the 24-hour source must keep every route, with no visual cap'
   }).toBe(7_000);
-  await expect(map).toHaveAttribute('data-trunk-representations-loaded', /^(?:national|regional)(?:,(?:national|regional))?$/);
+  await expect(map).toHaveAttribute('data-trunk-representations-loaded', 'national,regional');
   await expect.poll(async () => {
     const loaded = (await map.getAttribute('data-trunk-representations-loaded') ?? '').split(',');
     const national = Number(await map.getAttribute('data-national-routes-represented'));
@@ -60,7 +61,8 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
     expect(Number(await map.getAttribute('data-regional-route-trunks')), 'regional links should collapse before exact lines load').toBeLessThan(300);
   }
   await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
-  await expect(map).toHaveAttribute('data-exact-routes-loaded', 'false');
+  await expect(map).toHaveAttribute('data-exact-routes-loaded', 'true');
+  await expect(map).toHaveAttribute('data-route-source-revision', routeSourceRevision ?? '');
   const routeTimings = await map.evaluate((element) => ({
     buildMaxSliceMS: element.dataset.routeBuildMaxSliceMs,
     sourceDispatchMS: element.dataset.routeSourceDispatchMs,
@@ -92,6 +94,7 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
     await page.mouse.up();
     await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
     await expect(map).toHaveAttribute('data-eligible-routes', '7000');
+    await expect(map).toHaveAttribute('data-route-source-revision', routeSourceRevision ?? '');
     expect(await maximumLongTask(page), 'camera movement with all routes visible must stay responsive').toBeLessThan(100);
   }
 
