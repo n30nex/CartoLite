@@ -90,7 +90,7 @@ const ROUTE_REGIONAL_MIN_ZOOM = 4.35;
 const ROUTE_REGIONAL_MAX_ZOOM = 7.2;
 const ROUTE_SOURCE_BUILD_BATCH = 256;
 const ROUTE_WINDOW_UPDATE_BATCH = 8;
-export const ROUTE_LIVE_UPDATE_INTERVAL_MS = 2_000;
+export const ROUTE_LIVE_UPDATE_INTERVAL_MS = 8_000;
 
 export function routeHydrationDelay(lastStartedAt: number, now: number): number {
   return Math.max(0, ROUTE_LIVE_UPDATE_INTERVAL_MS - Math.max(0, now - lastStartedAt));

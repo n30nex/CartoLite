@@ -166,7 +166,7 @@ test('coalesces a busy live burst into one historical-route refresh', async ({ p
   await page.goto('/');
   const map = page.locator('#map');
   await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 15_000 });
-  await page.waitForTimeout(2_800);
+  await page.waitForTimeout(8_800);
   await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 5_000 });
   expect(Number(await map.getAttribute('data-route-source-revision'))).toBeLessThanOrEqual(3);
 });

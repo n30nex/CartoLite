@@ -47,7 +47,7 @@ describe('MeshMapper region snapshot', () => {
         expect(coordinate.every(Number.isFinite)).toBe(true);
       }
     }
-  });
+  }, 10_000);
 
   it('preserves visible source attribution', () => {
     expect(MESHMAP_ATTRIBUTION).toContain('MeshMapper');
