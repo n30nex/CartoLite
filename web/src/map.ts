@@ -1313,7 +1313,7 @@ export function isRouteInspectable(
   selectedNodeID: string | null,
   routeID: string | null,
   now = Date.now(),
-  maxAge = NEIGHBOR_ROUTE_RECENT_MS
+  maxAge = ROUTE_MAX_AGE_MS
 ): boolean {
   if (!routeID) return false;
   return recentNeighborRoutes(routes, selectedNodeID, now, maxAge).some((route) => route.id === routeID);
