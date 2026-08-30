@@ -83,6 +83,7 @@ const ROUTE_NATIONAL_MAX_ZOOM = 5.25;
 const ROUTE_REGIONAL_MIN_ZOOM = 4.35;
 const ROUTE_REGIONAL_MAX_ZOOM = 7.2;
 const ROUTE_SOURCE_BUILD_BATCH = 256;
+const ROUTE_WINDOW_UPDATE_BATCH = 24;
 const ROUTE_WINDOW_BUCKETS = [
   { key: '15m', suffix: '15m', ms: 15 * 60_000 },
   { key: '1h', suffix: '1h', ms: 60 * 60_000 },
@@ -137,6 +138,9 @@ export class LiveMap {
   private routeClock = 0;
   private appliedRouteWindowMS = 0;
   private appliedExactRouteWindowMS = 0;
+  private routeWindowUpdating = false;
+  private routeWindowUpdateEpoch = 0;
+  private pendingRouteWindowMS?: number;
   private routeCollections?: RouteSourceCollections;
   private routeTrunkFeatures = new Map<string, Feature<LineString>>();
   private routeDetailFeatures = new Map<string, Feature<LineString>>();
@@ -246,7 +250,7 @@ export class LiveMap {
     if (routeFeatureIDs.size > 0) {
       for (const routeID of routeFeatureIDs) this.dirtyRouteIDs.add(routeID);
       this.routeDataDirty = true;
-      if (!this.routeHydrating && this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) this.hydrateRouteSource();
+      if (!this.routeHydrating && !this.routeWindowUpdating && this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) this.hydrateRouteSource();
     }
     if (heatNodeIDs.size > 0) {
       if (this.heatmapVisible) changed = this.updateHeatFeatures([...heatNodeIDs]) || changed;
@@ -300,6 +304,10 @@ export class LiveMap {
   }
 
   private hydrateRouteSource(now = Date.now()): void {
+    if (this.routeWindowUpdating) {
+      this.routeDataDirty = true;
+      return;
+    }
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
     const trunkSource = this.map.getSource(ROUTE_TRUNK_SOURCE_ID) as GeoJSONSource | undefined;
     if (!detailSource || !trunkSource) return;
@@ -505,6 +513,89 @@ export class LiveMap {
     }
   }
 
+  private updateRouteTrunkWindow(maxAge: number): boolean {
+    const source = this.map.getSource(ROUTE_TRUNK_SOURCE_ID) as GeoJSONSource | undefined;
+    const collections = this.routeCollections;
+    if (!source || !collections || this.routeTrunkFeatures.size === 0) return false;
+    if (this.routeWindowUpdating) {
+      this.pendingRouteWindowMS = maxAge;
+      return true;
+    }
+
+    const features = routeTrunkFeaturesForWindow(
+      [...collections.national.features, ...collections.regional.features],
+      maxAge
+    );
+    const next = new Map<string, Feature<LineString>>();
+    const updates: NonNullable<GeoJSONSourceDiff['update']> = [];
+    for (const feature of features) {
+      if (feature.id === undefined) continue;
+      const id = String(feature.id);
+      next.set(id, feature);
+      const old = this.routeTrunkFeatures.get(id);
+      if (!old || sameLineFeature(old, feature)) continue;
+      updates.push({
+        id,
+        newGeometry: feature.geometry,
+        addOrUpdateProperties: Object.entries(feature.properties ?? {}).map(([key, value]) => ({ key, value }))
+      });
+    }
+    if (next.size !== this.routeTrunkFeatures.size) {
+      return this.updateRouteSource(ROUTE_TRUNK_SOURCE_ID, source, this.routeTrunkFeatures, features);
+    }
+    if (updates.length === 0) return false;
+
+    this.routeWindowUpdating = true;
+    const updateEpoch = ++this.routeWindowUpdateEpoch;
+    const active = (): boolean => updateEpoch === this.routeWindowUpdateEpoch;
+    let offset = 0;
+    const fail = (error: unknown): void => {
+      if (!active()) return;
+      this.routeWindowUpdating = false;
+      this.routeDataDirty = true;
+      console.warn('Route trunk window update failed:', error instanceof Error ? error.message : error);
+      if (!this.routeHydrating) this.hydrateRouteSource();
+    };
+    const finish = (): void => {
+      if (!active()) return;
+      this.routeTrunkFeatures.clear();
+      for (const [id, feature] of next) this.routeTrunkFeatures.set(id, feature);
+      const pending = this.pendingRouteWindowMS;
+      this.pendingRouteWindowMS = undefined;
+      this.routeWindowUpdating = false;
+      if (pending !== undefined && pending !== maxAge) {
+        this.updateRouteTrunkWindow(pending);
+        return;
+      }
+      if (this.routeDataDirty && !this.routeHydrating) this.hydrateRouteSource();
+    };
+    const dispatch = (): void => {
+      if (!active()) return;
+      if (!this.map.getSource(ROUTE_TRUNK_SOURCE_ID)) return fail(new Error('route trunk source is unavailable'));
+      const batch = updates.slice(offset, offset + ROUTE_WINDOW_UPDATE_BATCH);
+      try {
+        source.updateData({ update: batch });
+      } catch (error: unknown) {
+        fail(error);
+        return;
+      }
+      offset += batch.length;
+      const waitForBatch = (): void => {
+        if (!active()) return;
+        if (!this.map.getSource(ROUTE_TRUNK_SOURCE_ID)) return fail(new Error('route trunk source is unavailable'));
+        if (!this.map.isSourceLoaded(ROUTE_TRUNK_SOURCE_ID)) {
+          window.requestAnimationFrame(waitForBatch);
+          return;
+        }
+        if (offset < updates.length) window.requestAnimationFrame(dispatch);
+        else finish();
+      };
+      window.requestAnimationFrame(waitForBatch);
+    };
+    window.requestAnimationFrame(dispatch);
+    return true;
+  }
+
   reset(center: [number, number] = DEFAULT_CENTER, zoom = DEFAULT_ZOOM): void {
     this.lastFollowMoveAt = 0;
     if (this.reducedMotion) {
@@ -673,6 +764,7 @@ export class LiveMap {
 
   destroy(): void {
     this.routeHydrationEpoch += 1;
+    this.routeWindowUpdateEpoch += 1;
     this.routeHydrating = false;
     this.renderEpoch += 1;
     window.clearInterval(this.freshnessTimer);
@@ -742,7 +834,7 @@ export class LiveMap {
     }
     if (!changed) return;
     this.routeDataDirty = true;
-    if (!this.routeHydrating && this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) this.hydrateRouteSource(now);
+    if (!this.routeHydrating && !this.routeWindowUpdating && this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) this.hydrateRouteSource(now);
   }
 
   private applyRouteTimeState(now = Date.now(), refreshClock = false): boolean {
@@ -755,18 +847,7 @@ export class LiveMap {
       }
       if (this.appliedRouteWindowMS !== maxAge) {
         this.appliedRouteWindowMS = maxAge;
-        const collections = this.routeCollections;
-        if (collections) {
-          trunkChanged = this.updateRouteSource(
-            ROUTE_TRUNK_SOURCE_ID,
-            trunkSource,
-            this.routeTrunkFeatures,
-            routeTrunkFeaturesForWindow(
-              [...collections.national.features, ...collections.regional.features],
-              maxAge
-            )
-          );
-        }
+        trunkChanged = this.updateRouteTrunkWindow(maxAge);
       }
       if (this.routesVisible
         && this.map.getZoom() >= ROUTE_EXACT_SOURCE_MIN_ZOOM
@@ -1286,7 +1367,7 @@ export class LiveMap {
         Boolean(this.map.getSource(sourceID)) && this.map.isSourceLoaded(sourceID)
       ));
       const awaitingInitialRoutes = !this.lastState || this.container.dataset.exactRoutesLoaded !== 'true';
-      if (awaitingInitialRoutes || this.routeHydrating || !sourcesSettled) {
+      if (awaitingInitialRoutes || this.routeHydrating || this.routeWindowUpdating || !sourcesSettled) {
         settledFrames = 0;
         window.requestAnimationFrame(settle);
         return;
