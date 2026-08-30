@@ -38,8 +38,8 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   expect(rasterRequests, 'the vector-only release must not request a raster basemap').toEqual([]);
   const regionCanvas = page.locator('#region-canvas');
   await expect(regionCanvas).toBeHidden();
-  const routeCanvas = page.locator('#route-canvas');
-  await expect(routeCanvas).toBeHidden();
+  await expect(page.locator('#route-canvas')).toHaveCount(0);
+  await expect(page.locator('#map')).toHaveAttribute('data-route-renderer', 'maplibre');
   await expect(page.locator('#packet-canvas')).toBeVisible();
   await expect(page.locator('#traffic-meter i')).toHaveCount(5);
   expect(await page.locator('#map-grade').evaluate((element) => {
@@ -170,16 +170,24 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(routeLegend).toBeVisible();
-  await expect(routeCanvas).toBeVisible();
-  await expect.poll(() => routeCanvas.getAttribute('data-rendered-routes').then(Number)).toBeGreaterThan(0);
-  expect(await canvasHasPixels(routeCanvas), 'stable route lattice should paint on its dedicated canvas').toBe(true);
+  await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
+  await expect(page.locator('#map')).toHaveAttribute('data-route-representation', /^(?:(?:national|regional)-trunks|individual-routes)$/);
+  await expect.poll(() => page.locator('#map').getAttribute('data-eligible-routes').then(Number)).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    const map = page.locator('#map');
+    const eligible = Number(await map.getAttribute('data-eligible-routes'));
+    const loaded = (await map.getAttribute('data-trunk-representations-loaded') ?? '').split(',');
+    const national = Number(await map.getAttribute('data-national-routes-represented'));
+    const regional = Number(await map.getAttribute('data-regional-routes-represented'));
+    return national === (loaded.includes('national') ? eligible : 0)
+      && regional === (loaded.includes('regional') ? eligible : 0);
+  }, { message: 'every loaded trunk level must account for every eligible route' }).toBe(true);
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   if (mobile) await openLayers(page);
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'false');
   await expect(routesButton).toHaveAttribute('title', 'Show routes');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
-  await expect(routeCanvas).toBeHidden();
   await expect(routeLegend).toBeHidden();
   await expect(routeLegend.locator('.route-legend-item')).toHaveCount(5);
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
@@ -193,7 +201,6 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
-  await expect(routeCanvas).toBeVisible();
 
   const regionResponsePromise = page.waitForResponse((assetResponse) => isRegionAssetURL(assetResponse.url()));
   await regionsButton.click();

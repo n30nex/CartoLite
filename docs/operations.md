@@ -54,6 +54,10 @@ Before changing `/opt/CartoLite`, record the running container ID/image, copy Co
 
 Acceptance requires exact version/SHA/image identity; ready MQTT/checkpoint/queue with zero drops; public schema v2 privacy; live SSE, animation, and scheduled sound; vector TileJSON/PBF/glyph success with no raster request; desktop and both phone orientations; regional MIME/cache proof; watchdog outage/recovery proof; restic backup/check/restore checksum; and a 20-minute soak with zero restarts/drops and no sustained CPU or memory regression.
 
+## v0.6.4 complete route rendering
+
+v0.6.4 removes the route-count ceiling. On a 24-hour selection, require `data-eligible-routes` to equal the complete valid route count. At national and regional zooms, require both preloaded trunk representations' route totals to match that count; detailed zooms use the preloaded individual MapLibre lines. Changing the route window and moving the camera must leave `data-route-source-revision` unchanged, keep every trunk anchored to the same geographic cells, and produce no task of 100 ms or longer. Pan and zoom with Routes enabled and verify the native route layers remain attached to the basemap, the packet layer does not clear on unchanged resize events, and no full-canvas traffic filter returns. Preserve the existing privacy, health, readiness, vector-only, audio, mobile, region, hardening, and rollback gates. Per operator direction, this release does not include a soak period.
+
 ## v0.6.3 route-window correction
 
 v0.6.3 keeps the 700-route performance ceiling while sampling across the complete chosen age window after the ceiling is reached. Verify that 15m, 1h, 6h, and 24h produce distinct candidate sets under saturated traffic, fixed selections do not rename the Auto option, and selected-node routes and neighbor counts obey the same window.

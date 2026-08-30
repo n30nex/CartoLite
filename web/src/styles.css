@@ -57,7 +57,6 @@ button { font: inherit; }
 #map[data-camera-mode="director"] + .map-grade { box-shadow: inset 0 0 150px rgba(4, 32, 39, 0.38), inset 0 0 42px rgba(var(--traffic-rgb), 0.08); }
 
 #region-canvas,
-#route-canvas,
 #packet-canvas {
   position: absolute;
   inset: 0;
@@ -67,12 +66,7 @@ button { font: inherit; }
 }
 
 #region-canvas { z-index: 2; }
-#route-canvas { z-index: 3; }
 #packet-canvas { z-index: 4; }
-#region-canvas,
-#route-canvas { transition: filter 320ms ease, opacity 320ms ease; }
-#app.traffic-awake #region-canvas:not([hidden]) { filter: drop-shadow(0 0 4px rgba(var(--traffic-rgb), 0.34)); }
-#app.traffic-awake #route-canvas:not([hidden]) { filter: drop-shadow(0 0 5px rgba(var(--traffic-rgb), 0.22)); }
 
 .glass {
   z-index: 5;

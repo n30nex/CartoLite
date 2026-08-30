@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test';
 import type { NodeV2, RouteV2, StateV2 } from '../src/types';
 
+// Playwright trace screencasts read back the WebGL canvas and create synthetic
+// GPU stalls. Keep this timing gate capture-free; it writes evidence explicitly
+// after every timing assertion has completed.
+test.use({ screenshot: 'off', trace: 'off' });
+
 test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testInfo) => {
   const state = scaleState();
   const firstRoute = state.routes[0];
@@ -29,12 +34,9 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-quality-mode', testInfo.project.name.startsWith('mobile') ? 'low' : 'full');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(Date.now() - started, 'large topology should hydrate inside the first-view budget').toBeLessThan(10_000);
-  const routeCanvas = page.locator('#route-canvas');
-  await expect(routeCanvas).toBeHidden();
-  await expect.poll(() => routeCanvas.getAttribute('data-rendered-routes').then(Number), {
-    message: 'the hidden stable route lattice should be pre-rendered before interaction'
-  }).toBeGreaterThan(0);
-  expect(await canvasHasPixels(routeCanvas), 'the pre-rendered route lattice should contain visible route pixels').toBe(true);
+  const map = page.locator('#map');
+  await expect(page.locator('#route-canvas')).toHaveCount(0);
+  await expect(map).toHaveAttribute('data-route-renderer', 'maplibre');
   await installLongTaskObserver(page);
 
   const heatmapButton = page.locator('#heatmap-button');
@@ -42,16 +44,65 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
     await page.locator('#layers-summary').click();
     await expect(page.locator('#layers-disclosure')).toHaveAttribute('open', '');
   }
+  const routeSourceRevision = await map.getAttribute('data-route-source-revision');
+  await resetLongTasks(page);
+  await page.locator('#route-window').selectOption('24h');
+  await expect.poll(() => map.getAttribute('data-eligible-routes').then(Number), {
+    message: 'the 24-hour source must keep every route, with no visual cap'
+  }).toBe(7_000);
+  await expect(map).toHaveAttribute('data-trunk-representations-loaded', 'national,regional');
+  await expect.poll(async () => {
+    const loaded = (await map.getAttribute('data-trunk-representations-loaded') ?? '').split(',');
+    const national = Number(await map.getAttribute('data-national-routes-represented'));
+    const regional = Number(await map.getAttribute('data-regional-routes-represented'));
+    return national === (loaded.includes('national') ? 7_000 : 0)
+      && regional === (loaded.includes('regional') ? 7_000 : 0);
+  }, { message: 'every loaded trunk representation must account for all 7,000 routes' }).toBe(true);
+  const loadedTrunks = (await map.getAttribute('data-trunk-representations-loaded') ?? '').split(',');
+  if (loadedTrunks.includes('national')) {
+    expect(Number(await map.getAttribute('data-national-route-trunks')), 'national links should collapse into a compact trunk set').toBeLessThan(100);
+  }
+  if (loadedTrunks.includes('regional')) {
+    expect(Number(await map.getAttribute('data-regional-route-trunks')), 'regional links should collapse before exact lines load').toBeLessThan(300);
+  }
+  await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+  await expect(map).toHaveAttribute('data-exact-routes-loaded', 'true');
+  await expect(map).toHaveAttribute('data-route-source-revision', routeSourceRevision ?? '');
+  const routeTimings = await map.evaluate((element) => ({
+    buildMaxSliceMS: element.dataset.routeBuildMaxSliceMs,
+    sourceDispatchMS: element.dataset.routeSourceDispatchMs,
+    windowApplyMS: element.dataset.routeWindowApplyMs,
+    nationalTrunks: element.dataset.nationalRouteTrunks,
+    regionalTrunks: element.dataset.regionalRouteTrunks
+  }));
+  expect(
+    await maximumLongTask(page),
+    `selecting the complete 24-hour window must not block the main thread for 100 ms; ${JSON.stringify(routeTimings)}`
+  ).toBeLessThan(100);
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
   const routesButton = page.locator('#routes-button');
   await resetLongTasks(page);
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
-  await expect(routeCanvas).toBeVisible();
-  await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+  await expect(map).toHaveAttribute('data-routes-visible', 'true');
+  await expect(map).toHaveAttribute('data-route-representation', /^(?:national|regional)-trunks$/);
+  await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(await maximumLongTask(page), 'enabling Routes must not block the main thread for 100 ms').toBeLessThan(100);
+
+  const mapBox = await page.locator('#map .maplibregl-canvas').boundingBox();
+  expect(mapBox).not.toBeNull();
+  if (mapBox) {
+    await resetLongTasks(page);
+    await page.mouse.move(mapBox.x + mapBox.width * 0.58, mapBox.y + mapBox.height * 0.52);
+    await page.mouse.down();
+    await page.mouse.move(mapBox.x + mapBox.width * 0.42, mapBox.y + mapBox.height * 0.45, { steps: 8 });
+    await page.mouse.up();
+    await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+    await expect(map).toHaveAttribute('data-eligible-routes', '7000');
+    await expect(map).toHaveAttribute('data-route-source-revision', routeSourceRevision ?? '');
+    expect(await maximumLongTask(page), 'camera movement with all routes visible must stay responsive').toBeLessThan(100);
+  }
 
   const regionStarted = Date.now();
   const regionsButton = page.locator('#regions-button');
