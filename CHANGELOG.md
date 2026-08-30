@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.8 - 2026-08-30
+
+### Performance
+
+- Give the initial complete route source a clean settle window on slower renderers by widening only the historical-route refresh cadence from two to eight seconds.
+- Keep live animation, musical hops, nodes, heat, and 15-second route residue immediate, so the calmer background refresh does not hide current activity.
+- Make public browser acceptance account for the bounded live-to-history handoff while still requiring national and regional trunk totals to agree.
+
 ## 0.6.7 - 2026-08-30
 
 ### Performance

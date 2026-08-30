@@ -151,9 +151,9 @@ describe('map rendering budget', () => {
   });
 
   it('coalesces busy historical-route refreshes without delaying the first build', () => {
-    expect(routeHydrationDelay(1_000, 1_250)).toBe(1_750);
-    expect(routeHydrationDelay(1_000, 3_000)).toBe(0);
-    expect(routeHydrationDelay(1_000, 4_500)).toBe(0);
+    expect(routeHydrationDelay(1_000, 1_250)).toBe(7_750);
+    expect(routeHydrationDelay(1_000, 9_000)).toBe(0);
+    expect(routeHydrationDelay(1_000, 10_500)).toBe(0);
   });
 });
 
