@@ -513,6 +513,13 @@ export class LiveMap {
       this.updateFocusData();
       this.applyFocusState();
     }
+    if (this.hoveredRouteID && !isRouteInspectable(
+      this.lastState.routes,
+      this.selectedNodeID,
+      this.hoveredRouteID,
+      Date.now(),
+      this.effectiveRouteAgeMS()
+    )) this.clearRouteInspection();
     if (this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) {
       this.hydrateRouteSource();
     } else {

@@ -434,6 +434,11 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await expect(map).toHaveAttribute('data-hovered-route-id', 'a-c');
   await expect(tooltip).toHaveAttribute('data-kind', 'route');
   await expect(tooltip).toContainText('Alpha ↔ Charlie');
+  if (mobile) await openLayers(page);
+  await page.locator('#route-window').selectOption('15m');
+  await expect(map).toHaveAttribute('data-hovered-route-id', '');
+  await expect(tooltip).toBeHidden();
+  await page.locator('#route-window').selectOption('24h');
 
   await clickPoint(page, bravoPoint, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'b');
