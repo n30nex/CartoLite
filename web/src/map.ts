@@ -514,7 +514,7 @@ export class LiveMap {
       this.applyFocusState();
     }
     if (this.hoveredRouteID && !isRouteInspectable(
-      this.lastState.routes,
+      this.lastState?.routes ?? [],
       this.selectedNodeID,
       this.hoveredRouteID,
       Date.now(),
