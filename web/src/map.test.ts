@@ -11,7 +11,7 @@ import {
   applyRouteHitLayerVisibility,
   applyRouteExactWindowVisibility,
   applyRouteSelectionFilter,
-  applyRouteTrunkWindowPaint,
+  applyRouteTrunkWindowState,
   applyRouteVisibilityForZoom,
   applyRouteVisualLayerVisibility,
   applySelectedNodeFilter,
@@ -106,22 +106,18 @@ describe('route layer visibility', () => {
     ]);
   });
 
-  it('updates only compact trunk paint when the route window changes', () => {
-    const setPaintProperty = vi.fn();
+  it('switches every compact trunk with one global route-window state', () => {
+    const globalState: Record<string, unknown> = { 'cartolite-route-window': '15m' };
+    const setGlobalStateProperty = vi.fn((name: string, value: unknown) => { globalState[name] = value; });
     const map = {
-      getLayer: vi.fn((layerID: string) => layerID === ROUTE_VISUAL_LAYER_IDS[0] ? {} : undefined),
-      setPaintProperty
-    } as unknown as Parameters<typeof applyRouteTrunkWindowPaint>[0];
+      getGlobalState: vi.fn(() => globalState),
+      setGlobalStateProperty
+    } as unknown as Parameters<typeof applyRouteTrunkWindowState>[0];
 
-    expect(applyRouteTrunkWindowPaint(map, 60 * 60_000)).toBe(true);
-    expect(setPaintProperty).toHaveBeenCalledTimes(3);
-    expect(setPaintProperty.mock.calls[0]).toEqual([
-      ROUTE_VISUAL_LAYER_IDS[0],
-      'line-color',
-      ['to-color', ['get', 'color1h']]
-    ]);
-    expect(JSON.stringify(setPaintProperty.mock.calls)).toContain('glowWidth1h');
-    expect(JSON.stringify(setPaintProperty.mock.calls)).toContain('opacity1h');
+    expect(applyRouteTrunkWindowState(map, 60 * 60_000)).toBe(true);
+    expect(applyRouteTrunkWindowState(map, 60 * 60_000)).toBe(false);
+    expect(setGlobalStateProperty).toHaveBeenCalledOnce();
+    expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-route-window', '1h');
   });
 
   it('shows the wide route hit target only while neighbor routes are interactive', () => {
