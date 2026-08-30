@@ -40,7 +40,8 @@ const REGION_ATTRIBUTION_SOURCE_ID = 'meshmapper-canada-regions';
 const ROUTE_TRUNK_SOURCE_ID = 'route-trunks';
 const ROUTE_DETAIL_SOURCE_ID = 'route-details';
 const ROUTE_VISIBILITY_STATE_ID = 'cartolite-routes-visible';
-const ROUTE_WINDOW_STATE_ID = 'cartolite-route-window';
+const ROUTE_TRUNK_WINDOW_STATE_ID = 'cartolite-trunk-window';
+const ROUTE_EXACT_WINDOW_STATE_ID = 'cartolite-exact-window';
 export const HEATMAP_LAYER_ID = 'activity-heat';
 export const ROUTE_HIT_LAYER_ID = 'route-hit';
 export const NODE_HIT_LAYER_ID = 'node-hit';
@@ -136,6 +137,7 @@ export class LiveMap {
   private routeSourceRevision = 0;
   private routeClock = 0;
   private appliedRouteWindowMS = 0;
+  private appliedExactRouteWindowMS = 0;
   private routeCollections?: RouteSourceCollections;
   private routeTrunkFeatures = new Map<string, Feature<LineString>>();
   private routeDetailFeatures = new Map<string, Feature<LineString>>();
@@ -602,6 +604,12 @@ export class LiveMap {
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
     const needsHydration = visible && this.routeDataDirty && Boolean(detailSource);
     const maxAge = this.effectiveRouteAgeMS();
+    if (visible
+      && this.map.getZoom() >= ROUTE_EXACT_SOURCE_MIN_ZOOM
+      && this.appliedExactRouteWindowMS !== maxAge) {
+      this.appliedExactRouteWindowMS = maxAge;
+      applyRouteExactWindowState(this.map, maxAge);
+    }
     const visualApplied = detailSource
       ? applyRouteVisibilityForZoom(this.map, visible, maxAge, this.map.getZoom())
       : false;
@@ -686,6 +694,7 @@ export class LiveMap {
       this.map.getZoom()
     );
     if (this.routeWindow !== 'auto') {
+      this.applyRouteTimeState();
       this.emitRouteWindowChange();
       if (visibilityApplied) this.markRendering();
       return;
@@ -743,6 +752,12 @@ export class LiveMap {
       if (this.appliedRouteWindowMS !== maxAge) {
         this.appliedRouteWindowMS = maxAge;
         applyRouteTrunkWindowState(this.map, maxAge);
+      }
+      if (this.routesVisible
+        && this.map.getZoom() >= ROUTE_EXACT_SOURCE_MIN_ZOOM
+        && this.appliedExactRouteWindowMS !== maxAge) {
+        this.appliedExactRouteWindowMS = maxAge;
+        applyRouteExactWindowState(this.map, maxAge);
       }
     }
     this.updateRouteWindowDiagnostics(this.routeClock || now, maxAge);
@@ -808,6 +823,8 @@ export class LiveMap {
     this.map.addSource(ROUTE_TRUNK_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 8 });
     this.map.addSource(ROUTE_DETAIL_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 16 });
     this.map.setGlobalStateProperty(ROUTE_VISIBILITY_STATE_ID, this.routesVisible);
+    this.appliedExactRouteWindowMS = this.effectiveRouteAgeMS();
+    this.map.setGlobalStateProperty(ROUTE_EXACT_WINDOW_STATE_ID, routeWindowSuffix(this.appliedExactRouteWindowMS));
     this.applyRouteTimeState(Date.now(), true);
     const routeVisibility = 'visible';
     this.map.addLayer({
@@ -1499,8 +1516,15 @@ export function applyRouteVisibilityForZoom(
 
 export function applyRouteTrunkWindowState(map: RouteWindowMap, maxAge: number): boolean {
   const suffix = routeWindowSuffix(maxAge);
-  if (map.getGlobalState()[ROUTE_WINDOW_STATE_ID] === suffix) return false;
-  map.setGlobalStateProperty(ROUTE_WINDOW_STATE_ID, suffix);
+  if (map.getGlobalState()[ROUTE_TRUNK_WINDOW_STATE_ID] === suffix) return false;
+  map.setGlobalStateProperty(ROUTE_TRUNK_WINDOW_STATE_ID, suffix);
+  return true;
+}
+
+export function applyRouteExactWindowState(map: RouteWindowMap, maxAge: number): boolean {
+  const suffix = routeWindowSuffix(maxAge);
+  if (map.getGlobalState()[ROUTE_EXACT_WINDOW_STATE_ID] === suffix) return false;
+  map.setGlobalStateProperty(ROUTE_EXACT_WINDOW_STATE_ID, suffix);
   return true;
 }
 
@@ -1763,7 +1787,7 @@ export function routeTrunkColorExpression(maxAge = ROUTE_MAX_AGE_MS): Expression
 function activeRouteTrunkMetricExpression(
   metric: 'routeCount' | 'width' | 'glowWidth' | 'opacity' | 'color'
 ): ExpressionSpecification {
-  return ['get', ['concat', metric, ['global-state', ROUTE_WINDOW_STATE_ID]]];
+  return ['get', ['concat', metric, ['global-state', ROUTE_TRUNK_WINDOW_STATE_ID]]];
 }
 
 function activeRouteTrunkColorExpression(): ExpressionSpecification {
@@ -1775,7 +1799,7 @@ function routeVisibilityOpacityExpression(): ExpressionSpecification {
 }
 
 function routeWindowBandOpacityExpression(band: 0 | 1 | 2 | 3): ExpressionSpecification {
-  return ['match', ['global-state', ROUTE_WINDOW_STATE_ID], ROUTE_WINDOW_BUCKETS.slice(band).map((bucket) => bucket.suffix), 1, 0];
+  return ['match', ['global-state', ROUTE_EXACT_WINDOW_STATE_ID], ROUTE_WINDOW_BUCKETS.slice(band).map((bucket) => bucket.suffix), 1, 0];
 }
 
 function routeWindowSuffix(maxAge: number): string {

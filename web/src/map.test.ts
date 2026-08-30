@@ -9,6 +9,7 @@ import {
   applyNeighborRingVisibility,
   applyRouteHoverFilter,
   applyRouteHitLayerVisibility,
+  applyRouteExactWindowState,
   applyRouteSelectionFilter,
   applyRouteTrunkWindowState,
   applyRouteVisibilityForZoom,
@@ -64,8 +65,11 @@ describe('route layer visibility', () => {
     expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-routes-visible', true);
   });
 
-  it('switches every compact trunk with one global route-window state', () => {
-    const globalState: Record<string, unknown> = { 'cartolite-route-window': '15m' };
+  it('keeps compact-trunk and exact-line route windows independent', () => {
+    const globalState: Record<string, unknown> = {
+      'cartolite-trunk-window': '15m',
+      'cartolite-exact-window': '15m'
+    };
     const setGlobalStateProperty = vi.fn((name: string, value: unknown) => { globalState[name] = value; });
     const map = {
       getGlobalState: vi.fn(() => globalState),
@@ -74,8 +78,10 @@ describe('route layer visibility', () => {
 
     expect(applyRouteTrunkWindowState(map, 60 * 60_000)).toBe(true);
     expect(applyRouteTrunkWindowState(map, 60 * 60_000)).toBe(false);
-    expect(setGlobalStateProperty).toHaveBeenCalledOnce();
-    expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-route-window', '1h');
+    expect(applyRouteExactWindowState(map, 6 * 60 * 60_000)).toBe(true);
+    expect(setGlobalStateProperty).toHaveBeenCalledTimes(2);
+    expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-trunk-window', '1h');
+    expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-exact-window', '6h');
   });
 
   it('shows the wide route hit target only while neighbor routes are interactive', () => {
