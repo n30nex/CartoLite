@@ -83,7 +83,7 @@ const ROUTE_NATIONAL_MAX_ZOOM = 5.25;
 const ROUTE_REGIONAL_MIN_ZOOM = 4.35;
 const ROUTE_REGIONAL_MAX_ZOOM = 7.2;
 const ROUTE_SOURCE_BUILD_BATCH = 256;
-const ROUTE_WINDOW_UPDATE_BATCH = 24;
+const ROUTE_WINDOW_UPDATE_BATCH = 8;
 const ROUTE_WINDOW_BUCKETS = [
   { key: '15m', suffix: '15m', ms: 15 * 60_000 },
   { key: '1h', suffix: '1h', ms: 60 * 60_000 },
