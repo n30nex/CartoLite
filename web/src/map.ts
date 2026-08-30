@@ -90,6 +90,11 @@ const ROUTE_REGIONAL_MIN_ZOOM = 4.35;
 const ROUTE_REGIONAL_MAX_ZOOM = 7.2;
 const ROUTE_SOURCE_BUILD_BATCH = 256;
 const ROUTE_WINDOW_UPDATE_BATCH = 8;
+export const ROUTE_LIVE_UPDATE_INTERVAL_MS = 2_000;
+
+export function routeHydrationDelay(lastStartedAt: number, now: number): number {
+  return Math.max(0, ROUTE_LIVE_UPDATE_INTERVAL_MS - Math.max(0, now - lastStartedAt));
+}
 const ROUTE_WINDOW_BUCKETS = [
   { key: '15m', suffix: '15m', ms: 15 * 60_000 },
   { key: '1h', suffix: '1h', ms: 60 * 60_000 },
@@ -141,6 +146,8 @@ export class LiveMap {
   private routeDataDirty = true;
   private routeHydrating = false;
   private routeHydrationEpoch = 0;
+  private routeHydrationTimer?: number;
+  private lastRouteHydrationAt = 0;
   private routeSourceRevision = 0;
   private routeClock = 0;
   private appliedRouteWindowMS = 0;
@@ -238,7 +245,6 @@ export class LiveMap {
       return;
     }
 
-    let changed = false;
     const heatNodeIDs = new Set<string>();
     const routeFeatureIDs = new Set(changes?.routeGeometry ?? []);
     if (changes?.nodes?.length) {
@@ -246,7 +252,7 @@ export class LiveMap {
         this.nodesByID.set(node.id, node);
         heatNodeIDs.add(node.id);
       }
-      changed = this.updateNodeFeatures(changes.nodes.map((node) => node.id)) || changed;
+      this.updateNodeFeatures(changes.nodes.map((node) => node.id));
     }
     if (changes?.routes?.length) {
       const routeIDs: string[] = [];
@@ -260,10 +266,10 @@ export class LiveMap {
     if (routeFeatureIDs.size > 0) {
       for (const routeID of routeFeatureIDs) this.dirtyRouteIDs.add(routeID);
       this.routeDataDirty = true;
-      if (!this.routeHydrating && !this.routeWindowUpdating && this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) this.hydrateRouteSource();
+      if (!this.routeHydrating && !this.routeWindowUpdating && this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) this.scheduleRouteHydration();
     }
     if (heatNodeIDs.size > 0) {
-      if (this.heatmapVisible) changed = this.updateHeatFeatures([...heatNodeIDs]) || changed;
+      if (this.heatmapVisible) this.updateHeatFeatures([...heatNodeIDs]);
       else this.heatDataDirty = true;
     }
     if (changes?.nodes?.length || changes?.routes?.length || routeFeatureIDs.size > 0) {
@@ -277,7 +283,8 @@ export class LiveMap {
       )) this.clearRouteInspection();
       if (this.selectedNodeID) this.applyFocusState(false);
     }
-    if (changed) this.markRendering();
+    // Live node and heat deltas are already painted by MapLibre. Do not restart
+    // the route-settle indicator for every packet during a busy burst.
   }
 
   private resetSources(state: Readonly<StateV2>): void {
@@ -321,6 +328,11 @@ export class LiveMap {
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
     const trunkSource = this.map.getSource(ROUTE_TRUNK_SOURCE_ID) as GeoJSONSource | undefined;
     if (!detailSource || !trunkSource) return;
+    if (this.routeHydrationTimer !== undefined) {
+      window.clearTimeout(this.routeHydrationTimer);
+      this.routeHydrationTimer = undefined;
+    }
+    this.lastRouteHydrationAt = performance.now();
     const hydrationEpoch = ++this.routeHydrationEpoch;
     const allRoutes = [...this.routesByID.values()];
     const routeBaseline = routeTrafficBaseline(allRoutes, now);
@@ -347,7 +359,9 @@ export class LiveMap {
       if (!active()) return;
       this.routeHydrating = false;
       if (this.routeDataDirty) {
-        this.hydrateRouteSource();
+        this.emitRouteWindowChange();
+        this.markRendering([ROUTE_TRUNK_SOURCE_ID, ROUTE_DETAIL_SOURCE_ID]);
+        this.scheduleRouteHydration();
         return;
       }
       this.emitRouteWindowChange();
@@ -394,6 +408,20 @@ export class LiveMap {
     })
       .then(finish)
       .catch(fail);
+  }
+
+  private scheduleRouteHydration(): void {
+    if (this.routeHydrationTimer !== undefined || this.routeHydrating || this.routeWindowUpdating || !this.routeDataDirty) return;
+    if (!this.map.getSource(ROUTE_DETAIL_SOURCE_ID) || !this.map.getSource(ROUTE_TRUNK_SOURCE_ID)) return;
+    const delay = routeHydrationDelay(this.lastRouteHydrationAt, performance.now());
+    this.routeHydrationTimer = window.setTimeout(() => {
+      this.routeHydrationTimer = undefined;
+      if (this.routeHydrating || this.routeWindowUpdating) {
+        this.scheduleRouteHydration();
+        return;
+      }
+      if (this.routeDataDirty) this.hydrateRouteSource();
+    }, delay);
   }
 
   private rebuildHeatIndex(now = Date.now()): void {
@@ -564,7 +592,7 @@ export class LiveMap {
       this.routeWindowUpdating = false;
       this.routeDataDirty = true;
       console.warn('Route trunk window update failed:', error instanceof Error ? error.message : error);
-      if (!this.routeHydrating) this.hydrateRouteSource();
+      if (!this.routeHydrating) this.scheduleRouteHydration();
     };
     const finish = (): void => {
       if (!active()) return;
@@ -577,7 +605,7 @@ export class LiveMap {
         this.updateRouteTrunkWindow(pending);
         return;
       }
-      if (this.routeDataDirty && !this.routeHydrating) this.hydrateRouteSource();
+      if (this.routeDataDirty && !this.routeHydrating) this.scheduleRouteHydration();
     };
     const dispatch = (): void => {
       if (!active()) return;
@@ -778,6 +806,7 @@ export class LiveMap {
     this.routeHydrating = false;
     this.renderEpoch += 1;
     window.clearInterval(this.freshnessTimer);
+    if (this.routeHydrationTimer !== undefined) window.clearTimeout(this.routeHydrationTimer);
     if (this.directorTimer !== undefined) window.clearTimeout(this.directorTimer);
     if (this.clusterFlashTimer !== undefined) window.clearTimeout(this.clusterFlashTimer);
     this.map.off('zoom', this.updateRouteRepresentation);

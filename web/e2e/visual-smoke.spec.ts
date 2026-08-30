@@ -562,7 +562,10 @@ function captureMapStyleErrors(page: Page): string[] {
 function captureConsoleErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(message.text());
+    const text = message.text();
+    // Cloudflare may inject its optional beacon after the origin response. The
+    // app deliberately blocks it because visitor analytics are out of scope.
+    if (message.type() === 'error' && !text.includes('static.cloudflareinsights.com/beacon.min.js')) errors.push(text);
   });
   page.on('pageerror', (error) => errors.push(error.message));
   return errors;
