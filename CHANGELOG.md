@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2 - 2026-08-29
+
+### Changed
+
+- Remove the traffic-reactive full-map aurora wash and its repeated colour flashes.
+- Keep packet ribbons, protocol signatures, node wakes, region and route emphasis, the compact traffic meter, and musical hop cues localized to actual live activity.
+- Add browser coverage that fails if live traffic reintroduces a full-map colour pulse pseudo-layer.
+
 ## 0.6.1 - 2026-08-29
 
 ### Fixed
