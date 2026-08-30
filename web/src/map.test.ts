@@ -12,6 +12,7 @@ import {
   applyRouteExactWindowVisibility,
   applyRouteSelectionFilter,
   applyRouteTrunkWindowPaint,
+  applyRouteVisibilityForZoom,
   applyRouteVisualLayerVisibility,
   applySelectedNodeFilter,
   canMoveLiveFollow,
@@ -84,6 +85,24 @@ describe('route layer visibility', () => {
       ['route-exact-core-2', 'visibility', 'none'],
       ['route-exact-glow-3', 'visibility', 'none'],
       ['route-exact-core-3', 'visibility', 'none']
+    ]);
+  });
+
+  it('activates only the stable route representation visible at the current zoom', () => {
+    const visibility = new Map(ROUTE_VISUAL_LAYER_IDS.map((layerID) => [layerID, 'none']));
+    const setLayoutProperty = vi.fn((layerID: string, _property: string, value: string) => {
+      visibility.set(layerID, value);
+    });
+    const map = {
+      getLayer: vi.fn(() => ({})),
+      getLayoutProperty: vi.fn((layerID: string) => visibility.get(layerID)),
+      setLayoutProperty
+    } as unknown as Parameters<typeof applyRouteVisibilityForZoom>[0];
+
+    expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 3.4)).toBe(true);
+    expect(setLayoutProperty.mock.calls).toEqual([
+      ['route-national-glow', 'visibility', 'visible'],
+      ['route-national-core', 'visibility', 'visible']
     ]);
   });
 

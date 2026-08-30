@@ -48,11 +48,9 @@ export const SELECTED_NODE_OUTER_LAYER_ID = 'selected-node-outer';
 export const NEIGHBOR_NODE_LAYER_ID = 'neighbor-nodes';
 export const MESHMAP_ATTRIBUTION = 'Canadian regions &copy; <a href="https://meshmapper.net/">MeshMapper</a>, used with permission';
 export const ROUTE_HOVER_LAYER_IDS = ['route-hover-glow', 'route-hover-core'] as const;
-export const ROUTE_VISUAL_LAYER_IDS = [
-  'route-national-glow',
-  'route-national-core',
-  'route-regional-glow',
-  'route-regional-core',
+const ROUTE_NATIONAL_LAYER_IDS = ['route-national-glow', 'route-national-core'] as const;
+const ROUTE_REGIONAL_LAYER_IDS = ['route-regional-glow', 'route-regional-core'] as const;
+const ROUTE_EXACT_LAYER_IDS = [
   'route-exact-glow-0',
   'route-exact-core-0',
   'route-exact-glow-1',
@@ -61,6 +59,11 @@ export const ROUTE_VISUAL_LAYER_IDS = [
   'route-exact-core-2',
   'route-exact-glow-3',
   'route-exact-core-3'
+] as const;
+export const ROUTE_VISUAL_LAYER_IDS = [
+  ...ROUTE_NATIONAL_LAYER_IDS,
+  ...ROUTE_REGIONAL_LAYER_IDS,
+  ...ROUTE_EXACT_LAYER_IDS
 ] as const;
 export const CLUSTER_HIGHLIGHT_LAYER_ID = 'cluster-highlight';
 const NODE_GLOW_LAYER_ID = 'nodes-glow';
@@ -596,9 +599,8 @@ export class LiveMap {
     this.container.dataset.routesVisible = String(visible);
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
     const needsHydration = visible && this.routeDataDirty && Boolean(detailSource);
-    const visualApplied = applyRouteVisualLayerVisibility(this.map, visible);
     const maxAge = this.effectiveRouteAgeMS();
-    const exactApplied = visible && applyRouteExactWindowVisibility(this.map, true, maxAge);
+    const visualApplied = applyRouteVisibilityForZoom(this.map, visible, maxAge, this.map.getZoom());
     let paintApplied = false;
     if (visible && this.appliedRouteWindowMS !== maxAge) {
       this.appliedRouteWindowMS = maxAge;
@@ -609,7 +611,7 @@ export class LiveMap {
     if (needsHydration) this.hydrateRouteSource();
     if (!visible) this.clearRouteInspection();
     if (!visible) this.map.getCanvas().style.cursor = '';
-    if (!needsHydration && (visualApplied || exactApplied || paintApplied || Boolean(detailSource) || hitApplied || neighborsApplied)) this.markRendering();
+    if (!needsHydration && (visualApplied || paintApplied || Boolean(detailSource) || hitApplied || neighborsApplied)) this.markRendering();
   }
 
   setHeatmapVisible(visible: boolean): void {
@@ -678,8 +680,15 @@ export class LiveMap {
   };
 
   private handleZoomEnd = (): void => {
+    const visibilityApplied = applyRouteVisibilityForZoom(
+      this.map,
+      this.routesVisible,
+      this.effectiveRouteAgeMS(),
+      this.map.getZoom()
+    );
     if (this.routeWindow !== 'auto') {
       this.emitRouteWindowChange();
+      if (visibilityApplied) this.markRendering();
       return;
     }
     this.applyRouteTimeState();
@@ -735,7 +744,7 @@ export class LiveMap {
       if (this.routesVisible && this.appliedRouteWindowMS !== maxAge) {
         this.appliedRouteWindowMS = maxAge;
         applyRouteTrunkWindowPaint(this.map, maxAge);
-        applyRouteExactWindowVisibility(this.map, true, maxAge);
+        applyRouteVisibilityForZoom(this.map, true, maxAge, this.map.getZoom());
       }
     }
     this.updateRouteWindowDiagnostics(this.routeClock || now, maxAge);
@@ -1467,6 +1476,7 @@ export class LiveMap {
 }
 
 type RouteLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setLayoutProperty'>;
+type RouteVisibilityMap = Pick<maplibregl.Map, 'getLayer' | 'getLayoutProperty' | 'setLayoutProperty'>;
 type RouteFilterMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter'>;
 type RoutePaintMap = Pick<maplibregl.Map, 'getLayer' | 'setPaintProperty'>;
 type FocusMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setPaintProperty' | 'setLayoutProperty'>;
@@ -1488,6 +1498,39 @@ export function applyRouteVisualLayerVisibility(map: RouteLayerMap, visible: boo
     applied = true;
   }
   return applied;
+}
+
+export function applyRouteVisibilityForZoom(
+  map: RouteVisibilityMap,
+  routesVisible: boolean,
+  maxAge: number,
+  zoom: number
+): boolean {
+  let applied = false;
+  const nationalVisible = routesVisible && zoom < ROUTE_NATIONAL_MAX_ZOOM;
+  const regionalVisible = routesVisible && zoom >= ROUTE_REGIONAL_MIN_ZOOM && zoom < ROUTE_REGIONAL_MAX_ZOOM;
+  const exactVisible = routesVisible && zoom >= ROUTE_EXACT_SOURCE_MIN_ZOOM;
+  for (const layerID of ROUTE_NATIONAL_LAYER_IDS) {
+    applied = setRouteLayerVisibility(map, layerID, nationalVisible) || applied;
+  }
+  for (const layerID of ROUTE_REGIONAL_LAYER_IDS) {
+    applied = setRouteLayerVisibility(map, layerID, regionalVisible) || applied;
+  }
+  for (const band of [0, 1, 2, 3] as const) {
+    const visible = exactVisible && maxAge >= ROUTE_WINDOW_BUCKETS[band].ms;
+    for (const layerID of [`route-exact-glow-${band}`, `route-exact-core-${band}`]) {
+      applied = setRouteLayerVisibility(map, layerID, visible) || applied;
+    }
+  }
+  return applied;
+}
+
+function setRouteLayerVisibility(map: RouteVisibilityMap, layerID: string, visible: boolean): boolean {
+  if (!map.getLayer(layerID)) return false;
+  const visibility = visible ? 'visible' : 'none';
+  if (map.getLayoutProperty(layerID, 'visibility') === visibility) return false;
+  map.setLayoutProperty(layerID, 'visibility', visibility);
+  return true;
 }
 
 export function applyRouteExactWindowVisibility(map: RouteLayerMap, routesVisible: boolean, maxAge: number): boolean {
