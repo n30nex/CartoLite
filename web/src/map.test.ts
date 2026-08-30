@@ -56,27 +56,36 @@ import { PACKET_KIND_COLORS, ROUTE_MAX_AGE_MS } from './trafficVisuals';
 
 describe('route layer visibility', () => {
   it('activates only the route representation used at the current zoom', () => {
-    const globalState: Record<string, unknown> = {
-      'cartolite-trunks-visible': false,
-      'cartolite-exact-visible': false
-    };
-    const setGlobalStateProperty = vi.fn((name: string, value: unknown) => { globalState[name] = value; });
+    const layerIDs = [
+      'route-national-glow', 'route-national-core',
+      'route-regional-glow', 'route-regional-core',
+      'route-exact-glow-0', 'route-exact-core-0',
+      'route-exact-glow-1', 'route-exact-core-1',
+      'route-exact-glow-2', 'route-exact-core-2',
+      'route-exact-glow-3', 'route-exact-core-3',
+      'route-focus-glow', 'route-focus-core'
+    ];
+    const visibility = Object.fromEntries(layerIDs.map((id) => [id, 'none']));
+    const setLayoutProperty = vi.fn((id: string, _name: string, value: string) => { visibility[id] = value; });
     const map = {
-      getGlobalState: vi.fn(() => globalState),
-      setGlobalStateProperty
+      getLayer: vi.fn((id: string) => layerIDs.includes(id) ? {} : undefined),
+      getLayoutProperty: vi.fn((id: string) => visibility[id]),
+      setLayoutProperty
     } as unknown as Parameters<typeof applyRouteVisibilityForZoom>[0];
 
     expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 3.4)).toBe(true);
     expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 3.4)).toBe(false);
-    expect(setGlobalStateProperty).toHaveBeenCalledOnce();
-    expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-trunks-visible', true);
-
-    setGlobalStateProperty.mockClear();
-    expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 8)).toBe(true);
-    expect(setGlobalStateProperty.mock.calls).toEqual([
-      ['cartolite-trunks-visible', false],
-      ['cartolite-exact-visible', true]
+    expect(setLayoutProperty.mock.calls).toEqual([
+      ['route-national-glow', 'visibility', 'visible'],
+      ['route-national-core', 'visibility', 'visible']
     ]);
+
+    setLayoutProperty.mockClear();
+    expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 8)).toBe(true);
+    expect(setLayoutProperty).toHaveBeenCalledTimes(12);
+    expect(setLayoutProperty.mock.calls).toContainEqual(['route-national-core', 'visibility', 'none']);
+    expect(setLayoutProperty.mock.calls).toContainEqual(['route-exact-core-3', 'visibility', 'visible']);
+    expect(setLayoutProperty.mock.calls).toContainEqual(['route-focus-core', 'visibility', 'visible']);
   });
 
   it('switches compact-trunk metrics without changing trunk geometry', () => {
