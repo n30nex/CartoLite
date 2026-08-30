@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { Feature, LineString } from 'geojson';
 import type { NodeV2, RouteV2 } from './types';
 import { NEIGHBOR_ROUTE_RECENT_MS, recentNeighborRoutes } from './routeFocus';
 import {
@@ -11,7 +12,6 @@ import {
   applyRouteHitLayerVisibility,
   applyRouteExactWindowState,
   applyRouteSelectionFilter,
-  applyRouteTrunkWindowState,
   applyRouteVisibilityForZoom,
   applySelectedNodeFilter,
   canMoveLiveFollow,
@@ -38,7 +38,7 @@ import {
   routeExactBandFilter,
   routeRenderCandidates,
   routeRepresentationForZoom,
-  routeTrunkMetricExpression,
+  routeTrunkFeaturesForWindow,
   routeVisualCollection,
   routeVisualProperties,
   routeWindowBand,
@@ -65,22 +65,47 @@ describe('route layer visibility', () => {
     expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-routes-visible', true);
   });
 
-  it('keeps compact-trunk and exact-line route windows independent', () => {
-    const globalState: Record<string, unknown> = {
-      'cartolite-trunk-window': '15m',
-      'cartolite-exact-window': '15m'
+  it('switches compact-trunk metrics without changing trunk geometry', () => {
+    const geometry: LineString = { type: 'LineString', coordinates: [[-80, 43], [-79, 44]] };
+    const trunk: Feature<LineString> = {
+      type: 'Feature',
+      id: 'trunk:test',
+      geometry,
+      properties: {
+        routeCount: 99,
+        routeCount1h: 12,
+        color1h: '#abcdef',
+        lastHeard1h: 1234,
+        width1h: 2.5,
+        glowWidth1h: 4.5,
+        opacity1h: 0.6
+      }
     };
+    const selected = routeTrunkFeaturesForWindow([trunk], 60 * 60_000)[0]!;
+
+    expect(selected.geometry).toBe(geometry);
+    expect(selected.properties).toMatchObject({
+      routeCount: 12,
+      color: '#abcdef',
+      lastHeard: 1234,
+      width: 2.5,
+      glowWidth: 4.5,
+      opacity: 0.6
+    });
+    expect(trunk.properties?.routeCount).toBe(99);
+  });
+
+  it('updates the deferred exact-line window independently', () => {
+    const globalState: Record<string, unknown> = { 'cartolite-exact-window': '15m' };
     const setGlobalStateProperty = vi.fn((name: string, value: unknown) => { globalState[name] = value; });
     const map = {
       getGlobalState: vi.fn(() => globalState),
       setGlobalStateProperty
-    } as unknown as Parameters<typeof applyRouteTrunkWindowState>[0];
+    } as unknown as Parameters<typeof applyRouteExactWindowState>[0];
 
-    expect(applyRouteTrunkWindowState(map, 60 * 60_000)).toBe(true);
-    expect(applyRouteTrunkWindowState(map, 60 * 60_000)).toBe(false);
     expect(applyRouteExactWindowState(map, 6 * 60 * 60_000)).toBe(true);
-    expect(setGlobalStateProperty).toHaveBeenCalledTimes(2);
-    expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-trunk-window', '1h');
+    expect(applyRouteExactWindowState(map, 6 * 60 * 60_000)).toBe(false);
+    expect(setGlobalStateProperty).toHaveBeenCalledOnce();
     expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-exact-window', '6h');
   });
 
@@ -287,7 +312,6 @@ describe('stable route visual data', () => {
       routeCount: 2
     });
     expect(national[0]?.geometry.coordinates).toHaveLength(2);
-    expect(routeTrunkMetricExpression('routeCount', 60 * 60_000)).toEqual(['get', 'routeCount1h']);
     expect(routeExactBandFilter(2)).toEqual([
       'all',
       ['==', ['get', 'representation'], 'exact'],

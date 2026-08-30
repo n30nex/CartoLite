@@ -40,7 +40,6 @@ const REGION_ATTRIBUTION_SOURCE_ID = 'meshmapper-canada-regions';
 const ROUTE_TRUNK_SOURCE_ID = 'route-trunks';
 const ROUTE_DETAIL_SOURCE_ID = 'route-details';
 const ROUTE_VISIBILITY_STATE_ID = 'cartolite-routes-visible';
-const ROUTE_TRUNK_WINDOW_STATE_ID = 'cartolite-trunk-window';
 const ROUTE_EXACT_WINDOW_STATE_ID = 'cartolite-exact-window';
 export const HEATMAP_LAYER_ID = 'activity-heat';
 export const ROUTE_HIT_LAYER_ID = 'route-hit';
@@ -357,7 +356,10 @@ export class LiveMap {
         ROUTE_TRUNK_SOURCE_ID,
         trunkSource,
         this.routeTrunkFeatures,
-        [...collections.national.features, ...collections.regional.features]
+        routeTrunkFeaturesForWindow(
+          [...collections.national.features, ...collections.regional.features],
+          this.effectiveRouteAgeMS()
+        )
       );
       const detailChanged = this.updateRouteSource(
         ROUTE_DETAIL_SOURCE_ID,
@@ -640,7 +642,7 @@ export class LiveMap {
     if (this.routeWindow === window) return;
     const started = performance.now();
     this.routeWindow = window;
-    this.applyRouteTimeState();
+    const trunkChanged = this.applyRouteTimeState();
     if (this.selectedNodeID) {
       this.updateFocusData();
       this.applyFocusState(false);
@@ -654,7 +656,7 @@ export class LiveMap {
     )) this.clearRouteInspection();
     this.emitRouteWindowChange();
     this.container.dataset.routeWindowApplyMs = (performance.now() - started).toFixed(1);
-    this.markRendering();
+    this.markRendering(trunkChanged ? [ROUTE_TRUNK_SOURCE_ID] : undefined);
   }
 
   setRegionsVisible(visible: boolean): void {
@@ -699,13 +701,13 @@ export class LiveMap {
       if (visibilityApplied) this.markRendering();
       return;
     }
-    this.applyRouteTimeState();
+    const trunkChanged = this.applyRouteTimeState();
     if (this.selectedNodeID) {
       this.updateFocusData();
       this.applyFocusState(false);
     }
     this.emitRouteWindowChange();
-    this.markRendering();
+    this.markRendering(trunkChanged ? [ROUTE_TRUNK_SOURCE_ID] : undefined);
   };
 
   private refreshRouteClock(): void {
@@ -743,15 +745,28 @@ export class LiveMap {
     if (!this.routeHydrating && this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) this.hydrateRouteSource(now);
   }
 
-  private applyRouteTimeState(now = Date.now(), refreshClock = false): void {
+  private applyRouteTimeState(now = Date.now(), refreshClock = false): boolean {
     const maxAge = this.effectiveRouteAgeMS();
-    if (this.map.getSource(ROUTE_TRUNK_SOURCE_ID)) {
+    const trunkSource = this.map.getSource(ROUTE_TRUNK_SOURCE_ID) as GeoJSONSource | undefined;
+    let trunkChanged = false;
+    if (trunkSource) {
       if (refreshClock || this.routeClock === 0) {
         this.routeClock = now;
       }
       if (this.appliedRouteWindowMS !== maxAge) {
         this.appliedRouteWindowMS = maxAge;
-        applyRouteTrunkWindowState(this.map, maxAge);
+        const collections = this.routeCollections;
+        if (collections) {
+          trunkChanged = this.updateRouteSource(
+            ROUTE_TRUNK_SOURCE_ID,
+            trunkSource,
+            this.routeTrunkFeatures,
+            routeTrunkFeaturesForWindow(
+              [...collections.national.features, ...collections.regional.features],
+              maxAge
+            )
+          );
+        }
       }
       if (this.routesVisible
         && this.map.getZoom() >= ROUTE_EXACT_SOURCE_MIN_ZOOM
@@ -761,6 +776,7 @@ export class LiveMap {
       }
     }
     this.updateRouteWindowDiagnostics(this.routeClock || now, maxAge);
+    return trunkChanged;
   }
 
   private updateRouteWindowDiagnostics(now: number, maxAge: number): void {
@@ -1514,13 +1530,6 @@ export function applyRouteVisibilityForZoom(
   return true;
 }
 
-export function applyRouteTrunkWindowState(map: RouteWindowMap, maxAge: number): boolean {
-  const suffix = routeWindowSuffix(maxAge);
-  if (map.getGlobalState()[ROUTE_TRUNK_WINDOW_STATE_ID] === suffix) return false;
-  map.setGlobalStateProperty(ROUTE_TRUNK_WINDOW_STATE_ID, suffix);
-  return true;
-}
-
 export function applyRouteExactWindowState(map: RouteWindowMap, maxAge: number): boolean {
   const suffix = routeWindowSuffix(maxAge);
   if (map.getGlobalState()[ROUTE_EXACT_WINDOW_STATE_ID] === suffix) return false;
@@ -1773,21 +1782,10 @@ export function routeColorExpression(): ExpressionSpecification {
   return ['to-color', ['get', 'color']];
 }
 
-export function routeTrunkMetricExpression(
-  metric: 'routeCount' | 'width' | 'glowWidth' | 'opacity' | 'color',
-  maxAge = ROUTE_MAX_AGE_MS
-): ExpressionSpecification {
-  return ['get', `${metric}${routeWindowSuffix(maxAge)}`];
-}
-
-export function routeTrunkColorExpression(maxAge = ROUTE_MAX_AGE_MS): ExpressionSpecification {
-  return ['to-color', routeTrunkMetricExpression('color', maxAge)];
-}
-
 function activeRouteTrunkMetricExpression(
   metric: 'routeCount' | 'width' | 'glowWidth' | 'opacity' | 'color'
 ): ExpressionSpecification {
-  return ['get', ['concat', metric, ['global-state', ROUTE_TRUNK_WINDOW_STATE_ID]]];
+  return ['get', metric];
 }
 
 function activeRouteTrunkColorExpression(): ExpressionSpecification {
@@ -2215,6 +2213,28 @@ function normalizedMercatorToLngLat(x: number, y: number): [number, number] {
 
 function compareCoordinates(left: readonly [number, number], right: readonly [number, number]): number {
   return left[0] - right[0] || left[1] - right[1];
+}
+
+export function routeTrunkFeaturesForWindow(
+  features: readonly Feature<LineString>[],
+  maxAge: number
+): Feature<LineString>[] {
+  const suffix = routeWindowSuffix(maxAge);
+  return features.map((feature) => {
+    const properties = feature.properties ?? {};
+    return {
+      ...feature,
+      properties: {
+        ...properties,
+        routeCount: properties[`routeCount${suffix}`] ?? 0,
+        color: properties[`color${suffix}`] ?? '#73d9cf',
+        lastHeard: properties[`lastHeard${suffix}`] ?? 0,
+        width: properties[`width${suffix}`] ?? 0,
+        glowWidth: properties[`glowWidth${suffix}`] ?? 0,
+        opacity: properties[`opacity${suffix}`] ?? 0
+      }
+    };
+  });
 }
 
 function routeWindowSummary(
