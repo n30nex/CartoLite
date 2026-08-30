@@ -31,6 +31,7 @@ import {
   nodeIDFilter,
   nodeLabelPriority,
   packetEndpoints,
+  packetMatchesFollow,
   ROUTE_FILTER_LAYER_IDS,
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
@@ -40,6 +41,7 @@ import {
   routeHydrationDelay,
   routeRenderCandidates,
   routeRepresentationForZoom,
+  routeTrunkFilter,
   routeTrunkFeaturesForWindow,
   routeVisualCollection,
   routeVisualProperties,
@@ -53,8 +55,11 @@ import {
 import { PACKET_KIND_COLORS, ROUTE_MAX_AGE_MS } from './trafficVisuals';
 
 describe('route layer visibility', () => {
-  it('switches every prewarmed route layer with one global visibility state', () => {
-    const globalState: Record<string, unknown> = { 'cartolite-routes-visible': false };
+  it('activates only the route representation used at the current zoom', () => {
+    const globalState: Record<string, unknown> = {
+      'cartolite-trunks-visible': false,
+      'cartolite-exact-visible': false
+    };
     const setGlobalStateProperty = vi.fn((name: string, value: unknown) => { globalState[name] = value; });
     const map = {
       getGlobalState: vi.fn(() => globalState),
@@ -64,7 +69,14 @@ describe('route layer visibility', () => {
     expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 3.4)).toBe(true);
     expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 3.4)).toBe(false);
     expect(setGlobalStateProperty).toHaveBeenCalledOnce();
-    expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-routes-visible', true);
+    expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-trunks-visible', true);
+
+    setGlobalStateProperty.mockClear();
+    expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 8)).toBe(true);
+    expect(setGlobalStateProperty.mock.calls).toEqual([
+      ['cartolite-trunks-visible', false],
+      ['cartolite-exact-visible', true]
+    ]);
   });
 
   it('switches compact-trunk metrics without changing trunk geometry', () => {
@@ -311,7 +323,7 @@ describe('stable route visual data', () => {
     expect(fullDay.map((item) => item.id)).toEqual(expect.arrayContaining(historical.map((item) => item.id)));
   });
 
-  it('keeps one fixed trunk geometry and carries every time-window count in its properties', () => {
+  it('keeps local trunk accounting without drawing artificial same-cell loops', () => {
     const now = 1_900_000_000_000;
     const routes = [
       route('fresh', 'a', 'b', now - 5 * 60_000, 'Text', 8),
@@ -322,6 +334,7 @@ describe('stable route visual data', () => {
 
     expect(national).toHaveLength(1);
     expect(national[0]?.properties).toMatchObject({
+      local: true,
       routeCount15m: 1,
       routeCount1h: 1,
       routeCount6h: 1,
@@ -331,6 +344,11 @@ describe('stable route visual data', () => {
     const anchors = national[0]?.geometry.coordinates ?? [];
     expect(anchors.length).toBeGreaterThan(6);
     expect(anchors[0]).toEqual(anchors.at(-1));
+    expect(routeTrunkFilter('national')).toEqual([
+      'all',
+      ['==', ['get', 'representation'], 'national'],
+      ['==', ['get', 'local'], false]
+    ]);
     expect(routeExactBandFilter(2)).toEqual([
       'all',
       ['==', ['get', 'representation'], 'exact'],
@@ -350,8 +368,10 @@ describe('stable route visual data', () => {
     expect(routeWindowLabel('auto', 4)).toBe('Auto · 15m');
     expect(routeWindowLabel('24h', 4)).toBe('24h');
     expect(routeRepresentationForZoom(3.4)).toBe('national-trunks');
-    expect(routeRepresentationForZoom(5.5)).toBe('regional-trunks');
-    expect(routeRepresentationForZoom(8)).toBe('individual-routes');
+    expect(routeRepresentationForZoom(4.799)).toBe('national-trunks');
+    expect(routeRepresentationForZoom(4.8)).toBe('regional-trunks');
+    expect(routeRepresentationForZoom(6.499)).toBe('regional-trunks');
+    expect(routeRepresentationForZoom(6.5)).toBe('individual-routes');
   });
 
   it('keeps the exact 24-hour boundary, expires older routes, and assigns trail colors', () => {
@@ -408,7 +428,7 @@ describe('node neighbor focus', () => {
 
     setFilter.mockClear();
     expect(applyRouteSelectionFilter(map, null)).toBe(true);
-    expect(setFilter.mock.calls).toEqual(ROUTE_FILTER_LAYER_IDS.map((layerID) => [layerID, null]));
+    expect(setFilter.mock.calls).toEqual([[ROUTE_HIT_LAYER_ID, null]]);
   });
 
   it('highlights only the selected node and safely skips a missing layer', () => {
@@ -570,6 +590,23 @@ describe('visual hierarchy and soft follow', () => {
       mode: 'observer',
       observer: alpha,
     })).toEqual([alpha]);
+  });
+
+  it('follows valid off-screen activity and narrows to a selected node when focused', () => {
+    const alpha = { id: 'a', label: 'Alpha', lat: 43.6, lng: -79.4 };
+    const bravo = { id: 'b', label: 'Bravo', lat: 49.2, lng: -123.1 };
+    const packet = {
+      seq: 3,
+      id: 'off-screen-route',
+      at: 3,
+      payloadType: 'Trace' as const,
+      mode: 'route' as const,
+      segments: [{ routeId: 'a-b', from: alpha, to: bravo }]
+    };
+
+    expect(packetMatchesFollow(packet, null)).toBe(true);
+    expect(packetMatchesFollow(packet, 'a')).toBe(true);
+    expect(packetMatchesFollow(packet, 'elsewhere')).toBe(false);
   });
 
   it('uses decaying traffic for width while route age controls brightness', () => {

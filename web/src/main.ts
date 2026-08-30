@@ -4,7 +4,15 @@ import { fetchState, LiveFeed } from './api';
 import { RouteSonifier, type SoundStatus } from './audio';
 import { LiveMap, type LiveMapFocus, type RouteRepresentation, type RouteWindow } from './map';
 import { PacketAnimator } from './packetAnimator';
-import { loadSavedView, saveView, viewClass, type ViewClass } from './preferences';
+import {
+  loadSavedView,
+  loadUiPreferences,
+  saveUiPreferences,
+  saveView,
+  viewClass,
+  type UiPreferences,
+  type ViewClass
+} from './preferences';
 import { activityLabel, LiveStore } from './state';
 import { normalizePacketKind, PACKET_KIND_COLORS, ROUTE_LEGEND_ITEMS } from './trafficVisuals';
 
@@ -43,7 +51,8 @@ const aboutDialog = required<HTMLDialogElement>('about-dialog');
 const aboutClose = required<HTMLButtonElement>('about-close');
 const lastUpdate = required<HTMLElement>('last-update');
 
-let legendExpanded = false;
+let uiPreferences: UiPreferences = loadUiPreferences(localStorage);
+let legendExpanded = uiPreferences.legendExpanded;
 let lastTrafficPulseAt = -Infinity;
 let soundPulseTimer: number | undefined;
 let scheduledNoteCount = 0;
@@ -64,10 +73,15 @@ layersSummary.style.display = activeViewClass === 'desktop' ? 'none' : '';
 
 legendToggle.addEventListener('click', () => {
   legendExpanded = !legendExpanded;
+  uiPreferences = { ...uiPreferences, legendExpanded };
+  saveUiPreferences(localStorage, uiPreferences);
   legend.dataset.collapsed = String(!legendExpanded);
   legendToggle.setAttribute('aria-expanded', String(legendExpanded));
   legendToggle.setAttribute('aria-label', legendExpanded ? 'Hide map legend' : 'Show map legend');
 });
+legend.dataset.collapsed = String(!legendExpanded);
+legendToggle.setAttribute('aria-expanded', String(legendExpanded));
+legendToggle.setAttribute('aria-label', legendExpanded ? 'Hide map legend' : 'Show map legend');
 
 renderRouteLegend(routeLegend, 'national-trunks');
 aboutButton.addEventListener('click', () => aboutDialog.showModal());
@@ -103,9 +117,7 @@ async function start(): Promise<void> {
   try {
     // Construct MapLibre before the state request so the basemap can paint while
     // the initial snapshot is in flight.
-    const regionCanvas = required<HTMLCanvasElement>('region-canvas');
     const liveMap = new LiveMap(mapElement, required<HTMLElement>('tooltip'), {
-      regionCanvas,
       onFocusChange: updateFocusChrome,
       onRouteRepresentationChange(representation) {
         renderRouteLegend(routeLegend, representation);
@@ -131,13 +143,26 @@ async function start(): Promise<void> {
       soundState.textContent = 'Unavailable';
       soundPanelState.textContent = 'Unavailable';
     }
-    wireLayerToggle(routesButton, false, 'routes', (visible) => {
+    wireLayerToggle(routesButton, uiPreferences.routes, 'routes', (visible) => {
       liveMap.setRoutesVisible(visible);
       routeLegend.hidden = !visible;
+      persistUiPreference({ routes: visible });
     });
-    wireLayerToggle(heatmapButton, true, 'heatmap', (visible) => liveMap.setHeatmapVisible(visible));
-    wireLayerToggle(regionsButton, false, 'regions', (visible) => liveMap.setRegionsVisible(visible));
-    routeWindow.addEventListener('change', () => liveMap.setRouteWindow(routeWindow.value as RouteWindow));
+    wireLayerToggle(heatmapButton, uiPreferences.heatmap, 'heatmap', (visible) => {
+      liveMap.setHeatmapVisible(visible);
+      persistUiPreference({ heatmap: visible });
+    });
+    wireLayerToggle(regionsButton, uiPreferences.regions, 'regions', (visible) => {
+      liveMap.setRegionsVisible(visible);
+      persistUiPreference({ regions: visible });
+    });
+    routeWindow.value = uiPreferences.routeWindow;
+    liveMap.setRouteWindow(uiPreferences.routeWindow);
+    routeWindow.addEventListener('change', () => {
+      const window = routeWindow.value as RouteWindow;
+      liveMap.setRouteWindow(window);
+      persistUiPreference({ routeWindow: window });
+    });
     document.addEventListener('visibilitychange', () => {
       animator?.setPaused(document.hidden);
       sonifier?.setPaused(document.hidden);
@@ -168,6 +193,9 @@ async function start(): Promise<void> {
     setLiveFollow(false);
 
     liveMap.map.on('dragstart', () => setLiveFollow(false));
+    liveMap.map.on('zoomstart', (event) => {
+      if (event.originalEvent) setLiveFollow(false);
+    });
 
     const updateStatus = (): void => {
       const display = activityLabel(liveStore.snapshot, streamConnected);
@@ -377,6 +405,11 @@ function required<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
   if (!element) throw new Error(`missing #${id}`);
   return element as T;
+}
+
+function persistUiPreference(update: Partial<UiPreferences>): void {
+  uiPreferences = { ...uiPreferences, ...update };
+  saveUiPreferences(localStorage, uiPreferences);
 }
 
 function wireLayerToggle(

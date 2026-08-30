@@ -12,12 +12,12 @@ function endpoint(id: string, x: number, y: number): EndpointV2 {
   return { id, label: id, lng: x, lat: y };
 }
 
-function packet(points: EndpointV2[]): RoutePacketView {
+function packet(points: EndpointV2[], payloadType: RoutePacketView['payloadType'] = 'Trace'): RoutePacketView {
   return {
     seq: 7,
     id: 'packet-7',
     at: 1_700_000_000_000,
-    payloadType: 'Trace',
+    payloadType,
     mode: 'route',
     segments: points.slice(1).map((to, index) => ({
       routeId: `route-${index}`,
@@ -90,6 +90,17 @@ describe('route hop sonification', () => {
       mode: 'observer',
       observer: endpoint('observer', 50, 50),
     }, projector, 100, 100)).toEqual([]);
+  });
+
+  it('uses distinct but restrained voices for different packet families', () => {
+    const points = [endpoint('a', 20, 50), endpoint('b', 80, 50)];
+    const text = routeSoundPlan(packet(points, 'Text'), projector, 100, 100)[0]!;
+    const acknowledgement = routeSoundPlan(packet(points, 'ACK'), projector, 100, 100)[0]!;
+
+    expect(text.waveform).toBe('sine');
+    expect(acknowledgement.waveform).toBe('triangle');
+    expect(text.brightness).toBeLessThan(acknowledgement.brightness);
+    expect(text.frequency).not.toBe(acknowledgement.frequency);
   });
 });
 

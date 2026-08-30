@@ -4,8 +4,25 @@ export interface SavedView {
 }
 
 export type ViewClass = 'desktop' | 'mobile';
+export type SavedRouteWindow = 'auto' | '15m' | '1h' | '6h' | '24h';
+
+export interface UiPreferences {
+  routes: boolean;
+  heatmap: boolean;
+  regions: boolean;
+  routeWindow: SavedRouteWindow;
+  legendExpanded: boolean;
+}
 
 const VIEW_STORAGE_PREFIX = 'cartolite:view:v3';
+export const UI_STORAGE_KEY = 'cartolite:ui:v1';
+export const DEFAULT_UI_PREFERENCES: UiPreferences = {
+  routes: false,
+  heatmap: true,
+  regions: false,
+  routeWindow: 'auto',
+  legendExpanded: false
+};
 
 export function viewClass(
   viewportWidth = window.innerWidth,
@@ -42,4 +59,35 @@ export function saveView(storage: Storage, kind: ViewClass, view: SavedView): vo
   } catch {
     // Local persistence is optional; private browsing may reject it.
   }
+}
+
+export function loadUiPreferences(storage: Storage): UiPreferences {
+  try {
+    const value = JSON.parse(storage.getItem(UI_STORAGE_KEY) ?? 'null') as Partial<UiPreferences> | null;
+    if (!value) return { ...DEFAULT_UI_PREFERENCES };
+    const routeWindow = isSavedRouteWindow(value.routeWindow) ? value.routeWindow : DEFAULT_UI_PREFERENCES.routeWindow;
+    return {
+      routes: typeof value.routes === 'boolean' ? value.routes : DEFAULT_UI_PREFERENCES.routes,
+      heatmap: typeof value.heatmap === 'boolean' ? value.heatmap : DEFAULT_UI_PREFERENCES.heatmap,
+      regions: typeof value.regions === 'boolean' ? value.regions : DEFAULT_UI_PREFERENCES.regions,
+      routeWindow,
+      legendExpanded: typeof value.legendExpanded === 'boolean'
+        ? value.legendExpanded
+        : DEFAULT_UI_PREFERENCES.legendExpanded
+    };
+  } catch {
+    return { ...DEFAULT_UI_PREFERENCES };
+  }
+}
+
+export function saveUiPreferences(storage: Storage, preferences: UiPreferences): void {
+  try {
+    storage.setItem(UI_STORAGE_KEY, JSON.stringify(preferences));
+  } catch {
+    // Local persistence is optional; private browsing may reject it.
+  }
+}
+
+function isSavedRouteWindow(value: unknown): value is SavedRouteWindow {
+  return value === 'auto' || value === '15m' || value === '1h' || value === '6h' || value === '24h';
 }

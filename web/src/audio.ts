@@ -48,15 +48,17 @@ interface Voice {
   root: number;
   intervals: readonly number[];
   waveform: OscillatorType;
+  brightness: number;
+  durationScale: number;
 }
 
 const VOICES: Readonly<Record<PacketKind, Voice>> = {
-  Advert: { root: 60, intervals: [0, 2, 4, 7, 9], waveform: 'sine' },
-  Trace: { root: 62, intervals: [0, 2, 5, 7, 9], waveform: 'triangle' },
-  Text: { root: 57, intervals: [0, 3, 5, 7, 10], waveform: 'sine' },
-  ACK: { root: 67, intervals: [0, 2, 4, 7, 9], waveform: 'sine' },
-  Control: { root: 64, intervals: [0, 3, 5, 7, 10], waveform: 'triangle' },
-  Other: { root: 60, intervals: [0, 2, 5, 7, 9], waveform: 'sine' },
+  Advert: { root: 60, intervals: [0, 2, 4, 7, 9], waveform: 'sine', brightness: 4_400, durationScale: 1 },
+  Trace: { root: 62, intervals: [0, 2, 5, 7, 9], waveform: 'triangle', brightness: 5_200, durationScale: 0.94 },
+  Text: { root: 57, intervals: [0, 3, 5, 7, 10], waveform: 'sine', brightness: 3_600, durationScale: 1.12 },
+  ACK: { root: 67, intervals: [0, 2, 4, 7, 9], waveform: 'triangle', brightness: 5_800, durationScale: 0.72 },
+  Control: { root: 64, intervals: [0, 3, 5, 7, 10], waveform: 'triangle', brightness: 3_200, durationScale: 1.04 },
+  Other: { root: 60, intervals: [0, 2, 5, 7, 9], waveform: 'sine', brightness: 4_600, durationScale: 0.9 },
 };
 
 export interface HopNote {
@@ -101,10 +103,10 @@ export function routeSoundPlan(
     const midi = voice.root + voice.intervals[step]! + octave;
     const note: HopNote = {
       startMS,
-      durationMS: Math.round(Math.max(180, Math.min(480, totalDuration * weight * 0.78))),
+      durationMS: Math.round(Math.max(180, Math.min(480, totalDuration * weight * 0.78 * voice.durationScale))),
       frequency: midiToFrequency(midi),
       pan: clamp((midpointX / width) * 1.5 - 0.75, -0.75, 0.75),
-      brightness: Math.max(2_200, 5_400 - index * 320),
+      brightness: Math.max(2_200, voice.brightness - index * 260),
       waveform: voice.waveform,
     };
     return [note];

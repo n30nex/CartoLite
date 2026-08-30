@@ -1,9 +1,4 @@
-import {
-  regionCanvasData,
-  REGION_WORKER_MESSAGE_VERTEX_LIMIT,
-  type RegionLinePiece,
-  type RegionWorkerOutput
-} from './regions';
+import { regionMapData, type RegionWorkerOutput } from './regions';
 
 interface RegionWorkerRequest {
   url: string;
@@ -25,22 +20,7 @@ async function loadRegions(url: string): Promise<void> {
   try {
     const response = await fetch(url, { credentials: 'same-origin' });
     if (!response.ok) throw new Error(`regional asset returned HTTP ${response.status}`);
-    const data = regionCanvasData(await response.json());
-    scope.postMessage({ type: 'labels', labels: data.labels });
-
-    let batch: RegionLinePiece[] = [];
-    let vertices = 0;
-    for (const piece of data.pieces) {
-      if (batch.length > 0 && vertices + piece.coordinates.length > REGION_WORKER_MESSAGE_VERTEX_LIMIT) {
-        scope.postMessage({ type: 'pieces', pieces: batch });
-        batch = [];
-        vertices = 0;
-      }
-      batch.push(piece);
-      vertices += piece.coordinates.length;
-    }
-    if (batch.length > 0) scope.postMessage({ type: 'pieces', pieces: batch });
-    scope.postMessage({ type: 'done' });
+    scope.postMessage({ type: 'data', data: regionMapData(await response.json()) });
     scope.close();
   } catch (error) {
     scope.postMessage({

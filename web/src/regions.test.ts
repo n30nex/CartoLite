@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import rawRegions from './assets/meshmapper-canada-regions.geojson?raw';
 import { MESHMAP_ATTRIBUTION } from './map';
-import { EXPECTED_REGION_CODES, REGION_LINE_PIECE_VERTEX_LIMIT, regionCanvasData } from './regions';
+import { EXPECTED_REGION_CODES, regionMapData } from './regions';
 
 interface RegionSnapshot {
   type: string;
@@ -54,21 +54,25 @@ describe('MeshMapper region snapshot', () => {
     expect(MESHMAP_ATTRIBUTION).toContain('used with permission');
   });
 
-  it('splits exact boundary edges into worker-sized canvas pieces', () => {
-    const data = regionCanvasData(snapshot);
+  it('keeps every exact boundary edge in the camera-locked map source', () => {
+    const data = regionMapData(snapshot);
     const inputEdges = snapshot.features.reduce((total, feature) => (
       total + feature.geometry.coordinates.reduce((ringTotal, ring) => ringTotal + ring.length - 1, 0)
     ), 0);
-    const outputEdges = data.pieces.reduce((total, piece) => total + piece.coordinates.length - 1, 0);
+    const lines = data.features.filter((feature) => feature.geometry.type === 'LineString');
+    const labels = data.features.filter((feature) => feature.geometry.type === 'Point');
+    const outputEdges = lines.reduce((total, feature) => (
+      total + (feature.geometry.type === 'LineString' ? feature.geometry.coordinates.length - 1 : 0)
+    ), 0);
 
     expect(outputEdges).toBe(inputEdges);
-    expect(Math.max(...data.pieces.map((piece) => piece.coordinates.length))).toBeLessThanOrEqual(REGION_LINE_PIECE_VERTEX_LIMIT);
-    expect(data.labels.features.map((feature) => feature.properties?.code).sort()).toEqual(EXPECTED_REGION_CODES);
+    expect(lines).toHaveLength(EXPECTED_REGION_CODES.length);
+    expect(labels.map((feature) => feature.properties?.code).sort()).toEqual(EXPECTED_REGION_CODES);
   });
 
   it('fails closed when the runtime asset contains an unexpected region code', () => {
     const changed = JSON.parse(rawRegions) as RegionSnapshot;
     changed.features[0]!.properties.code = 'BAD';
-    expect(() => regionCanvasData(changed)).toThrow('regional asset code set changed');
+    expect(() => regionMapData(changed)).toThrow('regional asset code set changed');
   });
 });

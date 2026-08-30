@@ -109,9 +109,9 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await resetLongTasks(page);
   await regionsButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true', { timeout: 10_000 });
-  const regionCanvas = page.locator('#region-canvas');
-  await expect(regionCanvas).toBeVisible();
-  await expect.poll(() => regionCanvas.getAttribute('data-rendered-vertices').then(Number)).toBeGreaterThan(0);
+  await expect(page.locator('#map')).toHaveAttribute('data-region-renderer', 'maplibre');
+  await expect(page.locator('#map')).toHaveAttribute('data-region-feature-count', '68');
+  await expect(page.locator('#map')).toHaveAttribute('data-region-source-revision', '1');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(Date.now() - regionStarted, 'regional overlay should become interactive inside its load budget').toBeLessThan(10_000);
   expect(await maximumLongTask(page), 'enabling Regions must not block the main thread for 100 ms').toBeLessThan(100);
