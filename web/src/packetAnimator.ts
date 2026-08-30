@@ -629,7 +629,7 @@ export class PacketAnimator {
       if (!this.projectedResidue.has(item)) {
         const from = this.point(item.segment.from);
         const to = this.point(item.segment.to);
-        const curve = routeCurve(from, to, `${item.segment.routeId}|${item.signature}`);
+        const curve = routeCurve(from, to, `${item.segment.routeId}|${item.signature}`, 0);
         this.projectedResidue.set(item, {
           from,
           control: curve.control,
@@ -663,6 +663,7 @@ export class PacketAnimator {
 
   private drawRoute(item: ActiveRoute, now: number): void {
     const elapsed = Math.max(0, now - item.started);
+    const quality = this.qualityMode();
     if (this.reducedMotion) {
       const staticAge = Math.max(0, now - Math.max(item.started, this.reducedModeStartedAt));
       const opacity = Math.max(0, 1 - staticAge / AFTERGLOW_MS);
@@ -675,26 +676,26 @@ export class PacketAnimator {
     if (segment && elapsed <= item.duration) {
       const from = this.point(segment.from);
       const to = this.point(segment.to);
-      const curve = routeCurve(from, to, `${segment.routeId}|${item.signature}`);
+      const curve = routeCurve(from, to, `${segment.routeId}|${item.signature}`, 0);
       const slice = quadraticSlice(curve, motion.localProgress);
-      this.drawProgressiveTrail(curve.from, slice.control, slice.head, item.color, item.signature);
-      this.comet(slice.tangent.x, slice.tangent.y, slice.head.x, slice.head.y, item.color);
-      if (this.qualityMode() !== 'low') {
+      this.drawProgressiveTrail(curve.from, slice.control, slice.head, item.color, item.signature, quality);
+      this.comet(slice.tangent.x, slice.tangent.y, slice.head.x, slice.head.y, item.color, quality);
+      if (quality !== 'low') {
         this.drawPacketSignature(slice.head, slice.tangent, item.color, item.signature, elapsed);
       }
     }
     const first = item.packet.segments[0];
-    if (first) this.drawBloom(this.point(first.from), item.color, pulseTiming(elapsed, SOURCE_IGNITION_MS), 10, 21);
+    if (first) this.drawBloom(this.point(first.from), item.color, pulseTiming(elapsed, SOURCE_IGNITION_MS), 10, 21, quality === 'low');
     for (let index = 0; index < item.packet.segments.length - 1; index += 1) {
       const arrivedAt = cumulativeWeight(item.weights, index) * item.duration;
       const timing = pulseTiming(elapsed - arrivedAt, RELAY_SPARK_MS);
       const relay = item.packet.segments[index]?.to;
       const next = item.packet.segments[index + 1]?.to;
-      if (relay && next && timing.opacity > 0) this.drawRelaySpark(this.point(relay), this.point(next), item.color, timing);
+      if (relay && next && timing.opacity > 0 && quality !== 'low') this.drawRelaySpark(this.point(relay), this.point(next), item.color, timing);
     }
     const last = item.packet.segments[item.packet.segments.length - 1];
     if (last) {
-      this.drawBloom(this.point(last.to), item.color, pulseTiming(elapsed - item.duration, DESTINATION_BLOOM_MS), 8, 30);
+      this.drawBloom(this.point(last.to), item.color, pulseTiming(elapsed - item.duration, DESTINATION_BLOOM_MS), 8, 30, quality === 'low');
     }
   }
 
@@ -704,15 +705,16 @@ export class PacketAnimator {
     head: ScreenPoint,
     color: string,
     signature: PacketSignature,
+    quality: VisualQuality,
   ): void {
     if (Math.hypot(head.x - from.x, head.y - from.y) <= 0.01) return;
     this.context.strokeStyle = withAlpha(color, 0.19);
-    this.context.lineWidth = this.qualityMode() === 'full' ? 7.4 : 5.8;
+    this.context.lineWidth = quality === 'full' ? 7.4 : quality === 'balanced' ? 5.8 : 4.2;
     this.context.beginPath();
     this.context.moveTo(from.x, from.y);
     this.context.quadraticCurveTo(control.x, control.y, head.x, head.y);
     this.context.stroke();
-    this.context.strokeStyle = withAlpha(blendWithWhite(color, 0.3), 0.74);
+    this.context.strokeStyle = withAlpha(quality === 'low' ? color : blendWithWhite(color, 0.3), quality === 'low' ? 0.84 : 0.74);
     this.context.lineWidth = 1.55;
     this.context.setLineDash(signature === 'echo' ? [7, 5] : []);
     this.context.beginPath();
@@ -730,7 +732,7 @@ export class PacketAnimator {
       if (!segment) continue;
       const from = this.point(segment.from);
       const to = this.point(segment.to);
-      const curve = routeCurve(from, to, `${segment.routeId}|${item.signature}`);
+      const curve = routeCurve(from, to, `${segment.routeId}|${item.signature}`, 0);
       this.drawStaticSegment(curve, item.color, opacity, item.signature);
       visibleEndpoint = to;
     }
@@ -738,7 +740,7 @@ export class PacketAnimator {
       const segment = item.packet.segments[motion.segmentIndex];
       if (segment) {
         const from = this.point(segment.from);
-        const curve = routeCurve(from, this.point(segment.to), `${segment.routeId}|${item.signature}`);
+        const curve = routeCurve(from, this.point(segment.to), `${segment.routeId}|${item.signature}`, 0);
         const slice = quadraticSlice(curve, motion.localProgress);
         this.drawStaticSegment({ from, control: slice.control, to: slice.head }, item.color, opacity, item.signature);
         visibleEndpoint = slice.head;
@@ -790,7 +792,7 @@ export class PacketAnimator {
     this.context.fill();
   }
 
-  private comet(deltaX: number, deltaY: number, x: number, y: number, color: string): void {
+  private comet(deltaX: number, deltaY: number, x: number, y: number, color: string, quality: VisualQuality): void {
     const distance = Math.hypot(deltaX, deltaY);
     if (distance <= 0.01) return;
     const tailLength = Math.min(COMET_TAIL_PX, distance);
@@ -798,6 +800,19 @@ export class PacketAnimator {
     const directionY = deltaY / distance;
     const tailX = x - directionX * tailLength;
     const tailY = y - directionY * tailLength;
+    if (quality === 'low') {
+      this.context.strokeStyle = withAlpha(color, 0.48);
+      this.context.lineWidth = 3.2;
+      this.context.beginPath();
+      this.context.moveTo(tailX, tailY);
+      this.context.lineTo(x, y);
+      this.context.stroke();
+      this.context.fillStyle = color;
+      this.context.beginPath();
+      this.context.arc(x, y, 1.7, 0, Math.PI * 2);
+      this.context.fill();
+      return;
+    }
     const gradient = this.context.createLinearGradient(tailX, tailY, x, y);
     gradient.addColorStop(0, withAlpha(color, 0));
     gradient.addColorStop(0.64, withAlpha(color, 0.12));
@@ -887,9 +902,18 @@ export class PacketAnimator {
     timing: { progress: number; opacity: number },
     startRadius: number,
     endRadius: number,
+    simple: boolean,
   ): void {
     if (timing.opacity <= 0) return;
     const radius = startRadius + (endRadius - startRadius) * easeOutCubic(timing.progress);
+    if (simple) {
+      this.context.strokeStyle = withAlpha(color, timing.opacity * 0.58);
+      this.context.lineWidth = 1.4;
+      this.context.beginPath();
+      this.context.arc(point.x, point.y, radius * 0.62, 0, Math.PI * 2);
+      this.context.stroke();
+      return;
+    }
     const gradient = this.context.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius);
     gradient.addColorStop(0, withAlpha(blendWithWhite(color, 0.3), timing.opacity * 0.62));
     gradient.addColorStop(0.2, withAlpha(color, timing.opacity * 0.5));

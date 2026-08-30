@@ -125,6 +125,15 @@ describe('packet animation limits', () => {
     expect(Math.hypot(halfway.tangent.x, halfway.tangent.y)).toBeGreaterThan(0);
   });
 
+  it('can lock live travel to the straight geographic route layer', () => {
+    const from = { x: 10, y: 20 };
+    const to = { x: 210, y: 60 };
+    const route = routeCurve(from, to, 'route-a|echo', 0);
+
+    expect(route.control).toEqual({ x: 110, y: 40 });
+    expect(quadraticPoint(route, 0.5)).toEqual({ x: 110, y: 40 });
+  });
+
   it('adapts secondary detail without discarding directional route travel', () => {
     expect(visualQuality(false, 1)).toBe('full');
     expect(visualQuality(false, 11)).toBe('balanced');

@@ -23,6 +23,7 @@ import {
   isPointInSafeArea,
   labelSortKey,
   LIVE_FOLLOW_MIN_INTERVAL_MS,
+  mapPixelRatio,
   neighborNodeIDs,
   NEIGHBOR_NODE_LAYER_ID,
   NODE_HIT_LAYER_ID,
@@ -137,6 +138,15 @@ describe('route layer visibility', () => {
       [NEIGHBOR_NODE_LAYER_ID, 'visibility', 'visible'],
       [NEIGHBOR_NODE_LAYER_ID, 'visibility', 'none']
     ]);
+  });
+});
+
+describe('map rendering budget', () => {
+  it('caps high-density phone rendering while keeping desktop maps crisp', () => {
+    expect(mapPixelRatio(3, true)).toBe(1.5);
+    expect(mapPixelRatio(3, false)).toBe(2);
+    expect(mapPixelRatio(1.25, true)).toBe(1.25);
+    expect(mapPixelRatio(Number.NaN, false)).toBe(1);
   });
 });
 
@@ -311,7 +321,9 @@ describe('stable route visual data', () => {
       routeCount24h: 2,
       routeCount: 2
     });
-    expect(national[0]?.geometry.coordinates).toHaveLength(2);
+    const anchors = national[0]?.geometry.coordinates ?? [];
+    expect(anchors.length).toBeGreaterThan(6);
+    expect(anchors[0]).toEqual(anchors.at(-1));
     expect(routeExactBandFilter(2)).toEqual([
       'all',
       ['==', ['get', 'representation'], 'exact'],

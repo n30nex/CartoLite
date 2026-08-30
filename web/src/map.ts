@@ -31,7 +31,13 @@ export const LIVE_FOLLOW_SAFE_RATIO = 0.6;
 export const LIVE_FOLLOW_MIN_INTERVAL_MS = 1_200;
 export const ACTIVE_NODE_WINDOW_MS = 24 * 60 * 60_000;
 
+export function mapPixelRatio(devicePixelRatio: number, lowPower: boolean): number {
+  const ratio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
+  return Math.max(1, Math.min(lowPower ? 1.5 : 2, ratio));
+}
+
 export type RouteWindow = 'auto' | '15m' | '1h' | '6h' | '24h';
+export type RouteRepresentation = 'national-trunks' | 'regional-trunks' | 'individual-routes';
 
 const EMPTY_POINTS: FeatureCollection<Point> = { type: 'FeatureCollection', features: [] };
 const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', features: [] };
@@ -103,6 +109,7 @@ export interface LiveMapFocus {
 export interface LiveMapOptions {
   regionCanvas: HTMLCanvasElement;
   onFocusChange?: (focus: LiveMapFocus | null) => void;
+  onRouteRepresentationChange?: (representation: RouteRepresentation) => void;
   onRouteWindowChange?: (label: string) => void;
 }
 
@@ -175,6 +182,7 @@ export class LiveMap {
     private readonly tooltip: HTMLElement,
     private readonly options: LiveMapOptions
   ) {
+    const lowPower = window.matchMedia('(max-width: 620px), (pointer: coarse)').matches;
     this.container.dataset.renderState = 'loading';
     this.container.dataset.routesVisible = 'true';
     this.container.dataset.heatmapVisible = 'true';
@@ -198,6 +206,8 @@ export class LiveMap {
       touchPitch: false,
       cooperativeGestures: false,
       reduceMotion: this.reducedMotion,
+      pixelRatio: mapPixelRatio(window.devicePixelRatio, lowPower),
+      fadeDuration: this.reducedMotion ? 0 : 120,
       renderWorldCopies: false,
       maxBounds: [[-142, 38], [-48, 84]],
       transformRequest: (url) => ({ url: cartoVectorRequestURL(url) })
@@ -777,7 +787,10 @@ export class LiveMap {
   }
 
   private updateRouteRepresentation = (): void => {
-    this.container.dataset.routeRepresentation = routeRepresentationForZoom(this.map.getZoom());
+    const representation = routeRepresentationForZoom(this.map.getZoom());
+    if (this.container.dataset.routeRepresentation === representation) return;
+    this.container.dataset.routeRepresentation = representation;
+    this.options.onRouteRepresentationChange?.(representation);
   };
 
   private handleZoomEnd = (): void => {
@@ -1870,7 +1883,13 @@ function activeRouteTrunkMetricExpression(
 }
 
 function activeRouteTrunkColorExpression(): ExpressionSpecification {
-  return ['to-color', activeRouteTrunkMetricExpression('color')];
+  return [
+    'interpolate', ['linear'], activeRouteTrunkMetricExpression('routeCount'),
+    1, '#4f9f9b',
+    8, '#63bcb2',
+    32, '#76cdbf',
+    128, '#d1b36b'
+  ];
 }
 
 function routeVisibilityOpacityExpression(): ExpressionSpecification {
@@ -2229,8 +2248,8 @@ function routeTrunksFromMap(
         properties[`routeCount${bucket.suffix}`] = metrics.count;
         properties[`color${bucket.suffix}`] = metrics.color;
         properties[`lastHeard${bucket.suffix}`] = metrics.newestAt;
-        properties[`width${bucket.suffix}`] = Math.min(5.4, 0.72 + density * 0.6);
-        properties[`glowWidth${bucket.suffix}`] = Math.min(10, 1.8 + density * 1.05);
+        properties[`width${bucket.suffix}`] = Math.min(3.8, 0.68 + density * 0.46);
+        properties[`glowWidth${bucket.suffix}`] = Math.min(7.2, 1.5 + density * 0.74);
         properties[`opacity${bucket.suffix}`] = metrics.count === 0
           ? 0
           : Math.min(1, metrics.opacity * (0.66 + Math.min(0.34, density / 8)));
@@ -2268,7 +2287,7 @@ function routeTrunkAnchors(
   toCell: string,
   zoom: number,
   gridPixels: number
-): [[number, number], [number, number]] {
+): [number, number][] {
   const cellSize = gridPixels / (512 * (2 ** zoom));
   const center = (cell: string): [number, number] => {
     const [column = 0, row = 0] = cell.split(':').map(Number);
@@ -2277,10 +2296,15 @@ function routeTrunkAnchors(
   const from = center(fromCell);
   const to = center(toCell);
   if (fromCell === toCell) {
-    return [
-      normalizedMercatorToLngLat(from[0] - cellSize * 0.18, from[1] + cellSize * 0.12),
-      normalizedMercatorToLngLat(from[0] + cellSize * 0.18, from[1] - cellSize * 0.12)
-    ];
+    const points = 10;
+    const radius = cellSize * 0.09;
+    return Array.from({ length: points + 1 }, (_, index) => {
+      const angle = Math.PI * 2 * index / points;
+      return normalizedMercatorToLngLat(
+        from[0] + Math.cos(angle) * radius,
+        from[1] + Math.sin(angle) * radius
+      );
+    });
   }
   return [normalizedMercatorToLngLat(from[0], from[1]), normalizedMercatorToLngLat(to[0], to[1])];
 }
@@ -2419,7 +2443,7 @@ export function routeWindowBand(age: number): 0 | 1 | 2 | 3 {
   return 3;
 }
 
-export function routeRepresentationForZoom(zoom: number): 'national-trunks' | 'regional-trunks' | 'individual-routes' {
+export function routeRepresentationForZoom(zoom: number): RouteRepresentation {
   if (zoom < 4.8) return 'national-trunks';
   if (zoom < 6.5) return 'regional-trunks';
   return 'individual-routes';

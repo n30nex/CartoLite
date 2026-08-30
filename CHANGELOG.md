@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.6 - 2026-08-30
+
+### Fixed
+
+- Keep live packet travel on the same straight geographic path as its historical route so animations no longer bow, shift, or feel detached while the camera moves.
+- Replace low-zoom same-cell route slashes with compact fixed hubs, keep grouped geometry stable across camera movement, and label aggregate colours as connection density instead of packet type.
+- Delay water labels and keep symbols away from tile edges to stop repeated large-water names at the national view.
+
+### Changed
+
+- Rebalance the custom CARTO vector palette with clearer land, water, boundaries, roads, cities, and restrained map grading so the vector map regains the geographic clarity of the previous raster experience.
+- Split national city labels from detailed town and village labels, reduce dense route glow, and keep the phone route legend compact.
+
+### Performance
+
+- Cap MapLibre rendering at 1.5 device pixels on phones and 2 on desktops while retaining crisp controls and overlays.
+- Use lightweight solid comets and ring blooms on phones and during bursts while preserving every visible hop and its musical articulation.
+
 ## 0.6.5 - 2026-08-30
 
 ### Fixed
