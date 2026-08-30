@@ -42,10 +42,13 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(routeCanvas).toBeHidden();
   await expect(page.locator('#packet-canvas')).toBeVisible();
   await expect(page.locator('#traffic-meter i')).toHaveCount(5);
-  await expect.poll(() => page.locator('#map-grade').getAttribute('data-pulses').then(Number), {
-    message: 'sustained live traffic should keep retriggering the aurora',
-    timeout: 10_000,
-  }).toBeGreaterThan(1);
+  expect(await page.locator('#map-grade').evaluate((element) => {
+    const overlay = getComputedStyle(element, '::before');
+    return { animationName: overlay.animationName, backgroundImage: overlay.backgroundImage };
+  }), 'live traffic must not add a full-map colour pulse overlay').toEqual({
+    animationName: 'none',
+    backgroundImage: 'none',
+  });
   await expect(page.locator('#status-text')).not.toHaveText('Starting…');
   const routeWindow = page.locator('#route-window');
   const layersSummary = page.locator('#layers-summary');
