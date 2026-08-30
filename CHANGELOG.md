@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.7 - 2026-08-30
+
+### Performance
+
+- Coalesce busy historical-route source refreshes to a two-second cadence so sustained live traffic cannot keep rebuilding the complete route topology back-to-back.
+- Keep live packet animation, viewport audio, nodes, and heat immediate while the stable historical layer catches up in one bounded update without dropping any route.
+- Stop restarting the map settle indicator for every incremental node or heat delta, allowing the interface to remain idle and responsive during active bursts.
+
 ## 0.6.6 - 2026-08-30
 
 ### Fixed

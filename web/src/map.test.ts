@@ -37,6 +37,7 @@ import {
   routeCollection,
   routeColorExpression,
   routeExactBandFilter,
+  routeHydrationDelay,
   routeRenderCandidates,
   routeRepresentationForZoom,
   routeTrunkFeaturesForWindow,
@@ -147,6 +148,12 @@ describe('map rendering budget', () => {
     expect(mapPixelRatio(3, false)).toBe(2);
     expect(mapPixelRatio(1.25, true)).toBe(1.25);
     expect(mapPixelRatio(Number.NaN, false)).toBe(1);
+  });
+
+  it('coalesces busy historical-route refreshes without delaying the first build', () => {
+    expect(routeHydrationDelay(1_000, 1_250)).toBe(1_750);
+    expect(routeHydrationDelay(1_000, 3_000)).toBe(0);
+    expect(routeHydrationDelay(1_000, 4_500)).toBe(0);
   });
 });
 

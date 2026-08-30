@@ -130,6 +130,47 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await page.screenshot({ path: testInfo.outputPath('cartolite-scale.png') });
 });
 
+test('coalesces a busy live burst into one historical-route refresh', async ({ page }) => {
+  const now = Date.now();
+  const state: StateV2 = {
+    schemaVersion: 2,
+    bootId: 'cadence-smoke',
+    seq: 0,
+    serverTime: now,
+    status: { feed: 'connected', activity: 'active', lastPacketAt: now, dropped: 0, version: 'test', gitSha: 'cadence' },
+    map: { center: [-80.35, 43.48], zoom: 8 },
+    nodes: [
+      { id: 'a', label: 'Alpha', role: 'repeater', observer: false, lat: 43.45, lng: -80.42, lastSeen: now },
+      { id: 'b', label: 'Bravo', role: 'companion', observer: false, lat: 43.5, lng: -80.28, lastSeen: now }
+    ],
+    routes: [{ id: 'a-b', fromId: 'a', toId: 'b', packetCount: 1, lastHeard: now, intensity: 1, lastKind: 'Text', traffic: 1 }]
+  };
+  const events = Array.from({ length: 80 }, (_, index) => {
+    const packet = {
+      seq: index + 1,
+      id: `cadence-${index}`,
+      at: now + index,
+      payloadType: 'Text',
+      mode: 'route',
+      segments: [{ routeId: 'a-b', fromId: 'a', toId: 'b' }]
+    };
+    return `id: ${packet.seq}\nevent: packet\ndata: ${JSON.stringify(packet)}\n\n`;
+  }).join('');
+
+  await page.route('**/api/state', (route) => route.fulfill({ json: state }));
+  await page.route('**/api/events**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `retry: 60000\n\nevent: hello\ndata: ${JSON.stringify({ seq: 0, bootId: state.bootId })}\n\n${events}`
+  }));
+  await page.goto('/');
+  const map = page.locator('#map');
+  await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 15_000 });
+  await page.waitForTimeout(2_800);
+  await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 5_000 });
+  expect(Number(await map.getAttribute('data-route-source-revision'))).toBeLessThanOrEqual(3);
+});
+
 function scaleState(): StateV2 {
   const now = Date.now();
   const kinds: readonly RouteV2['lastKind'][] = ['Advert', 'Trace', 'Text', 'ACK', 'Control', 'Other'];
