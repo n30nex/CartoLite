@@ -82,7 +82,6 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
   const routesButton = page.locator('#routes-button');
-  await waitForQuietMainThread(page);
   await resetLongTasks(page);
   await routesButton.click();
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
@@ -256,20 +255,6 @@ async function resetLongTasks(page: import('@playwright/test').Page): Promise<vo
     state.durations = [];
     state.since = performance.now();
   });
-}
-
-async function waitForQuietMainThread(
-  page: import('@playwright/test').Page,
-  quietMS = 500,
-  timeoutMS = 5_000
-): Promise<void> {
-  const deadline = Date.now() + timeoutMS;
-  do {
-    await resetLongTasks(page);
-    await page.evaluate((delay) => new Promise((resolve) => window.setTimeout(resolve, delay)), quietMS);
-    if (await maximumLongTask(page) === 0) return;
-  } while (Date.now() < deadline);
-  throw new Error(`map did not provide a ${quietMS} ms quiet main-thread window within ${timeoutMS} ms`);
 }
 
 async function maximumLongTask(page: import('@playwright/test').Page): Promise<number> {
