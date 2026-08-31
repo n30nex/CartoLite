@@ -2,7 +2,13 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles.css';
 import { fetchState, LiveFeed } from './api';
 import { RouteSonifier, type SoundScene, type SoundStatus } from './audio';
-import { LiveMap, type LiveMapFocus, type RouteRepresentation, type RouteWindow } from './map';
+import {
+  LIVE_FOLLOW_MIN_INTERVAL_MS,
+  LiveMap,
+  type LiveMapFocus,
+  type RouteRepresentation,
+  type RouteWindow
+} from './map';
 import { PacketAnimator } from './packetAnimator';
 import {
   loadSavedView,
@@ -15,6 +21,7 @@ import {
 } from './preferences';
 import { activityLabel, LiveStore } from './state';
 import { normalizePacketKind, PACKET_KIND_COLORS, ROUTE_LEGEND_ITEMS } from './trafficVisuals';
+import type { PacketView } from './types';
 
 const appElement = required<HTMLElement>('app');
 const statusElement = required<HTMLElement>('status');
@@ -26,7 +33,10 @@ const fatal = required<HTMLElement>('fatal');
 const followButton = required<HTMLButtonElement>('follow-button');
 const routesButton = required<HTMLButtonElement>('routes-button');
 const heatmapButton = required<HTMLButtonElement>('heatmap-button');
+const clustersButton = required<HTMLButtonElement>('clusters-button');
 const regionsButton = required<HTMLButtonElement>('regions-button');
+const hillshadeButton = required<HTMLButtonElement>('hillshade-button');
+const terrainButton = required<HTMLButtonElement>('terrain-button');
 const soundButton = required<HTMLButtonElement>('sound-button');
 const soundControl = required<HTMLElement>('sound-button').parentElement as HTMLElement;
 const soundPanel = required<HTMLElement>('sound-panel');
@@ -122,6 +132,7 @@ async function start(): Promise<void> {
   let sonifier: RouteSonifier | undefined;
   let store: LiveStore | undefined;
   let feed: LiveFeed | undefined;
+  let followTimer: number | undefined;
   try {
     // Construct MapLibre before the state request so the basemap can paint while
     // the initial snapshot is in flight.
@@ -171,9 +182,21 @@ async function start(): Promise<void> {
       liveMap.setHeatmapVisible(visible);
       persistUiPreference({ heatmap: visible });
     });
+    wireLayerToggle(clustersButton, uiPreferences.clusters, 'clusters', (visible) => {
+      liveMap.setClustersVisible(visible);
+      persistUiPreference({ clusters: visible });
+    });
     wireLayerToggle(regionsButton, uiPreferences.regions, 'regions', (visible) => {
       liveMap.setRegionsVisible(visible);
       persistUiPreference({ regions: visible });
+    });
+    wireLayerToggle(hillshadeButton, uiPreferences.hillshade, 'topography', (visible) => {
+      liveMap.setHillshadeVisible(visible);
+      persistUiPreference({ hillshade: visible });
+    });
+    wireLayerToggle(terrainButton, uiPreferences.terrain3D, '3D terrain', (visible) => {
+      liveMap.setTerrain3D(visible);
+      persistUiPreference({ terrain3D: visible });
     });
     routeWindow.value = uiPreferences.routeWindow;
     liveMap.setRouteWindow(uiPreferences.routeWindow);
@@ -243,6 +266,7 @@ async function start(): Promise<void> {
     });
     window.addEventListener('beforeunload', () => {
       if (trafficWakeTimer !== undefined) window.clearTimeout(trafficWakeTimer);
+      if (followTimer !== undefined) window.clearTimeout(followTimer);
       feed?.stop();
       store?.destroy();
       animator?.destroy();
@@ -255,9 +279,39 @@ async function start(): Promise<void> {
     store = liveStore;
     let streamConnected = false;
     let liveFollow = false;
+    let pendingFollow: PacketView | undefined;
+    let lastFollowMoveAt = Number.NEGATIVE_INFINITY;
+
+    mapElement.dataset.followDwellMs = String(LIVE_FOLLOW_MIN_INTERVAL_MS);
+
+    const clearFollowQueue = (): void => {
+      pendingFollow = undefined;
+      if (followTimer !== undefined) window.clearTimeout(followTimer);
+      followTimer = undefined;
+    };
+
+    const moveToPendingActivity = (): void => {
+      followTimer = undefined;
+      if (!liveFollow || !pendingFollow) return;
+      const packet = pendingFollow;
+      pendingFollow = undefined;
+      if (!liveMap.shouldFollow(packet)) return;
+      if (liveMap.follow(packet)) lastFollowMoveAt = Date.now();
+    };
+
+    const queueLiveFollow = (packet: PacketView): void => {
+      if (!liveFollow || !liveMap.shouldFollow(packet)) return;
+      pendingFollow = packet;
+      if (followTimer !== undefined) return;
+      const remaining = Math.max(0, lastFollowMoveAt + LIVE_FOLLOW_MIN_INTERVAL_MS - Date.now());
+      if (remaining === 0) moveToPendingActivity();
+      else followTimer = window.setTimeout(moveToPendingActivity, remaining);
+    };
 
     const setLiveFollow = (enabled: boolean): void => {
+      clearFollowQueue();
       liveFollow = enabled;
+      if (enabled) lastFollowMoveAt = Number.NEGATIVE_INFINITY;
       followButton.setAttribute('aria-pressed', String(enabled));
       followButton.classList.toggle('selected', enabled);
       followButton.dataset.mode = enabled ? 'director' : 'manual';
@@ -334,7 +388,7 @@ async function start(): Promise<void> {
         const scheduled = routeSonifier.play(packet);
         if (scheduled > 0) pulseSoundChrome(scheduled);
         pulseTrafficChrome(packet.payloadType);
-        if (liveFollow && liveMap.shouldFollow(packet)) liveMap.follow(packet);
+        queueLiveFollow(packet);
       },
       onStatus(event) {
         liveStore.updateStatus(event.status, event.seq);

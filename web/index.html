@@ -73,12 +73,30 @@
               </svg>
               <span>Heatmap</span>
             </button>
+            <button id="clusters-button" class="control-button selected" type="button" aria-label="Clusters" aria-pressed="true" title="Hide clusters">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="7" cy="8" r="3"></circle><circle cx="16.5" cy="7" r="2.5"></circle><circle cx="12" cy="16" r="3.5"></circle>
+              </svg>
+              <span>Clusters</span>
+            </button>
             <button id="regions-button" class="control-button" type="button" aria-label="Regions" aria-pressed="false" title="Show regions">
               <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="m4 5.5 6-2.5 5 2 5-2v15.5l-5 2-5-2-6 2z"></path>
                 <path d="M10 3v15.5M15 5v15.5"></path>
               </svg>
               <span>Regions</span>
+            </button>
+            <button id="hillshade-button" class="control-button" type="button" aria-label="Topography" aria-pressed="false" title="Show topography">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m3 18 6-9 3 4 3-7 6 12z"></path><path d="M6 18h12"></path>
+              </svg>
+              <span>Topo</span>
+            </button>
+            <button id="terrain-button" class="control-button" type="button" aria-label="3D terrain" aria-pressed="false" title="Enable 3D terrain">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m4 15 5-7 3 4 3-6 5 9"></path><path d="m4 15 8 5 8-5"></path>
+              </svg>
+              <span>3D</span>
             </button>
             <label class="route-window" for="route-window">
               <span>Routes</span>
@@ -142,7 +160,7 @@
         <h1 id="about-title">CartoLite</h1>
         <p>A live, privacy-safe view of high-confidence MeshCore Canada RF traffic.</p>
         <dl>
-          <div><dt>Map</dt><dd>Clusters and heat summarize activity. Routes narrow automatically from 15 minutes nationally to 24 hours locally.</dd></div>
+          <div><dt>Map</dt><dd>Clusters and packet-coloured heat summarize activity. Clusters can be disabled at every zoom, while optional topography and 3D terrain add geographic context.</dd></div>
           <div><dt>Colours</dt><dd>Route and packet colours show the latest sanitized packet kind, never message content.</dd></div>
           <div><dt>Sound</dt><dd>Opt in to hear every visible live hop in Aurora, Wood, or Chimes. Volume, scene, and your choice stay only in this browser; remembered sound always waits for a tap before resuming.</dd></div>
           <div><dt>Find</dt><dd>Search public node labels locally, then inspect active neighbours without sending or saving your query.</dd></div>

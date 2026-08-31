@@ -19,12 +19,12 @@ body { background: #0b151b; }
 button { font: inherit; }
 
 #app { position: relative; isolation: isolate; }
-#app { --traffic-rgb: 72, 220, 193; }
-#app[data-traffic-kind="trace"] { --traffic-rgb: 233, 215, 47; }
-#app[data-traffic-kind="text"] { --traffic-rgb: 236, 121, 176; }
-#app[data-traffic-kind="ack"] { --traffic-rgb: 139, 212, 255; }
-#app[data-traffic-kind="control"],
-#app[data-traffic-kind="other"] { --traffic-rgb: 125, 191, 255; }
+#app { --traffic-rgb: 77, 231, 196; }
+#app[data-traffic-kind="trace"] { --traffic-rgb: 255, 209, 90; }
+#app[data-traffic-kind="text"] { --traffic-rgb: 255, 117, 181; }
+#app[data-traffic-kind="ack"] { --traffic-rgb: 120, 207, 255; }
+#app[data-traffic-kind="control"] { --traffic-rgb: 167, 139, 250; }
+#app[data-traffic-kind="other"] { --traffic-rgb: 156, 174, 189; }
 #map { position: absolute; inset: 0; background: #0b151b; }
 
 .map-grade {
@@ -490,6 +490,12 @@ button { font: inherit; }
   0% { opacity: 0.5; transform: scale(0.76); }
   42% { opacity: 1; transform: scale(1.22); text-shadow: 0 0 10px rgba(99, 217, 204, 0.85); }
   100% { transform: scale(1); }
+}
+
+@media (min-width: 621px) and (max-width: 1180px) {
+  .controls .control-button > span:not(.sound-state) { display: none; }
+  .controls .control-button { min-width: 44px; justify-content: center; padding-inline: 9px; }
+  .controls .sound-button-label { display: none; }
 }
 
 :root[data-view-class="mobile"] .topbar { top: max(8px, env(safe-area-inset-top)); left: 8px; gap: 10px; min-height: 44px; padding: 0 9px; }

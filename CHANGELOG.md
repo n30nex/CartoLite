@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.0 - 2026-08-31
+
+### Added
+
+- Add a browser-local Clusters control that reveals individual nodes at every zoom without changing or trimming the public topology.
+- Add lazy, attributed Mapterhorn hillshade and an optional pitched 3D terrain mode. Terrain gestures are enabled only while 3D is active.
+- Split the heatmap into packet-kind colour fields so Advert, Trace, Text, ACK, Control, and Other hotspots remain visible and distinct.
+
+### Changed
+
+- Hold each Live Follow view for five seconds, then move to the newest waiting activity instead of chasing every packet.
+- Refine the route and packet palette, strengthen exact-route detail, and extend recent live-route glow from 15 to 45 seconds with deterministic coloured sparkles independent of the historical Routes layer.
+- Persist Clusters, Topography, and 3D alongside the existing browser-local layer choices.
+
+### Fixed
+
+- Unlock Android Chrome Web Audio from the enabling tap with one inaudible buffer frame before the first asynchronous resume, while retaining exactly one audible oscillator per visible hop.
+
+### Privacy and compatibility
+
+- Keep public API schema v2, SSE, health, readiness, storage, and backend behavior unchanged. Topography remains opt-in and its elevation requests go directly to the attributed terrain provider.
+
 ## 0.7.1 - 2026-08-31
 
 ### Fixed

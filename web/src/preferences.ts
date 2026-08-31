@@ -10,6 +10,9 @@ export interface UiPreferences {
   routes: boolean;
   heatmap: boolean;
   regions: boolean;
+  clusters: boolean;
+  hillshade: boolean;
+  terrain3D: boolean;
   routeWindow: SavedRouteWindow;
   legendExpanded: boolean;
 }
@@ -20,6 +23,9 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
   routes: false,
   heatmap: true,
   regions: false,
+  clusters: true,
+  hillshade: false,
+  terrain3D: false,
   routeWindow: 'auto',
   legendExpanded: false
 };
@@ -70,6 +76,9 @@ export function loadUiPreferences(storage: Storage): UiPreferences {
       routes: typeof value.routes === 'boolean' ? value.routes : DEFAULT_UI_PREFERENCES.routes,
       heatmap: typeof value.heatmap === 'boolean' ? value.heatmap : DEFAULT_UI_PREFERENCES.heatmap,
       regions: typeof value.regions === 'boolean' ? value.regions : DEFAULT_UI_PREFERENCES.regions,
+      clusters: typeof value.clusters === 'boolean' ? value.clusters : DEFAULT_UI_PREFERENCES.clusters,
+      hillshade: typeof value.hillshade === 'boolean' ? value.hillshade : DEFAULT_UI_PREFERENCES.hillshade,
+      terrain3D: typeof value.terrain3D === 'boolean' ? value.terrain3D : DEFAULT_UI_PREFERENCES.terrain3D,
       routeWindow,
       legendExpanded: typeof value.legendExpanded === 'boolean'
         ? value.legendExpanded

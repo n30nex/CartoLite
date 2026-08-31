@@ -133,6 +133,25 @@ describe('route hop sonification', () => {
       Object.defineProperty(window, 'AudioContext', { configurable: true, value: original });
     }
   });
+
+  it('unlocks suspended Android audio during the enabling tap without adding a tone', async () => {
+    const original = window.AudioContext;
+    FakeAudioContext.initialState = 'suspended';
+    FakeAudioContext.bufferStarts = 0;
+    FakeAudioContext.oscillators = 0;
+    Object.defineProperty(window, 'AudioContext', { configurable: true, value: FakeAudioContext });
+    const sonifier = new RouteSonifier(projector as never, document.createElement('div'));
+    try {
+      expect(await sonifier.setEnabled(true)).toBe(true);
+      expect(FakeAudioContext.bufferStarts).toBe(1);
+      expect(FakeAudioContext.oscillators).toBe(0);
+      expect(sonifier.status()).toBe('on');
+    } finally {
+      sonifier.destroy();
+      FakeAudioContext.initialState = 'running';
+      Object.defineProperty(window, 'AudioContext', { configurable: true, value: original });
+    }
+  });
 });
 
 describe('sound preference and autoplay state', () => {
@@ -206,9 +225,12 @@ const fakeNode = <T extends object>(extra = {} as T): T & {
 
 class FakeAudioContext {
   static oscillators = 0;
+  static bufferStarts = 0;
+  static initialState: AudioContextState = 'running';
   currentTime = 0;
   destination = fakeNode();
-  state: AudioContextState = 'running';
+  sampleRate = 48_000;
+  state: AudioContextState = FakeAudioContext.initialState;
   onstatechange: (() => void) | null = null;
   createGain = () => fakeNode({ gain: fakeParam() });
   createDelay = () => fakeNode({ delayTime: fakeParam() });
@@ -218,6 +240,12 @@ class FakeAudioContext {
     threshold: fakeParam(), knee: fakeParam(), ratio: fakeParam(), attack: fakeParam(), release: fakeParam(),
   });
   createPeriodicWave = () => ({} as PeriodicWave);
+  createBuffer = () => ({} as AudioBuffer);
+  createBufferSource = () => fakeNode({
+    buffer: null as AudioBuffer | null,
+    onended: null as (() => void) | null,
+    start: () => { FakeAudioContext.bufferStarts += 1; },
+  });
   createOscillator = () => {
     FakeAudioContext.oscillators += 1;
     return fakeNode({
@@ -228,6 +256,9 @@ class FakeAudioContext {
       stop: vi.fn(),
     });
   };
-  resume = async () => undefined;
+  resume = async () => {
+    this.state = 'running';
+    this.onstatechange?.();
+  };
   close = async () => undefined;
 }

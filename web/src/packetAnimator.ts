@@ -13,19 +13,19 @@ export const SINGLE_HOP_MS = 2100;
 export const MIN_ROUTE_MS = 1300;
 export const MAX_ROUTE_MS = 3200;
 export const AFTERGLOW_MS = 1200;
-export const RESIDUE_MS = 15_000;
+export const RESIDUE_MS = 45_000;
 export const RESIDUE_REDRAW_MS = 250;
 export const SOURCE_IGNITION_MS = 160;
 export const RELAY_SPARK_MS = 260;
 export const DESTINATION_BLOOM_MS = 440;
 export const OBSERVER_PING_MS = 1200;
-export const RESIDUE_HOT_MS = 900;
+export const RESIDUE_HOT_MS = 4_500;
 export const MAX_ACTIVE_EFFECTS = 32;
-export const MAX_RESIDUE = 240;
+export const MAX_RESIDUE = 480;
 export const LOW_POWER_MAX_ACTIVE_EFFECTS = 16;
-export const LOW_POWER_MAX_RESIDUE = 120;
+export const LOW_POWER_MAX_RESIDUE = 240;
 export const LOW_POWER_FRAME_MS = 1_000 / 30;
-export const NODE_WAKE_MS = 4_200;
+export const NODE_WAKE_MS = 6_000;
 export const MAX_NODE_WAKES = 160;
 export const LOW_POWER_MAX_NODE_WAKES = 72;
 
@@ -305,6 +305,12 @@ export function residueStyle(age: number): ResidueStyle {
     coreWidth: 0.65 + widthLife * 1.75,
     hot,
   };
+}
+
+export function residueSparkleProgress(seed: string, age: number, index: number): number {
+  const phase = (stableVisualHash(`${seed}|${index}`) % 1000) / 1000;
+  const speed = 0.000055 + Math.max(0, index) * 0.000009;
+  return (phase + Math.max(0, age) * speed) % 1;
 }
 
 export function capNewest<T>(items: readonly T[], limit: number): T[] {
@@ -598,7 +604,7 @@ export class PacketAnimator {
     const coreOpacity = this.reducedMotion ? style.life * 0.34 : style.coreOpacity;
     const bloomWidth = this.reducedMotion ? 5.2 : style.bloomWidth;
     const coreWidth = this.reducedMotion ? 1.8 : style.coreWidth;
-    const coreColor = this.reducedMotion ? item.color : blendWithWhite(item.color, style.hot * 0.36);
+    const coreColor = this.reducedMotion ? item.color : blendWithWhite(item.color, style.hot * 0.16);
     context.beginPath();
     context.moveTo(from.x, from.y);
     context.quadraticCurveTo(control.x, control.y, to.x, to.y);
@@ -613,6 +619,22 @@ export class PacketAnimator {
     context.lineWidth = coreWidth;
     context.stroke();
     context.setLineDash([]);
+    if (!this.reducedMotion && style.life > 0.025) {
+      const quality = this.qualityMode();
+      const count = quality === 'full' ? 3 : quality === 'balanced' ? 2 : 1;
+      const route = { from, control, to };
+      const age = Math.max(0, now - item.addedAt);
+      for (let index = 0; index < count; index += 1) {
+        const progress = residueSparkleProgress(item.segment.routeId, age, index);
+        const point = quadraticPoint(route, progress);
+        const twinkle = 0.32 + 0.68 * Math.abs(Math.sin(age / 240 + index * 2.1));
+        const radius = quality === 'low' ? 0.85 : 0.9 + index * 0.12;
+        context.fillStyle = withAlpha(item.color, style.life * twinkle * 0.82);
+        context.beginPath();
+        context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        context.fill();
+      }
+    }
   }
 
   private drawNodeWake(context: CanvasRenderingContext2D, item: NodeWake, now: number): void {
@@ -859,6 +881,13 @@ export class PacketAnimator {
     this.context.beginPath();
     this.context.arc(point.x, point.y, quality === 'low' ? 1.5 : 1.85, 0, Math.PI * 2);
     this.context.fill();
+    if (quality !== 'low') {
+      this.context.strokeStyle = withAlpha(color, 0.9);
+      this.context.lineWidth = 0.85;
+      this.context.beginPath();
+      this.context.arc(point.x, point.y, 2.8, 0, Math.PI * 2);
+      this.context.stroke();
+    }
   }
 
   private drawPacketSignature(

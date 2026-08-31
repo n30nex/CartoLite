@@ -90,6 +90,14 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(await maximumLongTask(page), 'enabling Routes must not block the main thread for 100 ms').toBeLessThan(100);
 
+  const clustersButton = page.locator('#clusters-button');
+  await resetLongTasks(page);
+  await clustersButton.click();
+  await expect(map).toHaveAttribute('data-clusters-visible', 'false');
+  expect(await maximumLongTask(page), 'showing all individual nodes must not block the main thread for 100 ms').toBeLessThan(100);
+  await clustersButton.click();
+  await expect(map).toHaveAttribute('data-clusters-visible', 'true');
+
   await resetLongTasks(page);
   await page.locator('#find-button').click();
   await page.locator('#node-search').fill('MC 0');

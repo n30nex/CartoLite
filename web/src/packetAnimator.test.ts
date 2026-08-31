@@ -26,6 +26,7 @@ import {
   RESIDUE_HOT_MS,
   RESIDUE_MS,
   residueLife,
+  residueSparkleProgress,
   residueStyle,
   routeCurve,
   routeDistanceKm,
@@ -176,16 +177,16 @@ describe('packet animation limits', () => {
     expect(observerRadius(OBSERVER_PING_MS * 4)).toBe(32);
   });
 
-  it('fades and narrows residue nonlinearly over 15 seconds', () => {
-    expect(RESIDUE_MS).toBe(15_000);
-    expect(RESIDUE_HOT_MS).toBe(900);
+  it('keeps recent routes glowing and sparkling for 45 seconds', () => {
+    expect(RESIDUE_MS).toBe(45_000);
+    expect(RESIDUE_HOT_MS).toBe(4_500);
     expect(residueLife(-100)).toBe(1);
     expect(residueLife(0)).toBe(1);
-    expect(residueLife(7_500)).toBeLessThan(0.5);
-    expect(residueLife(15_000)).toBe(0);
+    expect(residueLife(22_500)).toBeLessThan(0.5);
+    expect(residueLife(45_000)).toBe(0);
     expect(residueLife(60_000)).toBe(0);
 
-    const ages = [0, 900, 7_500, 14_000, 15_000];
+    const ages = [0, 4_500, 22_500, 42_000, 45_000];
     const styles = ages.map(residueStyle);
     for (let index = 1; index < styles.length; index += 1) {
       const current = styles[index]!;
@@ -198,10 +199,16 @@ describe('packet animation limits', () => {
     }
     expect(styles[0]!.hot).toBe(1);
     expect(styles[1]!.hot).toBe(0);
+    expect(residueSparkleProgress('route-a', 12_000, 1)).toBe(
+      residueSparkleProgress('route-a', 12_000, 1),
+    );
+    expect(residueSparkleProgress('route-a', 13_000, 1)).not.toBe(
+      residueSparkleProgress('route-a', 12_000, 1),
+    );
   });
 
   it('lets active nodes breathe briefly after a hop', () => {
-    expect(NODE_WAKE_MS).toBe(4_200);
+    expect(NODE_WAKE_MS).toBe(6_000);
     expect(nodeWakeLife(0)).toBe(1);
     expect(nodeWakeLife(NODE_WAKE_MS / 2)).toBeGreaterThan(0);
     expect(nodeWakeLife(NODE_WAKE_MS)).toBe(0);
@@ -210,9 +217,9 @@ describe('packet animation limits', () => {
   });
 
   it('caps only lingering decoration to its bounded budget', () => {
-    const values = Array.from({ length: 300 }, (_, index) => index);
-    expect(MAX_RESIDUE).toBe(240);
-    expect(capNewest(values, MAX_RESIDUE)).toEqual(values.slice(60));
+    const values = Array.from({ length: 600 }, (_, index) => index);
+    expect(MAX_RESIDUE).toBe(480);
+    expect(capNewest(values, MAX_RESIDUE)).toEqual(values.slice(120));
     expect(capNewest(values, 0)).toEqual([]);
     expect(MAX_ACTIVE_EFFECTS).toBe(32);
   });

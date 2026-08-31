@@ -1,18 +1,20 @@
 export type PacketKind = 'Advert' | 'Trace' | 'Text' | 'ACK' | 'Control' | 'Other';
 export type PacketSignature = 'ripple' | 'echo' | 'orbit' | 'double' | 'tick';
 
+export const PACKET_KINDS: readonly PacketKind[] = ['Advert', 'Trace', 'Text', 'ACK', 'Control', 'Other'];
+
 export const ROUTE_TRAFFIC_HALF_LIFE_MS = 15 * 60_000;
 export const ROUTE_TRAFFIC_MAX = 64;
 export const ROUTE_BRIGHT_AGE_MS = 60 * 60_000;
 export const ROUTE_MAX_AGE_MS = 24 * 60 * 60_000;
 
 export const PACKET_KIND_COLORS: Readonly<Record<PacketKind, string>> = {
-  Advert: '#48dcc1',
-  Trace: '#e9d72f',
-  Text: '#ec79b0',
-  ACK: '#8bd4ff',
-  Control: '#7dbfff',
-  Other: '#7dbfff'
+  Advert: '#4de7c4',
+  Trace: '#ffd15a',
+  Text: '#ff75b5',
+  ACK: '#78cfff',
+  Control: '#a78bfa',
+  Other: '#9caebd'
 };
 
 export const PACKET_KIND_SIGNATURES: Readonly<Record<PacketKind, PacketSignature>> = {

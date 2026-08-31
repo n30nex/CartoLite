@@ -1,5 +1,9 @@
 # Data sources
 
+## Optional terrain elevation
+
+Topography and 3D use the public Mapterhorn TileJSON endpoint at `https://tiles.mapterhorn.com/tilejson.json`. MapLibre reads its 512-pixel Terrarium-encoded elevation tiles as a `raster-dem` source for hillshade and terrain geometry only; the CARTO vector style remains the sole basemap and there is no raster basemap fallback. The source is created lazily after a visitor enables Topography or 3D, keeps Mapterhorn attribution visible, and receives no CartoLite state or visitor identifier.
+
 ## MeshMapper Canada regions
 
 `web/src/assets/meshmapper-canada-regions.geojson` is an unsimplified snapshot of the 34 Canadian region boundaries shown by MeshMapper. Its inclusion in CartoLite was authorized by a MeshMapper and MeshCore Canada administrator. The repository does not claim ownership of the source boundaries.
