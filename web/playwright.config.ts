@@ -14,13 +14,21 @@ export default defineConfig({
     trace: 'retain-on-failure'
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
-    { name: 'mobile', use: { ...devices['Pixel 7'] } },
+    {
+      name: 'desktop',
+      testIgnore: /tablet-portrait\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } }
+    },
+    { name: 'mobile', testIgnore: /tablet-portrait\.spec\.ts/, use: { ...devices['Pixel 7'] } },
     {
       name: 'mobile-tablet-portrait',
       testMatch: /tablet-portrait\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 800, height: 1280 }, hasTouch: true }
     },
-    { name: 'mobile-landscape', use: { ...devices['Pixel 7'], viewport: { width: 844, height: 390 } } }
+    {
+      name: 'mobile-landscape',
+      testIgnore: /tablet-portrait\.spec\.ts/,
+      use: { ...devices['Pixel 7'], viewport: { width: 844, height: 390 } }
+    }
   ]
 });
