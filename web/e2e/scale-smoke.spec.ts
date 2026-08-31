@@ -114,6 +114,7 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   const mapBox = await page.locator('#map .maplibregl-canvas').boundingBox();
   expect(mapBox).not.toBeNull();
   if (mapBox) {
+    const cameraRouteSourceRevision = await map.getAttribute('data-route-source-revision');
     await resetLongTasks(page);
     await page.mouse.move(mapBox.x + mapBox.width * 0.58, mapBox.y + mapBox.height * 0.52);
     await page.mouse.down();
@@ -121,12 +122,13 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
     await page.mouse.up();
     await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
     await expect(map).toHaveAttribute('data-eligible-routes', '7000');
-    await expect(map).toHaveAttribute('data-route-source-revision', routeSourceRevision ?? '');
+    await expect(map).toHaveAttribute('data-route-source-revision', cameraRouteSourceRevision ?? '');
     expect(await maximumLongTask(page), 'camera movement with all routes visible must stay responsive').toBeLessThan(100);
   }
 
   const regionStarted = Date.now();
   const regionsButton = page.locator('#regions-button');
+  if (testInfo.project.name.startsWith('mobile')) await page.locator('#layers-summary').click();
   await resetLongTasks(page);
   await regionsButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true', { timeout: 10_000 });

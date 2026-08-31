@@ -184,12 +184,14 @@ export class LiveMap {
   private lastFocusSignature: string | undefined;
   private inspectorSignature = '';
   private nodeInspectorPopup?: maplibregl.Popup;
+  private nodeInspectorPopupAnchor?: 'left' | 'right';
   private suppressPopupClose = false;
   private lastFollowMoveAt = 0;
   private directorTimer?: number;
   private readonly reducedMotion = prefersReducedMotion();
   private freshnessTimer: number;
   private renderEpoch = 0;
+  private layersReady = false;
 
   constructor(
     private readonly container: HTMLElement,
@@ -251,7 +253,7 @@ export class LiveMap {
       this.setSelectedNode(null);
       this.hideTooltip();
     }
-    if (!this.map.getSource('nodes')) return;
+    if (!this.layersReady) return;
     if (forceFreshness || changes?.reset || this.nodesByID.size === 0) {
       this.resetSources(state);
       return;
@@ -662,6 +664,7 @@ export class LiveMap {
   setRoutesVisible(visible: boolean): void {
     this.routesVisible = visible;
     this.container.dataset.routesVisible = String(visible);
+    if (!this.layersReady) return;
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
     const needsHydration = visible && this.routeDataDirty && Boolean(detailSource);
     const maxAge = this.effectiveRouteAgeMS();
@@ -692,6 +695,7 @@ export class LiveMap {
   setHeatmapVisible(visible: boolean): void {
     this.heatmapVisible = visible;
     this.container.dataset.heatmapVisible = String(visible);
+    if (!this.layersReady) return;
     const source = this.map.getSource(ACTIVITY_HEAT_SOURCE_ID) as GeoJSONSource | undefined;
     if (!source) return;
     if (visible && this.heatDataDirty) {
@@ -708,6 +712,11 @@ export class LiveMap {
     if (this.routeWindow === window) return;
     const started = performance.now();
     this.routeWindow = window;
+    if (!this.layersReady) {
+      this.emitRouteWindowChange();
+      this.container.dataset.routeWindowApplyMs = (performance.now() - started).toFixed(1);
+      return;
+    }
     const trunkChanged = this.applyRouteTimeState();
     if (this.selectedNodeID) {
       this.updateFocusData();
@@ -722,6 +731,7 @@ export class LiveMap {
   setRegionsVisible(visible: boolean): void {
     this.regionsVisible = visible;
     this.container.dataset.regionsVisible = String(visible);
+    if (!this.layersReady) return;
     let applied = false;
     for (const layerID of REGION_LAYER_IDS) {
       if (!this.map.getLayer(layerID)) continue;
@@ -764,6 +774,10 @@ export class LiveMap {
   };
 
   private handleZoomEnd = (): void => {
+    if (!this.layersReady) {
+      this.emitRouteWindowChange();
+      return;
+    }
     const visibilityApplied = applyRouteVisibilityForZoom(
       this.map,
       this.routesVisible,
@@ -1341,6 +1355,8 @@ export class LiveMap {
       this.map.on('mouseleave', layer, () => { this.map.getCanvas().style.cursor = ''; });
     }
     this.map.on('mouseenter', ROUTE_HIT_LAYER_ID, () => { this.map.getCanvas().style.cursor = 'pointer'; });
+    this.layersReady = true;
+    if (this.regionsVisible) this.ensureRegionsData();
     this.render(this.lastState, { reset: true }, true);
   }
 
@@ -1705,8 +1721,12 @@ export class LiveMap {
     }
     this.inspectorSheet.hidden = true;
     this.inspectorSheet.replaceChildren();
-    if (!this.nodeInspectorPopup) {
+    const popupAnchor = this.inspectorPopupAnchor(model.node);
+    if (!this.nodeInspectorPopup || this.nodeInspectorPopupAnchor !== popupAnchor) {
+      this.closePopup(false);
+      this.nodeInspectorPopupAnchor = popupAnchor;
       this.nodeInspectorPopup = new maplibregl.Popup({
+        anchor: popupAnchor,
         closeButton: true,
         closeOnClick: false,
         closeOnMove: false,
@@ -1720,10 +1740,10 @@ export class LiveMap {
         if (!this.suppressPopupClose && this.selectedNodeID) this.clearNodeSelection();
       });
     }
-    this.nodeInspectorPopup
+    const popup = this.nodeInspectorPopup
       .setLngLat([model.node.lng, model.node.lat])
-      .setDOMContent(content)
-      .addTo(this.map);
+      .setDOMContent(content);
+    if (!popup.isOpen()) popup.addTo(this.map);
   }
 
   private closeInspector(clearSelection: boolean): void {
@@ -1741,6 +1761,18 @@ export class LiveMap {
 
   private isMobileInspector(): boolean {
     return this.container.clientWidth <= 620 || window.matchMedia('(pointer: coarse)').matches;
+  }
+
+  private inspectorPopupAnchor(node: NodeV2): 'left' | 'right' {
+    let neighborLongitudeDelta = 0;
+    for (const neighborID of this.neighborNodeIDs) {
+      const neighbor = this.nodesByID.get(neighborID);
+      if (neighbor) neighborLongitudeDelta += neighbor.lng - node.lng;
+    }
+    if (Math.abs(neighborLongitudeDelta) > 0.0001) {
+      return neighborLongitudeDelta > 0 ? 'right' : 'left';
+    }
+    return this.map.project([node.lng, node.lat]).x > this.container.clientWidth / 2 ? 'right' : 'left';
   }
 
   private centerNodeIfNeeded(node: NodeV2): void {
