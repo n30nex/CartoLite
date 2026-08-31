@@ -13,6 +13,17 @@ web/playwright-report/
 web/test-results/
 artifacts/
 
+# Android build state and signing material
+android/.gradle/
+android/local.properties
+android/**/build/
+android/captures/
+android/.idea/
+android/**/*.jks
+android/**/*.keystore
+android/**/*.p12
+android/**/*.pfx
+
 # Runtime state is never source material
 data/
 *.db

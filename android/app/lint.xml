@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- Android 17 is still a preview. CartoLite targets the latest stable Android 16 SDK. -->
+    <issue id="OldTargetApi">
+        <ignore path="build.gradle" />
+    </issue>
+    <issue id="GradleDependency" severity="ignore" />
+</lint>
