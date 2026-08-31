@@ -16,6 +16,9 @@ import {
 import { activityLabel, LiveStore } from './state';
 import { normalizePacketKind, PACKET_KIND_COLORS, ROUTE_LEGEND_ITEMS } from './trafficVisuals';
 
+const backgroundEmbed = new URLSearchParams(window.location.search).get('embed') === 'background';
+if (backgroundEmbed) document.documentElement.dataset.embed = 'background';
+
 const appElement = required<HTMLElement>('app');
 const statusElement = required<HTMLElement>('status');
 const statusText = required<HTMLElement>('status-text');
@@ -380,6 +383,13 @@ async function start(): Promise<void> {
       liveMap.home(liveStore.snapshot.nodes);
     });
     lastUpdate.textContent = formatUpdate(initial.serverTime);
+    if (backgroundEmbed && window.parent !== window) {
+      const announceReady = (): void => {
+        window.parent.postMessage('cartolite:background-ready', 'https://canadaverse.org');
+      };
+      if (liveMap.map.loaded()) announceReady();
+      else liveMap.map.once('load', announceReady);
+    }
   } catch (error) {
     feed?.stop();
     store?.destroy();

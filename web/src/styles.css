@@ -65,6 +65,18 @@ button { font: inherit; }
 
 #packet-canvas { z-index: 4; }
 
+:root[data-embed="background"] .topbar,
+:root[data-embed="background"] .controls,
+:root[data-embed="background"] .legend,
+:root[data-embed="background"] .route-legend,
+:root[data-embed="background"] .tooltip,
+:root[data-embed="background"] .node-inspector-sheet,
+:root[data-embed="background"] .fatal,
+:root[data-embed="background"] .about-dialog,
+:root[data-embed="background"] .maplibregl-control-container {
+  display: none !important;
+}
+
 .glass {
   z-index: 5;
   border: 1px solid rgba(151, 220, 224, 0.15);

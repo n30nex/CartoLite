@@ -62,6 +62,30 @@ func TestSecurityHeadersExcludeExternalGlyphOrigins(t *testing.T) {
 	if hsts := response.Header().Get("Strict-Transport-Security"); hsts != "max-age=31536000" {
 		t.Fatalf("unexpected HSTS policy: %q", hsts)
 	}
+	if frame := response.Header().Get("X-Frame-Options"); frame != "DENY" {
+		t.Fatalf("unexpected default frame policy: %q", frame)
+	}
+	if !strings.Contains(csp, "frame-ancestors 'none'") {
+		t.Fatalf("default CSP permits framing: %q", csp)
+	}
+}
+
+func TestBackgroundEmbedAllowsOnlyCanadaverseFraming(t *testing.T) {
+	response := httptest.NewRecorder()
+	testHandler(t, true).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/?embed=background", nil))
+	if frame := response.Header().Get("X-Frame-Options"); frame != "" {
+		t.Fatalf("background embed retained incompatible frame header: %q", frame)
+	}
+	csp := response.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "frame-ancestors https://canadaverse.org") || strings.Contains(csp, "frame-ancestors 'none'") {
+		t.Fatalf("background embed has unexpected frame policy: %q", csp)
+	}
+
+	response = httptest.NewRecorder()
+	testHandler(t, true).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/missing?embed=background", nil))
+	if frame := response.Header().Get("X-Frame-Options"); frame != "DENY" {
+		t.Fatalf("embed query weakened another route: %q", frame)
+	}
 }
 
 func TestMissingFrontendAssetReturnsNotFound(t *testing.T) {

@@ -632,6 +632,20 @@ test('re-homes when the saved viewport has no current activity', async ({ page }
   await expect(page.locator('#map')).toHaveAttribute('data-view-source', 'home-no-activity');
 });
 
+test('renders the background embed without interactive chrome', async ({ page }) => {
+  const stateResponse = page.waitForResponse((response) => response.url().endsWith('/api/state') && response.ok());
+  await page.goto('/?embed=background');
+  await stateResponse;
+
+  await expect(page.locator('html')).toHaveAttribute('data-embed', 'background');
+  await expect(page.locator('#map .maplibregl-canvas')).toBeVisible();
+  await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+  await expect(page.locator('#packet-canvas')).toBeVisible();
+  for (const selector of ['.topbar', '.controls', '.legend', '.maplibregl-control-container']) {
+    await expect(page.locator(selector)).toBeHidden();
+  }
+});
+
 async function canvasHasPixels(canvas: Locator): Promise<boolean> {
   return canvas.evaluate((node) => {
     const element = node as HTMLCanvasElement;

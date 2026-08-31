@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.2 - 2026-08-31
+
+### Added
+
+- Add a map-only background embed that can be framed exclusively by `https://canadaverse.org` while every other route remains unframeable.
+- Publish a readiness message only after the live state and MapLibre scene have loaded, so the homepage never promotes an empty frame as live.
+
 ## 0.7.1 - 2026-08-31
 
 ### Fixed
