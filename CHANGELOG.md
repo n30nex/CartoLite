@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1 - 2026-08-31
+
+### Fixed
+
+- Keep full public node labels in Finder, tooltips, and the inspector while removing emoji-only glyph ranges from MapLibre map labels, preventing CARTO font CORS failures and repeated console noise.
+
 ## 0.7.0 - 2026-08-30
 
 ### Added

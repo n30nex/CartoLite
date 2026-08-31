@@ -1287,7 +1287,7 @@ export class LiveMap {
       minzoom: DETAIL_ZOOM - 0.05,
       filter: NODE_BASE_FILTER,
       layout: {
-        'text-field': ['get', 'label'],
+        'text-field': ['get', 'mapLabel'],
         'text-font': LOCAL_FONTS,
         'text-size': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 8.6, 9, 9.8, 12, 11.2, 16, 12.4],
         'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
@@ -2182,6 +2182,17 @@ function nodeGlowOpacity(focused: boolean, focusIDs: readonly string[]): Express
   ];
 }
 
+export function mapGlyphLabel(label: string): string {
+  const safe = Array.from(label.normalize('NFC'), (character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint >= 0x20 && codePoint <= 0x024f) return character;
+    if (codePoint >= 0x0370 && codePoint <= 0x052f) return character;
+    if (codePoint >= 0x2000 && codePoint <= 0x206f) return character;
+    return '';
+  }).join('').replace(/\s+/gu, ' ').trim();
+  return safe || 'MeshCore node';
+}
+
 function nodeCollection(nodes: readonly NodeV2[], now = Date.now()): FeatureCollection<Point> {
   return {
     type: 'FeatureCollection',
@@ -2197,6 +2208,7 @@ function nodeFeature(node: NodeV2, now: number): Feature<Point> {
     properties: {
       id: node.id,
       label: node.label,
+      mapLabel: mapGlyphLabel(node.label),
       role: node.role,
       observer: node.observer,
       lastSeen: node.lastSeen,

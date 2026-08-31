@@ -24,6 +24,7 @@ import {
   labelSortKey,
   LIVE_FOLLOW_MIN_INTERVAL_MS,
   mapPixelRatio,
+  mapGlyphLabel,
   neighborNodeIDs,
   NEIGHBOR_NODE_LAYER_ID,
   NODE_HIT_LAYER_ID,
@@ -53,6 +54,14 @@ import {
   tooltipPosition
 } from './map';
 import { PACKET_KIND_COLORS, ROUTE_MAX_AGE_MS } from './trafficVisuals';
+
+describe('map glyph labels', () => {
+  it('keeps readable text while removing glyph-server-hostile emoji ranges', () => {
+    expect(mapGlyphLabel('🐺 Radio Côte-d’Or 📡')).toBe('Radio Côte-d’Or');
+    expect(mapGlyphLabel('Краб Node')).toBe('Краб Node');
+    expect(mapGlyphLabel('🦀📻')).toBe('MeshCore node');
+  });
+});
 
 describe('route layer visibility', () => {
   it('activates only the route representation used at the current zoom', () => {
