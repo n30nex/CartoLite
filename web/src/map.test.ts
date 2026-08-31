@@ -64,8 +64,11 @@ describe('map glyph labels', () => {
 });
 
 describe('route layer visibility', () => {
-  it('toggles precompiled route layers through one global paint state', () => {
-    const globalState: Record<string, unknown> = { 'cartolite-routes-visible': false };
+  it('toggles precompiled trunk and exact layers independently', () => {
+    const globalState: Record<string, unknown> = {
+      'cartolite-trunks-visible': false,
+      'cartolite-exact-visible': false
+    };
     const setGlobalStateProperty = vi.fn((name: string, value: unknown) => { globalState[name] = value; });
     const map = {
       getGlobalState: vi.fn(() => globalState),
@@ -74,10 +77,13 @@ describe('route layer visibility', () => {
 
     expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 3.4)).toBe(true);
     expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 3.4)).toBe(false);
+    expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 8)).toBe(true);
     expect(applyRouteVisibilityForZoom(map, false, ROUTE_MAX_AGE_MS, 8)).toBe(true);
     expect(setGlobalStateProperty.mock.calls).toEqual([
-      ['cartolite-routes-visible', true],
-      ['cartolite-routes-visible', false]
+      ['cartolite-trunks-visible', true],
+      ['cartolite-trunks-visible', false],
+      ['cartolite-exact-visible', true],
+      ['cartolite-exact-visible', false]
     ]);
   });
 
