@@ -62,6 +62,12 @@ In addition to the standard identity, hardening, health, readiness, MQTT, checkp
 
 After cutover, observe production for five minutes. Require zero restarts, drops, queue growth, console errors, or sustained CPU or memory regression. If any gate fails, restore the recorded v0.7.1 image and configuration, restore the checkpoint only if needed, recreate only CartoLite, and repeat health, readiness, privacy, SSE, vector map, and browser checks.
 
+## v0.8.1 mobile lifecycle and route rendering
+
+On a real or emulated Android Chrome lifecycle, require `data-screen-awake="true"` while the page is visible. Hide and restore the document, then prove the old wake-lock sentinel was released, a new screen lock was acquired, `/api/state` was fetched again with no-store semantics, and one replacement `/api/events` stream starts from the refreshed cursor. Repeat with a back-forward cache restore and an offline-to-online transition; simultaneous recovery signals must coalesce rather than leave concurrent streams.
+
+At national, regional, and detail zooms, Routes must report `data-route-representation="individual-routes"`, `data-route-renderer="maplibre-webgl"`, `data-trunk-representations-loaded=""`, and the complete eligible route count for the selected window. `data-rendered-route-segments` must equal that complete count. Camera motion and route-window changes must not rewrite route geometry. Active packet travel, lingering sparkles, and node wakes must follow browser animation frames even in mobile low-detail mode without dropped live hops; the heavier residue glow remains cached.
+
 ## v0.5.0 cutover
 
 The rollback boundary for this release is v0.4.3 at `ghcr.io/n30nex/cartolite@sha256:b5ee6321ae71599497ef3873bc0e8ba4c52b7b5459e26fca3bb2a13d8b023656`.
@@ -80,7 +86,7 @@ In addition to the standard identity, hardening, health, readiness, MQTT, checkp
 - The packet core, short tapered glow, sparks, relay handoff, destination shimmer, reduced-motion cue, and 15-second residue stay aligned to the exact straight route without a full-map flash or white saturation.
 - Desktop popup and phone bottom-sheet inspectors survive camera movement, update on adjacent route and window changes, sort every active neighbour newest first, select neighbours, and close by their control, Escape, or an empty-map click.
 - Finder searches 4,000 downloaded labels without a network query, returns at most eight deterministic results, distinguishes duplicate labels, and opens the selected inspector.
-- Search, inspector open, route-window change, neighbour selection, Routes, and Regions each produce no task of 100 ms or longer in the 4,000-node/7,000-route gate.
+- Search, inspector open, route-window change, neighbour selection, and the Routes switch each finish their application work in under 100 ms in the 4,000-node/7,000-route gate. The separate software-rendered Chromium frame ceiling is 750 ms because it includes the full vector basemap, heatmap, regions, and node scene without a hardware compositor; production acceptance still requires smooth interaction on a hardware-accelerated desktop and Android browser.
 
 After cutover, observe production for five minutes. Require zero restarts, drops, queue growth, browser console errors, or sustained CPU or memory regression. If any gate fails, restore the recorded v0.6.9 image and configuration, restore the checkpoint only if needed, recreate only CartoLite, and repeat health, readiness, privacy, SSE, vector map, and browser checks.
 

@@ -119,6 +119,27 @@ describe('LiveFeed recovery', () => {
     expect(MockEventSource.instances[1]?.url).toBe('/api/events?bootId=boot-a&after=8');
     feed.stop();
   });
+
+  it('refreshes a suspended stream once and reconnects from the fresh cursor', async () => {
+    let resolveRecovery!: (state: StateV2) => void;
+    const recover = vi.fn(() => new Promise<StateV2>((resolve) => { resolveRecovery = resolve; }));
+    const feed = new LiveFeed(initial, handlers({ recover }));
+    feed.start();
+    const first = MockEventSource.instances[0];
+
+    const resumed = feed.resume();
+    const duplicateResume = feed.resume();
+    await settle();
+
+    expect(first?.closed).toBe(true);
+    expect(recover).toHaveBeenCalledTimes(1);
+    resolveRecovery({ ...initial, seq: 44 });
+    await Promise.all([resumed, duplicateResume]);
+
+    expect(MockEventSource.instances).toHaveLength(2);
+    expect(MockEventSource.instances[1]?.url).toBe('/api/events?bootId=boot-a&after=44');
+    feed.stop();
+  });
 });
 
 function handlers(overrides: Partial<LiveFeedHandlers> = {}): LiveFeedHandlers {

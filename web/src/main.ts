@@ -75,6 +75,65 @@ let scheduledNoteCount = 0;
 let activeViewClass: ViewClass = viewClass();
 let trafficWakeTimer: number | undefined;
 let recentTraffic: number[] = [];
+let screenWakeLock: ScreenWakeLockSentinel | undefined;
+let screenWakeLockRequest: Promise<void> | undefined;
+
+interface ScreenWakeLockSentinel extends EventTarget {
+  readonly released: boolean;
+  release(): Promise<void>;
+}
+
+interface ScreenWakeLockAPI {
+  request(type: 'screen'): Promise<ScreenWakeLockSentinel>;
+}
+
+function mobileScreenAwakeWanted(): boolean {
+  return activeViewClass === 'mobile' || window.matchMedia('(pointer: coarse)').matches;
+}
+
+function requestScreenAwake(): Promise<void> {
+  if (!mobileScreenAwakeWanted()) {
+    appElement.dataset.screenAwake = 'desktop';
+    return Promise.resolve();
+  }
+  const api = (navigator as Navigator & { wakeLock?: ScreenWakeLockAPI }).wakeLock;
+  if (!api) {
+    appElement.dataset.screenAwake = 'unsupported';
+    return Promise.resolve();
+  }
+  if (document.hidden || (screenWakeLock && !screenWakeLock.released)) return Promise.resolve();
+  if (screenWakeLockRequest) return screenWakeLockRequest;
+  appElement.dataset.screenAwake = 'requesting';
+  screenWakeLockRequest = api.request('screen')
+    .then(async (sentinel) => {
+      if (document.hidden) {
+        await sentinel.release();
+        return;
+      }
+      screenWakeLock = sentinel;
+      appElement.dataset.screenAwake = 'true';
+      sentinel.addEventListener('release', () => {
+        if (screenWakeLock !== sentinel) return;
+        screenWakeLock = undefined;
+        appElement.dataset.screenAwake = 'false';
+      }, { once: true });
+    })
+    .catch(() => {
+      appElement.dataset.screenAwake = 'retry';
+    })
+    .finally(() => {
+      screenWakeLockRequest = undefined;
+    });
+  return screenWakeLockRequest;
+}
+
+function releaseScreenAwake(): void {
+  const sentinel = screenWakeLock;
+  screenWakeLock = undefined;
+  if (!sentinel || sentinel.released) return;
+  appElement.dataset.screenAwake = 'false';
+  void sentinel.release().catch(() => undefined);
+}
 
 function setLayersOpen(open: boolean): void {
   layersDisclosure.toggleAttribute('open', open);
@@ -99,7 +158,7 @@ legend.dataset.collapsed = String(!legendExpanded);
 legendToggle.setAttribute('aria-expanded', String(legendExpanded));
 legendToggle.setAttribute('aria-label', legendExpanded ? 'Hide map legend' : 'Show map legend');
 
-renderRouteLegend(routeLegend, 'national-trunks');
+renderRouteLegend(routeLegend, 'individual-routes');
 aboutButton.addEventListener('click', () => aboutDialog.showModal());
 aboutClose.addEventListener('click', () => aboutDialog.close());
 aboutDialog.addEventListener('click', (event) => {
@@ -111,6 +170,7 @@ layersSummary.addEventListener('click', () => {
   if (opening) closeSoundPanel();
 });
 document.addEventListener('pointerdown', (event) => {
+  void requestScreenAwake();
   const target = event.target;
   if (!(target instanceof Node)) return;
   if (!soundControl.contains(target)) closeSoundPanel();
@@ -124,6 +184,7 @@ document.addEventListener('keydown', (event) => {
   if (activeViewClass === 'mobile') setLayersOpen(false);
 });
 
+void requestScreenAwake();
 void start();
 
 async function start(): Promise<void> {
@@ -206,33 +267,37 @@ async function start(): Promise<void> {
       persistUiPreference({ routeWindow: window });
     });
     const renderNodeSearch = (): void => {
+      const started = performance.now();
       const results = liveMap.findNodes(nodeSearch.value);
       nodeSearchResults.replaceChildren();
-      if (!nodeSearch.value.trim()) return;
-      if (results.length === 0) {
+      if (!nodeSearch.value.trim()) {
+        mapElement.dataset.nodeSearchApplyMs = (performance.now() - started).toFixed(1);
+        return;
+      } else if (results.length === 0) {
         const empty = document.createElement('p');
         empty.textContent = 'No matching public labels';
         nodeSearchResults.append(empty);
-        return;
+      } else {
+        for (const { node } of results) {
+          const result = document.createElement('button');
+          result.type = 'button';
+          result.className = 'node-search-result';
+          result.setAttribute('role', 'option');
+          result.dataset.nodeId = node.id;
+          const label = document.createElement('strong');
+          label.textContent = node.label;
+          const context = document.createElement('span');
+          context.textContent = `${node.role.replace('_', ' ')} · ${relativeNodeTime(node.lastSeen)}`;
+          result.append(label, context);
+          result.addEventListener('click', () => {
+            liveMap.selectNodeByID(node.id, true);
+            closeFindPanel();
+            if (activeViewClass === 'mobile') setLayersOpen(false);
+          });
+          nodeSearchResults.append(result);
+        }
       }
-      for (const { node } of results) {
-        const result = document.createElement('button');
-        result.type = 'button';
-        result.className = 'node-search-result';
-        result.setAttribute('role', 'option');
-        result.dataset.nodeId = node.id;
-        const label = document.createElement('strong');
-        label.textContent = node.label;
-        const context = document.createElement('span');
-        context.textContent = `${node.role.replace('_', ' ')} · ${relativeNodeTime(node.lastSeen)}`;
-        result.append(label, context);
-        result.addEventListener('click', () => {
-          liveMap.selectNodeByID(node.id, true);
-          closeFindPanel();
-          if (activeViewClass === 'mobile') setLayersOpen(false);
-        });
-        nodeSearchResults.append(result);
-      }
+      mapElement.dataset.nodeSearchApplyMs = (performance.now() - started).toFixed(1);
     };
     findButton.addEventListener('click', () => {
       const opening = findPanel.hidden;
@@ -260,9 +325,29 @@ async function start(): Promise<void> {
         }
       }
     });
+    let wasHidden = document.hidden;
     document.addEventListener('visibilitychange', () => {
       animator?.setPaused(document.hidden);
       sonifier?.setPaused(document.hidden);
+      if (document.hidden) {
+        wasHidden = true;
+        releaseScreenAwake();
+        return;
+      }
+      void requestScreenAwake();
+      if (wasHidden) {
+        wasHidden = false;
+        void feed?.resume();
+      }
+    });
+    window.addEventListener('pageshow', (event) => {
+      if (!event.persisted) return;
+      void requestScreenAwake();
+      void feed?.resume();
+    });
+    window.addEventListener('online', () => {
+      void requestScreenAwake();
+      void feed?.resume();
     });
     window.addEventListener('beforeunload', () => {
       if (trafficWakeTimer !== undefined) window.clearTimeout(trafficWakeTimer);
@@ -272,6 +357,7 @@ async function start(): Promise<void> {
       animator?.destroy();
       sonifier?.destroy();
       mapView?.destroy();
+      releaseScreenAwake();
     }, { once: true });
 
     const initial = await fetchState();

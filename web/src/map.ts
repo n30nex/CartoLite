@@ -20,6 +20,7 @@ import {
   type NodeSearchResult,
 } from './nodeInspector';
 import type { RegionWorkerOutput } from './regions';
+import { HistoricalRouteLayer, ROUTE_WEBGL_LAYER_ID } from './routeLayer';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
 import type { MapChanges } from './state';
 import {
@@ -60,7 +61,6 @@ const ROUTE_TRUNK_SOURCE_ID = 'route-trunks';
 const ROUTE_DETAIL_SOURCE_ID = 'route-details';
 const ROUTE_FOCUS_SOURCE_ID = 'route-focus';
 const ROUTE_TRUNK_WINDOW_STATE_ID = 'cartolite-trunk-window';
-const ROUTE_EXACT_WINDOW_STATE_ID = 'cartolite-exact-window';
 export const REGION_LAYER_IDS = ['meshmapper-region-lines', 'meshmapper-region-labels'] as const;
 export const HEATMAP_LAYER_IDS = PACKET_KINDS.map((kind) => `activity-heat-${kind.toLowerCase()}`);
 export const HEATMAP_LAYER_ID = HEATMAP_LAYER_IDS[0]!;
@@ -76,20 +76,9 @@ export const MESHMAP_ATTRIBUTION = 'Canadian regions &copy; <a href="https://mes
 export const ROUTE_HOVER_LAYER_IDS = ['route-hover-glow', 'route-hover-core'] as const;
 const ROUTE_NATIONAL_LAYER_IDS = ['route-national-glow', 'route-national-core'] as const;
 const ROUTE_REGIONAL_LAYER_IDS = ['route-regional-glow', 'route-regional-core'] as const;
-const ROUTE_EXACT_LAYER_IDS = [
-  'route-exact-glow-0',
-  'route-exact-core-0',
-  'route-exact-glow-1',
-  'route-exact-core-1',
-  'route-exact-glow-2',
-  'route-exact-core-2',
-  'route-exact-glow-3',
-  'route-exact-core-3'
-] as const;
 export const ROUTE_VISUAL_LAYER_IDS = [
   ...ROUTE_NATIONAL_LAYER_IDS,
-  ...ROUTE_REGIONAL_LAYER_IDS,
-  ...ROUTE_EXACT_LAYER_IDS
+  ...ROUTE_REGIONAL_LAYER_IDS
 ] as const;
 export const CLUSTER_HIGHLIGHT_LAYER_ID = 'cluster-highlight';
 export const CLUSTER_LAYER_IDS = ['clusters-glow', 'clusters', CLUSTER_HIGHLIGHT_LAYER_ID, 'cluster-count'] as const;
@@ -112,10 +101,9 @@ export const HEAT_RENDER_BUDGET = 600;
 const ROUTE_REPRESENTATION_EXACT = 'exact';
 const ROUTE_REPRESENTATION_NATIONAL = 'national';
 const ROUTE_REPRESENTATION_REGIONAL = 'regional';
-const ROUTE_EXACT_SOURCE_MIN_ZOOM = 6.5;
 const ROUTE_NATIONAL_MAX_ZOOM = 4.8;
 const ROUTE_REGIONAL_MIN_ZOOM = 4.8;
-const ROUTE_REGIONAL_MAX_ZOOM = ROUTE_EXACT_SOURCE_MIN_ZOOM;
+const ROUTE_REGIONAL_MAX_ZOOM = 6.5;
 const ROUTE_SOURCE_BUILD_BATCH = 256;
 export const ROUTE_LIVE_UPDATE_INTERVAL_MS = 8_000;
 
@@ -180,7 +168,6 @@ export class LiveMap {
   private routeSourceRevision = 0;
   private routeClock = 0;
   private appliedRouteWindowMS = 0;
-  private appliedExactRouteWindowMS = 0;
   private routeCollections?: RouteSourceCollections;
   private routeTrunkFeatures = new Map<string, Feature<LineString>>();
   private routeDetailFeatures = new Map<string, Feature<LineString>>();
@@ -202,6 +189,7 @@ export class LiveMap {
   private neighborNodeIDs: string[] = [];
   private hoveredRouteID: string | null = null;
   private routeInspectionPinned = false;
+  private historicalRouteLayer = new HistoricalRouteLayer();
   private highlightedClusterID: number | null = null;
   private clusterFlashTimer?: number;
   private tooltipSignature = '';
@@ -241,6 +229,8 @@ export class LiveMap {
     this.container.dataset.hoveredRouteId = '';
     this.container.dataset.cameraMode = 'idle';
     this.container.dataset.routeSourceRevision = '0';
+    this.container.dataset.exactRoutesLoaded = 'false';
+    this.container.dataset.exactRoutesReady = 'false';
     this.container.dataset.regionRenderer = 'maplibre';
     this.container.dataset.regionSourceRevision = '0';
     this.map = new maplibregl.Map({
@@ -264,7 +254,7 @@ export class LiveMap {
       transformRequest: (url) => ({ url: cartoVectorRequestURL(url) })
     });
     this.setTerrainGestures(false);
-    this.container.dataset.routeRenderer = 'maplibre';
+    this.container.dataset.routeRenderer = 'maplibre-webgl';
     this.updateRouteRepresentation();
     this.map.addControl(new maplibregl.AttributionControl({
       compact: true,
@@ -274,6 +264,7 @@ export class LiveMap {
     this.map.on('zoom', this.updateRouteRepresentation);
     this.map.on('zoomend', this.handleZoomEnd);
     this.map.on('resize', this.handleInspectorResize);
+    this.map.on('webglcontextrestored', this.handleWebGLContextRestored);
     document.addEventListener('keydown', this.handleKeyDown);
     this.freshnessTimer = window.setInterval(() => this.refreshRouteClock(), 60_000);
   }
@@ -386,6 +377,8 @@ export class LiveMap {
     this.dirtyRouteIDs.clear();
     this.routeHydrating = true;
     this.routeDataDirty = false;
+    this.container.dataset.exactRoutesLoaded = 'false';
+    this.container.dataset.exactRoutesReady = 'false';
     this.markRendering();
 
     const active = (): boolean => hydrationEpoch === this.routeHydrationEpoch
@@ -402,14 +395,15 @@ export class LiveMap {
     const finish = (): void => {
       if (!active()) return;
       this.routeHydrating = false;
+      this.trackExactRouteReadiness(hydrationEpoch);
       if (this.routeDataDirty) {
         this.emitRouteWindowChange();
-        this.markRendering([ROUTE_TRUNK_SOURCE_ID, ROUTE_DETAIL_SOURCE_ID]);
+        this.markRendering(this.routesVisible ? [ROUTE_DETAIL_SOURCE_ID] : undefined);
         this.scheduleRouteHydration();
         return;
       }
       this.emitRouteWindowChange();
-      this.markRendering([ROUTE_TRUNK_SOURCE_ID, ROUTE_DETAIL_SOURCE_ID]);
+      this.markRendering(this.routesVisible ? [ROUTE_DETAIL_SOURCE_ID] : undefined);
     };
     void buildRouteSourceCollections(
       allRoutes,
@@ -425,21 +419,22 @@ export class LiveMap {
       if (!collections || !active()) return;
       this.routeCollections = collections;
       this.container.dataset.exactRoutesLoaded = 'true';
-      this.container.dataset.trunkRepresentationsLoaded = `${ROUTE_REPRESENTATION_NATIONAL},${ROUTE_REPRESENTATION_REGIONAL}`;
+      this.container.dataset.trunkRepresentationsLoaded = '';
       this.container.dataset.routeBuildMaxSliceMs = collections.maxSliceMS.toFixed(1);
       const sourceStarted = performance.now();
       const trunkChanged = this.updateRouteSource(
         ROUTE_TRUNK_SOURCE_ID,
         trunkSource,
         this.routeTrunkFeatures,
-        [...collections.national.features, ...collections.regional.features]
+        []
       );
-      const detailChanged = this.updateRouteSource(
-        ROUTE_DETAIL_SOURCE_ID,
-        detailSource,
-        this.routeDetailFeatures,
-        collections.exact.features
-      );
+      this.historicalRouteLayer.setRoutes(collections.individual.features);
+      const detailChanged = true;
+      this.routeDetailFeatures.clear();
+      for (const feature of collections.individual.features) {
+        if (feature.id !== undefined) this.routeDetailFeatures.set(String(feature.id), feature);
+      }
+      this.container.dataset.renderedRouteSegments = String(collections.individual.features.length);
       this.container.dataset.routeSourceDispatchMs = (performance.now() - sourceStarted).toFixed(1);
       if (trunkChanged || detailChanged) {
         this.routeSourceRevision += 1;
@@ -449,6 +444,27 @@ export class LiveMap {
     })
       .then(finish)
       .catch(fail);
+  }
+
+  private trackExactRouteReadiness(hydrationEpoch: number): void {
+    let settledFrames = 0;
+    const settle = (): void => {
+      if (hydrationEpoch !== this.routeHydrationEpoch) return;
+      const sourceReady = Boolean(this.map.getSource(ROUTE_DETAIL_SOURCE_ID))
+        && this.map.isSourceLoaded(ROUTE_DETAIL_SOURCE_ID);
+      if (!sourceReady || this.routeHydrating) {
+        settledFrames = 0;
+        window.requestAnimationFrame(settle);
+        return;
+      }
+      settledFrames += 1;
+      if (settledFrames < 2) {
+        window.requestAnimationFrame(settle);
+        return;
+      }
+      this.container.dataset.exactRoutesReady = 'true';
+    };
+    window.requestAnimationFrame(settle);
   }
 
   private scheduleRouteHydration(): void {
@@ -692,11 +708,13 @@ export class LiveMap {
   }
 
   selectNodeByID(nodeID: string, recenter = true): boolean {
+    const started = performance.now();
     const node = this.nodesByID.get(nodeID);
     if (!node) return false;
     this.clearRouteInspection();
     this.setSelectedNode(node.id, node.label);
     if (recenter) this.centerNodeIfNeeded(node);
+    this.container.dataset.nodeSelectionApplyMs = (performance.now() - started).toFixed(1);
     return true;
   }
 
@@ -705,9 +723,14 @@ export class LiveMap {
   }
 
   setRoutesVisible(visible: boolean): void {
+    const started = performance.now();
     this.routesVisible = visible;
     this.container.dataset.routesVisible = String(visible);
-    if (!this.layersReady) return;
+    this.historicalRouteLayer.setVisible(visible);
+    if (!this.layersReady) {
+      this.container.dataset.routeToggleApplyMs = (performance.now() - started).toFixed(1);
+      return;
+    }
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
     const needsHydration = visible && this.routeDataDirty && Boolean(detailSource);
     const maxAge = this.effectiveRouteAgeMS();
@@ -716,13 +739,6 @@ export class LiveMap {
       if (this.map.getGlobalState()[ROUTE_TRUNK_WINDOW_STATE_ID] !== suffix) {
         this.map.setGlobalStateProperty(ROUTE_TRUNK_WINDOW_STATE_ID, suffix);
       }
-    }
-    if (visible
-      && detailSource
-      && this.map.getZoom() >= ROUTE_EXACT_SOURCE_MIN_ZOOM
-      && this.appliedExactRouteWindowMS !== maxAge) {
-      this.appliedExactRouteWindowMS = maxAge;
-      applyRouteExactWindowState(this.map, maxAge);
     }
     const visualApplied = detailSource
       ? applyRouteVisibilityForZoom(this.map, visible, maxAge, this.map.getZoom())
@@ -733,6 +749,7 @@ export class LiveMap {
     if (!visible) this.clearRouteInspection();
     if (!visible) this.map.getCanvas().style.cursor = '';
     if (!needsHydration && (visualApplied || Boolean(detailSource) || hitApplied || neighborsApplied)) this.markRendering();
+    this.container.dataset.routeToggleApplyMs = (performance.now() - started).toFixed(1);
   }
 
   setHeatmapVisible(visible: boolean): void {
@@ -838,6 +855,7 @@ export class LiveMap {
     this.map.off('zoom', this.updateRouteRepresentation);
     this.map.off('zoomend', this.handleZoomEnd);
     this.map.off('resize', this.handleInspectorResize);
+    this.map.off('webglcontextrestored', this.handleWebGLContextRestored);
     this.map.remove();
   }
 
@@ -968,12 +986,7 @@ export class LiveMap {
           }
         }
       }
-      if (this.routesVisible
-        && this.map.getZoom() >= ROUTE_EXACT_SOURCE_MIN_ZOOM
-        && this.appliedExactRouteWindowMS !== maxAge) {
-        this.appliedExactRouteWindowMS = maxAge;
-        applyRouteExactWindowState(this.map, maxAge);
-      }
+      this.historicalRouteLayer.setMaximumBand(routeWindowBand(maxAge));
     }
     this.updateRouteWindowDiagnostics(this.routeClock || now, maxAge);
     return trunkChanged;
@@ -1074,13 +1087,11 @@ export class LiveMap {
     this.map.addSource(ROUTE_DETAIL_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 16 });
     this.map.addSource(ROUTE_FOCUS_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 16 });
     this.map.setGlobalStateProperty(ROUTE_TRUNK_WINDOW_STATE_ID, '24h');
-    this.appliedExactRouteWindowMS = this.effectiveRouteAgeMS();
-    this.map.setGlobalStateProperty(ROUTE_EXACT_WINDOW_STATE_ID, routeWindowSuffix(this.appliedExactRouteWindowMS));
     this.applyRouteTimeState(Date.now(), true);
     const representation = routeRepresentationForZoom(this.map.getZoom());
     const nationalVisibility = this.routesVisible && representation === 'national-trunks' ? 'visible' : 'none';
     const regionalVisibility = this.routesVisible && representation === 'regional-trunks' ? 'visible' : 'none';
-    const exactVisibility = this.routesVisible && representation === 'individual-routes' ? 'visible' : 'none';
+    const exactVisibility = this.routesVisible ? 'visible' : 'none';
     this.map.addLayer({
       id: ROUTE_VISUAL_LAYER_IDS[0],
       type: 'line',
@@ -1137,45 +1148,9 @@ export class LiveMap {
         'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.8, ['*', activeRouteTrunkMetricExpression('opacity'), 0.56], 6.5, ['*', activeRouteTrunkMetricExpression('opacity'), 0.68]]
       }
     });
-    for (const band of [0, 1, 2, 3] as const) {
-      this.map.addLayer({
-        id: `route-exact-glow-${band}`,
-        type: 'line',
-        source: ROUTE_DETAIL_SOURCE_ID,
-        minzoom: ROUTE_EXACT_SOURCE_MIN_ZOOM,
-        filter: routeExactBandFilter(band),
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-          'line-sort-key': ['get', 'lastHeard'],
-          visibility: exactVisibility
-        },
-        paint: {
-          'line-color': routeColorExpression(),
-          'line-width': ['interpolate', ['linear'], ['zoom'], 6.5, ['*', ['get', 'glowWidth'], 0.58], 8, ['*', ['get', 'glowWidth'], 0.78], 12, ['get', 'glowWidth']],
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 6.5, ['*', routeWindowBandOpacityExpression(band), ['get', 'opacity'], 0.12], 8, ['*', routeWindowBandOpacityExpression(band), ['get', 'opacity'], 0.16], 12, ['*', routeWindowBandOpacityExpression(band), ['get', 'opacity'], 0.2]],
-          'line-blur': ['interpolate', ['linear'], ['zoom'], 6.5, 1.4, 9, 2.2, 14, 2.8]
-        }
-      });
-      this.map.addLayer({
-        id: `route-exact-core-${band}`,
-        type: 'line',
-        source: ROUTE_DETAIL_SOURCE_ID,
-        minzoom: ROUTE_EXACT_SOURCE_MIN_ZOOM,
-        filter: routeExactBandFilter(band),
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-          'line-sort-key': ['get', 'lastHeard'],
-          visibility: exactVisibility
-        },
-        paint: {
-          'line-color': routeColorExpression(),
-          'line-width': ['interpolate', ['linear'], ['zoom'], 6.5, ['*', ['get', 'width'], 0.72], 8, ['*', ['get', 'width'], 0.78], 12, ['*', ['get', 'width'], 1.08], 16, ['*', ['get', 'width'], 1.18]],
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 6.5, ['*', routeWindowBandOpacityExpression(band), ['get', 'opacity'], 0.46], 8, ['*', routeWindowBandOpacityExpression(band), ['get', 'opacity'], 0.64], 12, ['*', routeWindowBandOpacityExpression(band), ['get', 'opacity'], 0.82]]
-        }
-      });
-    }
+    this.historicalRouteLayer.setVisible(this.routesVisible);
+    this.historicalRouteLayer.setMaximumBand(routeWindowBand(this.effectiveRouteAgeMS()));
+    this.map.addLayer(this.historicalRouteLayer);
     this.map.addLayer({
       id: ROUTE_FOCUS_LAYER_IDS[0],
       type: 'line',
@@ -1202,7 +1177,7 @@ export class LiveMap {
     this.map.addLayer({
       id: ROUTE_HOVER_LAYER_IDS[0],
       type: 'line',
-      source: ROUTE_DETAIL_SOURCE_ID,
+      source: ROUTE_FOCUS_SOURCE_ID,
       filter: routeIDFilter(null),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
       paint: {
@@ -1215,7 +1190,7 @@ export class LiveMap {
     this.map.addLayer({
       id: ROUTE_HOVER_LAYER_IDS[1],
       type: 'line',
-      source: ROUTE_DETAIL_SOURCE_ID,
+      source: ROUTE_FOCUS_SOURCE_ID,
       filter: routeIDFilter(null),
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
       paint: {
@@ -1227,7 +1202,7 @@ export class LiveMap {
     this.map.addLayer({
       id: ROUTE_HIT_LAYER_ID,
       type: 'line',
-      source: ROUTE_DETAIL_SOURCE_ID,
+      source: ROUTE_FOCUS_SOURCE_ID,
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
       paint: {
         'line-color': '#ffffff',
@@ -1435,7 +1410,7 @@ export class LiveMap {
       minzoom: DETAIL_ZOOM - 0.15,
       filter: NODE_BASE_FILTER,
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 18, 10, 20, 14, 22],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, 22, 10, 24, 14, 26],
         'circle-color': '#ffffff',
         'circle-opacity': 0.001
       }
@@ -1542,8 +1517,9 @@ export class LiveMap {
       const sourcesSettled = !sourceIDs?.length || sourceIDs.every((sourceID) => (
         Boolean(this.map.getSource(sourceID)) && this.map.isSourceLoaded(sourceID)
       ));
-      const awaitingInitialRoutes = !this.lastState || this.container.dataset.exactRoutesLoaded !== 'true';
-      if (awaitingInitialRoutes || this.routeHydrating || !sourcesSettled) {
+      const awaitingVisibleRoutes = this.routesVisible
+        && (!this.lastState || this.container.dataset.exactRoutesReady !== 'true');
+      if (awaitingVisibleRoutes || (this.routesVisible && this.routeHydrating) || !sourcesSettled) {
         settledFrames = 0;
         window.requestAnimationFrame(settle);
         return;
@@ -1912,6 +1888,26 @@ export class LiveMap {
     if (this.selectedNodeID) this.renderNodeInspector(true);
   };
 
+  private handleWebGLContextRestored = (): void => {
+    const restore = (): void => {
+      if (!this.layersReady) return;
+      if (!this.map.isStyleLoaded()) {
+        this.map.once('style.load', restore);
+        return;
+      }
+      if (this.map.getLayer(ROUTE_WEBGL_LAYER_ID)) this.map.removeLayer(ROUTE_WEBGL_LAYER_ID);
+      const layer = new HistoricalRouteLayer();
+      layer.setRoutes([...this.routeDetailFeatures.values()]);
+      layer.setVisible(this.routesVisible);
+      layer.setMaximumBand(routeWindowBand(this.effectiveRouteAgeMS()));
+      this.historicalRouteLayer = layer;
+      const before = this.map.getLayer(ROUTE_FOCUS_LAYER_IDS[0]) ? ROUTE_FOCUS_LAYER_IDS[0] : undefined;
+      this.map.addLayer(layer, before);
+      this.container.dataset.routeContextRestores = String(Number(this.container.dataset.routeContextRestores ?? 0) + 1);
+    };
+    window.requestAnimationFrame(restore);
+  };
+
   private handleKeyDown = (event: KeyboardEvent): void => {
     if (event.key === 'Escape' && this.selectedNodeID) this.clearNodeSelection();
   };
@@ -1920,7 +1916,6 @@ export class LiveMap {
 type RouteLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setLayoutProperty'>;
 type RouteVisibilityMap = Pick<maplibregl.Map, 'getLayer' | 'getLayoutProperty' | 'setLayoutProperty'>;
 type RouteFilterMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter'>;
-type RouteWindowMap = Pick<maplibregl.Map, 'getGlobalState' | 'setGlobalStateProperty'>;
 type FocusMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setPaintProperty' | 'setLayoutProperty'>;
 type InteractiveLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setFilter' | 'setLayoutProperty'>;
 type ClusterVisibilityMap = Pick<maplibregl.Map, 'getLayer' | 'getLayoutProperty' | 'setLayoutProperty' | 'setLayerZoomRange'>;
@@ -1939,30 +1934,17 @@ export function applyRouteVisibilityForZoom(
   _maxAge: number,
   zoom: number
 ): boolean {
-  const representation = routeRepresentationForZoom(zoom);
-  const activeLayers = new Set<string>(
-    representation === 'national-trunks'
-      ? ROUTE_NATIONAL_LAYER_IDS
-      : representation === 'regional-trunks'
-        ? ROUTE_REGIONAL_LAYER_IDS
-        : [...ROUTE_EXACT_LAYER_IDS, ...ROUTE_FOCUS_LAYER_IDS]
-  );
+  void zoom;
   let changed = false;
   for (const layerID of [...ROUTE_VISUAL_LAYER_IDS, ...ROUTE_FOCUS_LAYER_IDS]) {
     if (!map.getLayer(layerID)) continue;
-    const visibility = routesVisible && activeLayers.has(layerID) ? 'visible' : 'none';
+    const focusLayer = (ROUTE_FOCUS_LAYER_IDS as readonly string[]).includes(layerID);
+    const visibility = routesVisible && focusLayer ? 'visible' : 'none';
     if (map.getLayoutProperty(layerID, 'visibility') === visibility) continue;
     map.setLayoutProperty(layerID, 'visibility', visibility);
     changed = true;
   }
   return changed;
-}
-
-export function applyRouteExactWindowState(map: RouteWindowMap, maxAge: number): boolean {
-  const suffix = routeWindowSuffix(maxAge);
-  if (map.getGlobalState()[ROUTE_EXACT_WINDOW_STATE_ID] === suffix) return false;
-  map.setGlobalStateProperty(ROUTE_EXACT_WINDOW_STATE_ID, suffix);
-  return true;
 }
 
 export function applyNeighborRingVisibility(map: RouteLayerMap, visible: boolean): boolean {
@@ -2279,10 +2261,6 @@ function activeRouteTrunkColorExpression(): ExpressionSpecification {
   ];
 }
 
-function routeWindowBandOpacityExpression(band: 0 | 1 | 2 | 3): ExpressionSpecification {
-  return ['match', ['global-state', ROUTE_EXACT_WINDOW_STATE_ID], ROUTE_WINDOW_BUCKETS.slice(band).map((bucket) => bucket.suffix), 1, 0];
-}
-
 function routeWindowSuffix(maxAge: number): string {
   return ROUTE_WINDOW_BUCKETS.find((bucket) => bucket.ms === maxAge)?.suffix ?? '24h';
 }
@@ -2555,7 +2533,7 @@ interface RouteTrunkAccumulator {
 }
 
 interface RouteSourceCollections {
-  exact: FeatureCollection<LineString>;
+  individual: FeatureCollection<LineString>;
   national: FeatureCollection<LineString>;
   regional: FeatureCollection<LineString>;
   maxSliceMS: number;
@@ -2573,8 +2551,6 @@ async function buildRouteSourceCollections(
   active: () => boolean
 ): Promise<RouteSourceCollections | undefined> {
   const exact: Feature<LineString>[] = [];
-  const national = new Map<string, RouteTrunkAccumulator>();
-  const regional = new Map<string, RouteTrunkAccumulator>();
   let maxSliceMS = 0;
 
   for (let offset = 0; offset < routes.length; offset += ROUTE_SOURCE_BUILD_BATCH) {
@@ -2589,17 +2565,15 @@ async function buildRouteSourceCollections(
       const feature = cached ?? routeFeature(route, nodes, now, trafficBaseline, maxAge);
       if (!feature) continue;
       exact.push(feature);
-      addRouteToTrunks(national, feature, ROUTE_TRUNK_LEVELS[0], now);
-      addRouteToTrunks(regional, feature, ROUTE_TRUNK_LEVELS[1], now);
     }
     maxSliceMS = Math.max(maxSliceMS, performance.now() - sliceStarted);
   }
 
   if (!active()) return undefined;
   return {
-    exact: { type: 'FeatureCollection', features: exact },
-    national: { type: 'FeatureCollection', features: routeTrunksFromMap(national, ROUTE_TRUNK_LEVELS[0]) },
-    regional: { type: 'FeatureCollection', features: routeTrunksFromMap(regional, ROUTE_TRUNK_LEVELS[1]) },
+    individual: { type: 'FeatureCollection', features: exact },
+    national: EMPTY_LINES,
+    regional: EMPTY_LINES,
     maxSliceMS
   };
 }
@@ -2814,17 +2788,8 @@ function countEligibleRoutes(
 }
 
 function sameLineFeature(left: Feature<LineString>, right: Feature<LineString>): boolean {
-  const leftCoordinates = left.geometry.coordinates;
-  const rightCoordinates = right.geometry.coordinates;
-  if (leftCoordinates.length !== rightCoordinates.length) return false;
-  for (let index = 0; index < leftCoordinates.length; index += 1) {
-    const leftPoint = leftCoordinates[index];
-    const rightPoint = rightCoordinates[index];
-    if (!leftPoint || !rightPoint || leftPoint.length !== rightPoint.length) return false;
-    for (let coordinate = 0; coordinate < leftPoint.length; coordinate += 1) {
-      if (leftPoint[coordinate] !== rightPoint[coordinate]) return false;
-    }
-  }
+  if (left.geometry.type !== right.geometry.type) return false;
+  if (JSON.stringify(left.geometry.coordinates) !== JSON.stringify(right.geometry.coordinates)) return false;
   const leftProperties = left.properties ?? {};
   const rightProperties = right.properties ?? {};
   const leftKeys = Object.keys(leftProperties);
@@ -2882,9 +2847,7 @@ export function routeWindowBand(age: number): 0 | 1 | 2 | 3 {
   return 3;
 }
 
-export function routeRepresentationForZoom(zoom: number): RouteRepresentation {
-  if (zoom < 4.8) return 'national-trunks';
-  if (zoom < 6.5) return 'regional-trunks';
+export function routeRepresentationForZoom(_zoom: number): RouteRepresentation {
   return 'individual-routes';
 }
 

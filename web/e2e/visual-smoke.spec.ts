@@ -41,7 +41,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   expect(rasterRequests, 'the vector-only release must not request a raster basemap').toEqual([]);
   await expect(page.locator('#region-canvas')).toHaveCount(0);
   await expect(page.locator('#route-canvas')).toHaveCount(0);
-  await expect(page.locator('#map')).toHaveAttribute('data-route-renderer', 'maplibre');
+  await expect(page.locator('#map')).toHaveAttribute('data-route-renderer', 'maplibre-webgl');
   await expect(page.locator('#map')).toHaveAttribute('data-region-renderer', 'maplibre');
   await expect(page.locator('#packet-canvas')).toBeVisible();
   await expect(page.locator('#traffic-meter i')).toHaveCount(5);
@@ -86,8 +86,8 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(nodeLegend).not.toContainText('RF route');
   const routeLegend = page.locator('#route-legend');
   await expect(routeLegend).toBeHidden();
-  await expect(routeLegend).toHaveAttribute('aria-label', 'Grouped route colors show connection density');
-  await expect(routeLegend.locator('.route-legend-item')).toHaveCount(2);
+  await expect(routeLegend).toHaveAttribute('aria-label', 'Route colors show the latest packet type');
+  await expect(routeLegend.locator('.route-legend-item')).toHaveCount(5);
   if (mobile) {
     const targetSizes = await page.locator('#about-button, .control-button:visible, #route-window, #legend-toggle').evaluateAll((elements) => elements.map((element) => {
       const bounds = element.getBoundingClientRect();
@@ -202,19 +202,9 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(routeLegend).toBeVisible();
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
-  await expect(page.locator('#map')).toHaveAttribute('data-route-representation', /^(?:(?:national|regional)-trunks|individual-routes)$/);
+  await expect(page.locator('#map')).toHaveAttribute('data-route-representation', 'individual-routes');
   await expect.poll(() => page.locator('#map').getAttribute('data-eligible-routes').then(Number)).toBeGreaterThan(0);
-  await expect.poll(async () => {
-    const map = page.locator('#map');
-    const eligible = Number(await map.getAttribute('data-eligible-routes'));
-    const loaded = (await map.getAttribute('data-trunk-representations-loaded') ?? '').split(',');
-    const national = Number(await map.getAttribute('data-national-routes-represented'));
-    const regional = Number(await map.getAttribute('data-regional-routes-represented'));
-    const expectedNational = loaded.includes('national') ? national : 0;
-    const expectedRegional = loaded.includes('regional') ? regional : 0;
-    const allowedLiveLag = Math.max(16, Math.ceil(eligible * 0.02));
-    return expectedNational === expectedRegional && Math.abs(expectedNational - eligible) <= allowedLiveLag;
-  }, { message: 'every loaded trunk level must agree while its bounded live refresh catches up' }).toBe(true);
+  await expect(page.locator('#map')).toHaveAttribute('data-trunk-representations-loaded', '');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   if (mobile) await openLayers(page);
   await routesButton.click();
@@ -222,7 +212,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(routesButton).toHaveAttribute('title', 'Show routes');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'false');
   await expect(routeLegend).toBeHidden();
-  await expect(routeLegend.locator('.route-legend-item')).toHaveCount(2);
+  await expect(routeLegend.locator('.route-legend-item')).toHaveCount(5);
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
   await expect.poll(() => canvasHasPixels(page.locator('#packet-canvas')), { message: 'packet animation canvas should receive a live frame while routes are hidden', timeout: 15_000 }).toBe(true);
@@ -312,6 +302,70 @@ test('keeps the map primary with reduced motion and releases live follow on drag
     message: 'reduced motion should render a restrained static traffic cue',
     timeout: 15_000
   }).toBe(true);
+});
+
+test('keeps mobile awake and refreshes live state after the page resumes', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'mobile lifecycle behavior');
+  const consoleErrors = captureConsoleErrors(page);
+  const requests = { state: 0, events: 0 };
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/state') requests.state += 1;
+    if (path === '/api/events') requests.events += 1;
+  });
+  await page.addInitScript(() => {
+    const lifecycle = { hidden: false, requests: 0, releases: 0 };
+    Object.defineProperty(window, '__cartoliteLifecycle', { configurable: true, value: lifecycle });
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => lifecycle.hidden });
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => lifecycle.hidden ? 'hidden' : 'visible'
+    });
+    Object.defineProperty(window, '__setCartoliteHidden', {
+      configurable: true,
+      value(hidden: boolean) {
+        lifecycle.hidden = hidden;
+        document.dispatchEvent(new Event('visibilitychange'));
+      }
+    });
+    Object.defineProperty(navigator, 'wakeLock', {
+      configurable: true,
+      value: {
+        async request(type: string) {
+          if (type !== 'screen') throw new TypeError('unsupported wake lock');
+          lifecycle.requests += 1;
+          const sentinel = new EventTarget() as EventTarget & { released: boolean; release(): Promise<void> };
+          sentinel.released = false;
+          sentinel.release = async () => {
+            if (sentinel.released) return;
+            sentinel.released = true;
+            lifecycle.releases += 1;
+            sentinel.dispatchEvent(new Event('release'));
+          };
+          return sentinel;
+        }
+      }
+    });
+  });
+
+  await page.goto('/');
+  await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+  await expect(page.locator('#app')).toHaveAttribute('data-screen-awake', 'true');
+  await expect.poll(() => requests.state).toBe(1);
+  await expect.poll(() => requests.events).toBeGreaterThanOrEqual(1);
+
+  await page.evaluate(() => (window as unknown as { __setCartoliteHidden(hidden: boolean): void }).__setCartoliteHidden(true));
+  await expect(page.locator('#app')).toHaveAttribute('data-screen-awake', 'false');
+  await page.evaluate(() => (window as unknown as { __setCartoliteHidden(hidden: boolean): void }).__setCartoliteHidden(false));
+
+  await expect(page.locator('#app')).toHaveAttribute('data-screen-awake', 'true');
+  await expect.poll(() => requests.state, { message: 'resume must fetch a fresh state snapshot' }).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => requests.events, { message: 'resume must replace the frozen event stream' }).toBeGreaterThanOrEqual(2);
+  const lifecycle = await page.evaluate(() => (window as unknown as {
+    __cartoliteLifecycle: { requests: number; releases: number };
+  }).__cartoliteLifecycle);
+  expect(lifecycle).toEqual({ hidden: false, requests: 2, releases: 1 });
+  expect(consoleErrors).toEqual([]);
 });
 
 test('keeps a recent packet trail after stable routes are hidden', async ({ page }, testInfo) => {
@@ -418,6 +472,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   if (mobile) await openLayers(page);
   await routesButton.click();
   await expect(map).toHaveAttribute('data-routes-visible', 'true');
+  if (mobile) await closeLayers(page);
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
   if (!box) return;
@@ -439,6 +494,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await expect(focusChip).toContainText('Alpha · 1 neighbor');
   if (mobile) await openLayers(page);
   await page.locator('#route-window').selectOption('24h');
+  if (mobile) await closeLayers(page);
   await expect(map).toHaveAttribute('data-neighbor-route-count', '2');
   await expect(map).toHaveAttribute('data-focused-route-count', '2');
   await expect(inspector.locator('.neighbor-row')).toHaveCount(2);
@@ -479,6 +535,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await routesButton.click();
   await expect(map).toHaveAttribute('data-routes-visible', 'true');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
+  if (mobile) await closeLayers(page);
   await inspectRoute(page, alphaPoint, charliePoint, mobile);
   await expect(map).toHaveAttribute('data-hovered-route-id', 'a-c');
   await expect(tooltip).toHaveAttribute('data-kind', 'route');
@@ -488,6 +545,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await expect(map).toHaveAttribute('data-hovered-route-id', '');
   await expect(tooltip).toBeHidden();
   await page.locator('#route-window').selectOption('24h');
+  if (mobile) await closeLayers(page);
 
   await clickPoint(page, bravoPoint, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'b');
@@ -730,6 +788,14 @@ async function openLayers(page: Page): Promise<void> {
     await page.locator('#layers-summary').click();
   }
   await expect(disclosure).toHaveAttribute('open', '');
+}
+
+async function closeLayers(page: Page): Promise<void> {
+  const disclosure = page.locator('#layers-disclosure');
+  if (await disclosure.evaluate((element) => element.hasAttribute('open'))) {
+    await page.locator('#layers-summary').click();
+  }
+  await expect(disclosure).not.toHaveAttribute('open', '');
 }
 
 function isMobileProject(projectName: string): boolean {
