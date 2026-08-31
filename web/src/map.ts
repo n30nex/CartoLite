@@ -191,6 +191,7 @@ export class LiveMap {
   private readonly reducedMotion = prefersReducedMotion();
   private freshnessTimer: number;
   private renderEpoch = 0;
+  private routeVisibilityEpoch = 0;
   private layersReady = false;
 
   constructor(
@@ -680,15 +681,31 @@ export class LiveMap {
       this.appliedExactRouteWindowMS = maxAge;
       applyRouteExactWindowState(this.map, maxAge);
     }
-    const visualApplied = detailSource
-      ? applyRouteVisibilityForZoom(this.map, visible, maxAge, this.map.getZoom())
-      : false;
+    if (detailSource) this.scheduleRouteVisibility(visible, maxAge, this.map.getZoom());
     const hitApplied = this.selectedNodeID !== null && applyRouteHitLayerVisibility(this.map, visible);
     const neighborsApplied = this.selectedNodeID !== null && applyNeighborRingVisibility(this.map, visible);
     if (visible && this.routeDataDirty) this.scheduleRouteHydration();
     if (!visible) this.clearRouteInspection();
     if (!visible) this.map.getCanvas().style.cursor = '';
-    if (visualApplied || Boolean(detailSource) || hitApplied || neighborsApplied) this.markRendering();
+    if (!detailSource && (hitApplied || neighborsApplied)) this.markRendering();
+  }
+
+  private scheduleRouteVisibility(visible: boolean, maxAge: number, zoom: number): void {
+    const changes = routeVisibilityChangesForZoom(this.map, visible, maxAge, zoom);
+    const epoch = ++this.routeVisibilityEpoch;
+    ++this.renderEpoch;
+    this.container.dataset.renderState = 'rendering';
+    const applyNext = (): void => {
+      if (epoch !== this.routeVisibilityEpoch) return;
+      const change = changes.shift();
+      if (!change) {
+        this.markRendering();
+        return;
+      }
+      this.map.setLayoutProperty(change.layerID, 'visibility', change.visibility);
+      window.requestAnimationFrame(applyNext);
+    };
+    window.requestAnimationFrame(applyNext);
   }
 
   setHeatmapVisible(visible: boolean): void {
@@ -1819,6 +1836,17 @@ export function applyRouteVisibilityForZoom(
   _maxAge: number,
   zoom: number
 ): boolean {
+  const changes = routeVisibilityChangesForZoom(map, routesVisible, _maxAge, zoom);
+  for (const change of changes) map.setLayoutProperty(change.layerID, 'visibility', change.visibility);
+  return changes.length > 0;
+}
+
+function routeVisibilityChangesForZoom(
+  map: RouteVisibilityMap,
+  routesVisible: boolean,
+  _maxAge: number,
+  zoom: number
+): Array<{ layerID: string; visibility: 'visible' | 'none' }> {
   const representation = routeRepresentationForZoom(zoom);
   const activeLayers = representation === 'national-trunks'
     ? ROUTE_NATIONAL_LAYER_IDS
@@ -1826,15 +1854,14 @@ export function applyRouteVisibilityForZoom(
       ? ROUTE_REGIONAL_LAYER_IDS
       : [...ROUTE_EXACT_LAYER_IDS, ...ROUTE_FOCUS_LAYER_IDS];
   const activeLayerSet = new Set<string>(activeLayers);
-  let changed = false;
+  const changes: Array<{ layerID: string; visibility: 'visible' | 'none' }> = [];
   for (const layerID of [...ROUTE_VISUAL_LAYER_IDS, ...ROUTE_FOCUS_LAYER_IDS]) {
     if (!map.getLayer(layerID)) continue;
     const visibility = routesVisible && activeLayerSet.has(layerID) ? 'visible' : 'none';
     if (map.getLayoutProperty(layerID, 'visibility') === visibility) continue;
-    map.setLayoutProperty(layerID, 'visibility', visibility);
-    changed = true;
+    changes.push({ layerID, visibility });
   }
-  return changed;
+  return changes;
 }
 
 export function applyRouteExactWindowState(map: RouteWindowMap, maxAge: number): boolean {
