@@ -483,7 +483,10 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await expect(inspector).toBeVisible();
   await expect(inspector).toContainText('Bravo');
 
-  await clickPoint(page, { x: box.x + box.width * 0.84, y: box.y + box.height * 0.82 }, mobile);
+  await clickPoint(page, {
+    x: box.x + box.width * 0.84,
+    y: box.y + box.height * (mobile ? 0.30 : 0.82),
+  }, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', '');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '0');
   await expect(map).toHaveAttribute('data-focused-route-count', '0');

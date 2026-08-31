@@ -586,6 +586,19 @@ button { font: inherit; }
   .icon-button { width: 44px; padding: 0; }
 }
 
+@media (orientation: landscape) and (max-height: 520px) {
+  .node-inspector-sheet { max-height: min(40vh, 220px); }
+  :root[data-view-class="mobile"] .node-inspector {
+    grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    max-height: min(40vh, 220px);
+  }
+  :root[data-view-class="mobile"] .node-inspector > header { grid-column: 1; grid-row: 1; padding-block: 4px; }
+  :root[data-view-class="mobile"] .node-inspector dl { grid-column: 1; grid-row: 2; padding-block: 6px; }
+  :root[data-view-class="mobile"] .node-inspector h3 { grid-column: 2; grid-row: 1; align-self: end; padding-block: 8px; }
+  :root[data-view-class="mobile"] .node-inspector .neighbor-list { grid-column: 2; grid-row: 2; min-height: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
