@@ -7,6 +7,10 @@
 - Add a map-only background embed that can be framed exclusively by `https://canadaverse.org` while every other route remains unframeable.
 - Publish a readiness message only after the live state and MapLibre scene have loaded, so the homepage never promotes an empty frame as live.
 
+### Fixed
+
+- Show the last complete route snapshot immediately when routes are enabled, while pending live deltas continue through the existing bounded refresh schedule.
+
 ## 0.7.1 - 2026-08-31
 
 ### Fixed

@@ -666,7 +666,6 @@ export class LiveMap {
     this.container.dataset.routesVisible = String(visible);
     if (!this.layersReady) return;
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
-    const needsHydration = visible && this.routeDataDirty && Boolean(detailSource);
     const maxAge = this.effectiveRouteAgeMS();
     if (visible && detailSource) {
       const suffix = routeWindowSuffix(maxAge);
@@ -686,10 +685,10 @@ export class LiveMap {
       : false;
     const hitApplied = this.selectedNodeID !== null && applyRouteHitLayerVisibility(this.map, visible);
     const neighborsApplied = this.selectedNodeID !== null && applyNeighborRingVisibility(this.map, visible);
-    if (needsHydration) this.hydrateRouteSource();
+    if (visible && this.routeDataDirty) this.scheduleRouteHydration();
     if (!visible) this.clearRouteInspection();
     if (!visible) this.map.getCanvas().style.cursor = '';
-    if (!needsHydration && (visualApplied || Boolean(detailSource) || hitApplied || neighborsApplied)) this.markRendering();
+    if (visualApplied || Boolean(detailSource) || hitApplied || neighborsApplied) this.markRendering();
   }
 
   setHeatmapVisible(visible: boolean): void {
