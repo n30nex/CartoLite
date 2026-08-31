@@ -1,7 +1,7 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles.css';
 import { fetchState, LiveFeed } from './api';
-import { RouteSonifier, type SoundStatus } from './audio';
+import { RouteSonifier, type SoundScene, type SoundStatus } from './audio';
 import { LiveMap, type LiveMapFocus, type RouteRepresentation, type RouteWindow } from './map';
 import { PacketAnimator } from './packetAnimator';
 import {
@@ -33,12 +33,18 @@ const soundPanel = required<HTMLElement>('sound-panel');
 const soundState = required<HTMLElement>('sound-state');
 const soundPanelState = required<HTMLElement>('sound-panel-state');
 const soundToggle = required<HTMLButtonElement>('sound-toggle');
+const soundScene = required<HTMLSelectElement>('sound-scene');
 const soundVolume = required<HTMLInputElement>('sound-volume');
 const soundVolumeOutput = required<HTMLOutputElement>('sound-volume-output');
 const soundActivity = required<HTMLElement>('sound-activity');
 const layersDisclosure = required<HTMLElement>('layers-disclosure');
 const layersSummary = required<HTMLButtonElement>('layers-summary');
 const layersPanel = required<HTMLElement>('layers-panel');
+const findControl = required<HTMLElement>('find-control');
+const findButton = required<HTMLButtonElement>('find-button');
+const findPanel = required<HTMLElement>('find-panel');
+const nodeSearch = required<HTMLInputElement>('node-search');
+const nodeSearchResults = required<HTMLElement>('node-search-results');
 const resetButton = required<HTMLButtonElement>('reset-button');
 const legend = required<HTMLElement>('legend');
 const legendToggle = required<HTMLButtonElement>('legend-toggle');
@@ -98,11 +104,13 @@ document.addEventListener('pointerdown', (event) => {
   const target = event.target;
   if (!(target instanceof Node)) return;
   if (!soundControl.contains(target)) closeSoundPanel();
+  if (!findControl.contains(target)) closeFindPanel();
   if (activeViewClass === 'mobile' && !layersDisclosure.contains(target)) setLayersOpen(false);
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   closeSoundPanel();
+  closeFindPanel();
   if (activeViewClass === 'mobile') setLayersOpen(false);
 });
 
@@ -117,7 +125,11 @@ async function start(): Promise<void> {
   try {
     // Construct MapLibre before the state request so the basemap can paint while
     // the initial snapshot is in flight.
-    const liveMap = new LiveMap(mapElement, required<HTMLElement>('tooltip'), {
+    const liveMap = new LiveMap(
+      mapElement,
+      required<HTMLElement>('tooltip'),
+      required<HTMLElement>('node-inspector-sheet'),
+      {
       onFocusChange: updateFocusChrome,
       onRouteRepresentationChange(representation) {
         renderRouteLegend(routeLegend, representation);
@@ -126,7 +138,8 @@ async function start(): Promise<void> {
         const option = routeWindow.querySelector<HTMLOptionElement>('option[value="auto"]');
         if (option) option.textContent = label;
       }
-    });
+      },
+    );
     mapView = liveMap;
     const packetCanvas = required<HTMLCanvasElement>('packet-canvas');
     const liveAnimator = new PacketAnimator(liveMap.map, packetCanvas);
@@ -135,10 +148,16 @@ async function start(): Promise<void> {
     sonifier = routeSonifier;
     soundVolume.value = String(Math.round(routeSonifier.getVolume() * 100));
     soundVolumeOutput.value = `${soundVolume.value}%`;
-    routeSonifier.setStatusListener((status) => updateSoundChrome(status, routeSonifier.getVolume()));
+    soundScene.value = routeSonifier.getScene();
+    routeSonifier.setStatusListener((status) => updateSoundChrome(
+      status,
+      routeSonifier.getVolume(),
+      routeSonifier.getScene(),
+    ));
     if (!routeSonifier.supported()) {
       soundButton.disabled = true;
       soundToggle.disabled = true;
+      soundScene.disabled = true;
       soundButton.title = 'Route sounds are unavailable in this browser';
       soundState.textContent = 'Unavailable';
       soundPanelState.textContent = 'Unavailable';
@@ -162,6 +181,61 @@ async function start(): Promise<void> {
       const window = routeWindow.value as RouteWindow;
       liveMap.setRouteWindow(window);
       persistUiPreference({ routeWindow: window });
+    });
+    const renderNodeSearch = (): void => {
+      const results = liveMap.findNodes(nodeSearch.value);
+      nodeSearchResults.replaceChildren();
+      if (!nodeSearch.value.trim()) return;
+      if (results.length === 0) {
+        const empty = document.createElement('p');
+        empty.textContent = 'No matching public labels';
+        nodeSearchResults.append(empty);
+        return;
+      }
+      for (const { node } of results) {
+        const result = document.createElement('button');
+        result.type = 'button';
+        result.className = 'node-search-result';
+        result.setAttribute('role', 'option');
+        result.dataset.nodeId = node.id;
+        const label = document.createElement('strong');
+        label.textContent = node.label;
+        const context = document.createElement('span');
+        context.textContent = `${node.role.replace('_', ' ')} · ${relativeNodeTime(node.lastSeen)}`;
+        result.append(label, context);
+        result.addEventListener('click', () => {
+          liveMap.selectNodeByID(node.id, true);
+          closeFindPanel();
+          if (activeViewClass === 'mobile') setLayersOpen(false);
+        });
+        nodeSearchResults.append(result);
+      }
+    };
+    findButton.addEventListener('click', () => {
+      const opening = findPanel.hidden;
+      findPanel.hidden = !opening;
+      findButton.setAttribute('aria-expanded', String(opening));
+      if (!opening) return;
+      closeSoundPanel();
+      renderNodeSearch();
+      window.requestAnimationFrame(() => nodeSearch.focus());
+    });
+    nodeSearch.addEventListener('input', renderNodeSearch);
+    nodeSearch.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown') {
+        const first = nodeSearchResults.querySelector<HTMLButtonElement>('button');
+        if (first) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+      if (event.key === 'Enter') {
+        const first = nodeSearchResults.querySelector<HTMLButtonElement>('button');
+        if (first) {
+          event.preventDefault();
+          first.click();
+        }
+      }
     });
     document.addEventListener('visibilitychange', () => {
       animator?.setPaused(document.hidden);
@@ -300,6 +374,7 @@ async function start(): Promise<void> {
       routeSonifier.setVolume(percent / 100);
       soundVolumeOutput.value = `${Math.round(percent)}%`;
     });
+    soundScene.addEventListener('change', () => routeSonifier.setScene(soundScene.value as SoundScene));
     resetButton.addEventListener('click', () => {
       setLiveFollow(false);
       liveMap.home(liveStore.snapshot.nodes);
@@ -372,9 +447,10 @@ function pulseSoundChrome(notes: number): void {
   }, 720);
 }
 
-function updateSoundChrome(status: SoundStatus, volume: number): void {
+function updateSoundChrome(status: SoundStatus, volume: number, scene: SoundScene): void {
   const label = status === 'on' ? 'On' : status === 'resume' ? 'Tap to Resume' : 'Off';
   const percent = Math.round(volume * 100);
+  const sceneLabel = scene[0]!.toUpperCase() + scene.slice(1);
   soundState.textContent = label;
   soundPanelState.textContent = label;
   soundButton.dataset.soundState = status;
@@ -382,18 +458,32 @@ function updateSoundChrome(status: SoundStatus, volume: number): void {
   soundButton.setAttribute('aria-pressed', String(status === 'on'));
   soundButton.classList.toggle('selected', status === 'on');
   soundButton.title = status === 'on'
-    ? `Sound on — ${percent}% · visible live hops only`
+    ? `Sound on — ${sceneLabel} · ${percent}% · visible live hops only`
     : status === 'resume'
-      ? `Tap to resume sound — ${percent}%`
-      : `Sound off — ${percent}%`;
+      ? `Tap to resume ${sceneLabel} — ${percent}%`
+      : `Sound off — ${sceneLabel} · ${percent}%`;
   soundToggle.textContent = status === 'on' ? 'Turn sound off' : status === 'resume' ? 'Tap to Resume' : 'Turn sound on';
   soundVolume.value = String(percent);
   soundVolumeOutput.value = `${percent}%`;
+  soundScene.value = scene;
 }
 
 function closeSoundPanel(): void {
   soundPanel.hidden = true;
   soundButton.setAttribute('aria-expanded', 'false');
+}
+
+function closeFindPanel(): void {
+  findPanel.hidden = true;
+  findButton.setAttribute('aria-expanded', 'false');
+}
+
+function relativeNodeTime(timestamp: number): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1_000));
+  if (seconds < 60) return 'seen now';
+  if (seconds < 3_600) return `seen ${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86_400) return `seen ${Math.floor(seconds / 3_600)}h ago`;
+  return `seen ${Math.floor(seconds / 86_400)}d ago`;
 }
 
 function formatUpdate(timestamp: number): string {

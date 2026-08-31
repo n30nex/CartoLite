@@ -54,6 +54,20 @@ Before changing `/opt/CartoLite`, record the running container ID/image, copy Co
 
 Acceptance requires exact version/SHA/image identity; ready MQTT/checkpoint/queue with zero drops; public schema v2 privacy; live SSE, animation, and scheduled sound; vector TileJSON/PBF/glyph success with no raster request; desktop and both phone orientations; regional MIME/cache proof; watchdog outage/recovery proof; restic backup/check/restore checksum; and a 20-minute soak with zero restarts/drops and no sustained CPU or memory regression.
 
+## v0.7.0 musical traffic and node inspection
+
+Use the explicitly approved [manual Pi release exception](manual-release.md). Record the exact v0.6.9 image, container, configuration, boot ID, checkpoint checksum, and resource baseline before changing production. The candidate must be the exact merged `main` SHA, built for and reported as `linux/amd64`, tested first through Pi execution and then natively on the x86_64 droplet. The release manifest must say that the manual image has no GitHub OIDC attestation.
+
+In addition to the standard identity, hardening, health, readiness, MQTT, checkpoint, queue, drops, privacy, SSE, vector-only, region, cache, and bounded-load gates, verify all of the following:
+
+- Aurora, Wood, and Chimes retain one oscillator and one scheduled articulation per visible hop, with off-screen and observer-only traffic silent.
+- The packet core, short tapered glow, sparks, relay handoff, destination shimmer, reduced-motion cue, and 15-second residue stay aligned to the exact straight route without a full-map flash or white saturation.
+- Desktop popup and phone bottom-sheet inspectors survive camera movement, update on adjacent route and window changes, sort every active neighbour newest first, select neighbours, and close by their control, Escape, or an empty-map click.
+- Finder searches 4,000 downloaded labels without a network query, returns at most eight deterministic results, distinguishes duplicate labels, and opens the selected inspector.
+- Search, inspector open, route-window change, neighbour selection, Routes, and Regions each produce no task of 100 ms or longer in the 4,000-node/7,000-route gate.
+
+After cutover, observe production for five minutes. Require zero restarts, drops, queue growth, browser console errors, or sustained CPU or memory regression. If any gate fails, restore the recorded v0.6.9 image and configuration, restore the checkpoint only if needed, recreate only CartoLite, and repeat health, readiness, privacy, SSE, vector map, and browser checks.
+
 ## v0.6.9 camera and interaction stability
 
 Require Regions to report `data-region-renderer="maplibre"`, load all 68 boundary/label features from the validated 34-region snapshot, and retain one source revision across pan, zoom, hide, and show. Require national, regional, and exact route representations to switch at 4.8 and 6.5 without overlap; same-cell trunk totals remain counted but are not drawn as loop glyphs. At detail zoom, selecting a node must set `data-focused-route-count` to the active-window neighbor count and visibly light the matching exact lines. Live Follow must accept valid off-screen traffic, while manual pan or zoom cancels it. Reload once after changing Routes, Heatmap, Regions, the route window, and legend state, then prove those browser-local settings return without an early style-load error.

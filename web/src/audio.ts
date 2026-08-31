@@ -8,36 +8,52 @@ const VOICE_LEVEL = 0.17;
 const MIN_VOICE_LEVEL = 0.035;
 const MIN_GAIN = 0.0001;
 const LOOKAHEAD_SECONDS = 0.025;
-export const SOUND_STORAGE_KEY = 'cartolite:sound:v1';
+const LEGACY_SOUND_STORAGE_KEY = 'cartolite:sound:v1';
+export const SOUND_STORAGE_KEY = 'cartolite:sound:v2';
 export const DEFAULT_SOUND_VOLUME = 0.8;
+export const DEFAULT_SOUND_SCENE: SoundScene = 'aurora';
 
-export interface SoundPreference {
+export type SoundScene = 'aurora' | 'wood' | 'chimes';
+
+export interface SoundPreferenceV2 {
   enabled: boolean;
   volume: number;
+  scene: SoundScene;
 }
 
 export type SoundStatus = 'on' | 'off' | 'resume';
 
-export function loadSoundPreference(storage: Storage): SoundPreference {
+export function loadSoundPreference(storage: Storage): SoundPreferenceV2 {
   try {
     const value = JSON.parse(storage.getItem(SOUND_STORAGE_KEY) ?? 'null') as {
       enabled?: unknown;
       volume?: unknown;
+      scene?: unknown;
     } | null;
-    if (!value || typeof value.enabled !== 'boolean' || typeof value.volume !== 'number') {
-      return { enabled: false, volume: DEFAULT_SOUND_VOLUME };
+    if (value && typeof value.enabled === 'boolean' && typeof value.volume === 'number' && isSoundScene(value.scene)) {
+      return { enabled: value.enabled, volume: clamp(value.volume, 0, 1), scene: value.scene };
     }
-    return { enabled: value.enabled, volume: clamp(value.volume, 0, 1) };
+    const legacy = JSON.parse(storage.getItem(LEGACY_SOUND_STORAGE_KEY) ?? 'null') as {
+      enabled?: unknown;
+      volume?: unknown;
+    } | null;
+    if (legacy && typeof legacy.enabled === 'boolean' && typeof legacy.volume === 'number') {
+      const migrated = { enabled: legacy.enabled, volume: clamp(legacy.volume, 0, 1), scene: DEFAULT_SOUND_SCENE };
+      saveSoundPreference(storage, migrated);
+      return migrated;
+    }
   } catch {
-    return { enabled: false, volume: DEFAULT_SOUND_VOLUME };
+    // Malformed or unavailable storage falls through to safe defaults.
   }
+  return { enabled: false, volume: DEFAULT_SOUND_VOLUME, scene: DEFAULT_SOUND_SCENE };
 }
 
-export function saveSoundPreference(storage: Storage, preference: SoundPreference): void {
+export function saveSoundPreference(storage: Storage, preference: SoundPreferenceV2): void {
   try {
     storage.setItem(SOUND_STORAGE_KEY, JSON.stringify({
       enabled: preference.enabled,
       volume: clamp(preference.volume, 0, 1),
+      scene: isSoundScene(preference.scene) ? preference.scene : DEFAULT_SOUND_SCENE,
     }));
   } catch {
     // Local persistence is optional; private browsing may reject it.
@@ -47,18 +63,61 @@ export function saveSoundPreference(storage: Storage, preference: SoundPreferenc
 interface Voice {
   root: number;
   intervals: readonly number[];
-  waveform: OscillatorType;
   brightness: number;
   durationScale: number;
 }
 
 const VOICES: Readonly<Record<PacketKind, Voice>> = {
-  Advert: { root: 60, intervals: [0, 2, 4, 7, 9], waveform: 'sine', brightness: 4_400, durationScale: 1 },
-  Trace: { root: 62, intervals: [0, 2, 5, 7, 9], waveform: 'triangle', brightness: 5_200, durationScale: 0.94 },
-  Text: { root: 57, intervals: [0, 3, 5, 7, 10], waveform: 'sine', brightness: 3_600, durationScale: 1.12 },
-  ACK: { root: 67, intervals: [0, 2, 4, 7, 9], waveform: 'triangle', brightness: 5_800, durationScale: 0.72 },
-  Control: { root: 64, intervals: [0, 3, 5, 7, 10], waveform: 'triangle', brightness: 3_200, durationScale: 1.04 },
-  Other: { root: 60, intervals: [0, 2, 5, 7, 9], waveform: 'sine', brightness: 4_600, durationScale: 0.9 },
+  Advert: { root: 60, intervals: [0, 2, 4, 7, 9], brightness: 4_400, durationScale: 1 },
+  Trace: { root: 62, intervals: [0, 2, 5, 7, 9], brightness: 5_200, durationScale: 0.94 },
+  Text: { root: 57, intervals: [0, 3, 5, 7, 10], brightness: 3_600, durationScale: 1.12 },
+  ACK: { root: 67, intervals: [0, 2, 4, 7, 9], brightness: 5_800, durationScale: 0.72 },
+  Control: { root: 64, intervals: [0, 3, 5, 7, 10], brightness: 3_200, durationScale: 1.04 },
+  Other: { root: 60, intervals: [0, 2, 5, 7, 9], brightness: 4_600, durationScale: 0.9 },
+};
+
+interface SceneProfile {
+  durationScale: number;
+  brightnessScale: number;
+  attackSeconds: number;
+  sustainLevel: number;
+  levelScale: number;
+  pitchEndRatio: number;
+  registerShifts: readonly number[];
+  harmonics: readonly (readonly number[])[];
+}
+
+const SCENES: Readonly<Record<SoundScene, SceneProfile>> = {
+  aurora: {
+    durationScale: 1,
+    brightnessScale: 1,
+    attackSeconds: 0.016,
+    sustainLevel: 0.32,
+    levelScale: 1,
+    pitchEndRatio: 1,
+    registerShifts: [0, 0, 12],
+    harmonics: [[1, 0.22, 0.08], [1, 0.16, 0.11, 0.03], [1, 0.28, 0.05]],
+  },
+  wood: {
+    durationScale: 0.72,
+    brightnessScale: 0.68,
+    attackSeconds: 0.006,
+    sustainLevel: 0.14,
+    levelScale: 0.96,
+    pitchEndRatio: 0.985,
+    registerShifts: [-12, 0, 0],
+    harmonics: [[1, 0.46, 0.2, 0.07], [1, 0.36, 0.24, 0.09], [1, 0.5, 0.14, 0.05]],
+  },
+  chimes: {
+    durationScale: 1.12,
+    brightnessScale: 1.18,
+    attackSeconds: 0.009,
+    sustainLevel: 0.24,
+    levelScale: 0.82,
+    pitchEndRatio: 1.004,
+    registerShifts: [0, 12, 12],
+    harmonics: [[1, 0.08, 0.31, 0.04, 0.15], [1, 0.12, 0.24, 0.03, 0.2], [1, 0.05, 0.36, 0.08, 0.12]],
+  },
 };
 
 export interface HopNote {
@@ -67,7 +126,8 @@ export interface HopNote {
   frequency: number;
   pan: number;
   brightness: number;
-  waveform: OscillatorType;
+  scene: SoundScene;
+  variation: number;
 }
 
 interface ViewportProjector {
@@ -79,6 +139,7 @@ export function routeSoundPlan(
   projector: ViewportProjector,
   width: number,
   height: number,
+  scene: SoundScene = DEFAULT_SOUND_SCENE,
 ): HopNote[] {
   if (packet.mode !== 'route' || packet.segments.length === 0 || width <= 0 || height <= 0) return [];
   const projected = packet.segments.map((segment) => ({
@@ -88,6 +149,7 @@ export function routeSoundPlan(
   const weights = segmentTravelWeights(packet.segments);
   const totalDuration = routeDuration(packet.segments);
   const voice = VOICES[packet.payloadType] ?? VOICES.Other;
+  const sceneProfile = SCENES[scene];
   const phraseSeed = stableHash(`${packet.id}|${packet.payloadType}`);
   let elapsed = 0;
 
@@ -99,15 +161,17 @@ export function routeSoundPlan(
     if (!segmentIntersectsViewport(screen.from, screen.to, width, height)) return [];
     const midpointX = (screen.from.x + screen.to.x) / 2;
     const step = (phraseSeed + stableHash(`${segment.from.id}|${segment.to.id}`) + index * 2) % voice.intervals.length;
+    const variation = stableHash(`${packet.id}|${segment.routeId}|${index}|${scene}`) % sceneProfile.harmonics.length;
     const octave = index >= voice.intervals.length ? 12 : 0;
-    const midi = voice.root + voice.intervals[step]! + octave;
+    const midi = voice.root + voice.intervals[step]! + octave + (sceneProfile.registerShifts[variation] ?? 0);
     const note: HopNote = {
       startMS,
-      durationMS: Math.round(Math.max(180, Math.min(480, totalDuration * weight * 0.78 * voice.durationScale))),
+      durationMS: Math.round(Math.max(150, Math.min(540, totalDuration * weight * 0.78 * voice.durationScale * sceneProfile.durationScale))),
       frequency: midiToFrequency(midi),
       pan: clamp((midpointX / width) * 1.5 - 0.75, -0.75, 0.75),
-      brightness: Math.max(2_200, voice.brightness - index * 260),
-      waveform: voice.waveform,
+      brightness: Math.max(1_600, (voice.brightness - index * 260) * sceneProfile.brightnessScale),
+      scene,
+      variation,
     };
     return [note];
   });
@@ -120,8 +184,10 @@ export class RouteSonifier {
   private enabled = false;
   private preferredEnabled: boolean;
   private volume: number;
+  private scene: SoundScene;
   private paused = false;
   private readonly active = new Set<OscillatorNode>();
+  private readonly waves = new Map<string, PeriodicWave>();
   private statusListener?: (status: SoundStatus) => void;
 
   constructor(
@@ -132,6 +198,7 @@ export class RouteSonifier {
     const preference = loadSoundPreference(storage);
     this.preferredEnabled = preference.enabled;
     this.volume = preference.volume;
+    this.scene = preference.scene;
   }
 
   supported(): boolean {
@@ -149,6 +216,16 @@ export class RouteSonifier {
 
   getVolume(): number {
     return this.volume;
+  }
+
+  getScene(): SoundScene {
+    return this.scene;
+  }
+
+  setScene(scene: SoundScene): void {
+    this.scene = isSoundScene(scene) ? scene : DEFAULT_SOUND_SCENE;
+    this.persist();
+    this.notify();
   }
 
   setStatusListener(listener: (status: SoundStatus) => void): void {
@@ -205,6 +282,7 @@ export class RouteSonifier {
       this.map,
       this.viewport.clientWidth,
       this.viewport.clientHeight,
+      this.scene,
     );
     if (notes.length === 0) return 0;
     const density = 1 / Math.sqrt(1 + this.active.size / 10);
@@ -219,6 +297,7 @@ export class RouteSonifier {
     this.context = undefined;
     this.master = undefined;
     this.ambience = undefined;
+    this.waves.clear();
   }
 
   private createContext(): AudioContext {
@@ -253,6 +332,7 @@ export class RouteSonifier {
     const starts = context.currentTime + LOOKAHEAD_SECONDS + note.startMS / 1_000;
     const audibleDuration = Math.max(0.14, note.durationMS / 1_000 * (0.55 + density * 0.45));
     const ends = starts + audibleDuration;
+    const scene = SCENES[note.scene];
     const filter = context.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(note.brightness, starts);
@@ -260,15 +340,16 @@ export class RouteSonifier {
     const panner = context.createStereoPanner();
     panner.pan.setValueAtTime(note.pan, starts);
     const envelope = context.createGain();
-    const peak = Math.max(MIN_VOICE_LEVEL, VOICE_LEVEL * density);
+    const peak = Math.max(MIN_VOICE_LEVEL, VOICE_LEVEL * density * scene.levelScale);
+    const attackEnds = starts + Math.min(scene.attackSeconds, audibleDuration * 0.24);
     envelope.gain.setValueAtTime(MIN_GAIN, starts);
-    envelope.gain.exponentialRampToValueAtTime(peak, starts + 0.012);
-    envelope.gain.exponentialRampToValueAtTime(Math.max(MIN_GAIN, peak * 0.32), starts + audibleDuration * 0.42);
+    envelope.gain.exponentialRampToValueAtTime(peak, attackEnds);
+    envelope.gain.exponentialRampToValueAtTime(Math.max(MIN_GAIN, peak * scene.sustainLevel), starts + audibleDuration * 0.42);
     envelope.gain.exponentialRampToValueAtTime(MIN_GAIN, ends);
     filter.connect(panner).connect(envelope).connect(master);
     if (this.ambience) envelope.connect(this.ambience);
 
-    const oscillator = this.oscillator(note.waveform, note.frequency, starts, ends, filter);
+    const oscillator = this.oscillator(note, starts, ends, filter);
     oscillator.onended = () => {
       this.active.delete(oscillator);
       oscillator.disconnect();
@@ -279,20 +360,33 @@ export class RouteSonifier {
   }
 
   private oscillator(
-    waveform: OscillatorType,
-    frequency: number,
+    note: HopNote,
     starts: number,
     ends: number,
     destination: AudioNode,
   ): OscillatorNode {
     const oscillator = this.context!.createOscillator();
-    oscillator.type = waveform;
-    oscillator.frequency.setValueAtTime(frequency, starts);
+    oscillator.setPeriodicWave(this.periodicWave(note.scene, note.variation));
+    oscillator.frequency.setValueAtTime(note.frequency, starts);
+    oscillator.frequency.exponentialRampToValueAtTime(note.frequency * SCENES[note.scene].pitchEndRatio, ends);
     oscillator.connect(destination);
     oscillator.start(starts);
     oscillator.stop(ends + 0.04);
     this.active.add(oscillator);
     return oscillator;
+  }
+
+  private periodicWave(scene: SoundScene, variation: number): PeriodicWave {
+    const key = `${scene}:${variation}`;
+    const cached = this.waves.get(key);
+    if (cached) return cached;
+    const harmonics = SCENES[scene].harmonics[variation] ?? SCENES[scene].harmonics[0]!;
+    const real = new Float32Array(harmonics.length + 1);
+    const imaginary = new Float32Array(harmonics.length + 1);
+    harmonics.forEach((amplitude, index) => { imaginary[index + 1] = amplitude; });
+    const wave = this.context!.createPeriodicWave(real, imaginary, { disableNormalization: false });
+    this.waves.set(key, wave);
+    return wave;
   }
 
   private stopActive(): void {
@@ -315,12 +409,16 @@ export class RouteSonifier {
   }
 
   private persist(): void {
-    saveSoundPreference(this.storage, { enabled: this.preferredEnabled, volume: this.volume });
+    saveSoundPreference(this.storage, { enabled: this.preferredEnabled, volume: this.volume, scene: this.scene });
   }
 
   private notify(): void {
     this.statusListener?.(this.status());
   }
+}
+
+export function isSoundScene(value: unknown): value is SoundScene {
+  return value === 'aurora' || value === 'wood' || value === 'chimes';
 }
 
 function stableHash(value: string): number {

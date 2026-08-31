@@ -7,7 +7,9 @@
 - a persistent Docker volume for `/data`
 - a TLS edge or reverse proxy for public use
 
-Published images receive the browser-visible CARTO vector project key at build time from the `CARTO_BASEMAP_API_KEY` GitHub Actions secret. The custom style requests CARTO TileJSON, vector PBF tiles, and glyph PBFs; it contains no raster source or PNG fallback. The key is intentionally visible to browsers but must remain out of source, logs, Compose, and runtime `.env` files. The main-branch workflow verifies all three vector resources before publishing an image.
+Published images receive the browser-visible CARTO vector project key at build time through the `carto_basemap_api_key` BuildKit secret. The normal path sources it from the `CARTO_BASEMAP_API_KEY` GitHub Actions secret. The custom style requests CARTO TileJSON, vector PBF tiles, and glyph PBFs; it contains no raster source or PNG fallback. The key is intentionally visible to browsers but must remain out of source, logs, Compose, and runtime `.env` files. All three vector resources must authorize before publishing an image.
+
+An owner-approved no-Actions release follows the separate [manual Pi release exception](manual-release.md). Native ARM64 build stages cross-compile the final binary from BuildKit's `TARGETOS` and `TARGETARCH`; the published image remains `linux/amd64` and must execute successfully on both the Pi's emulated validation path and the native x86_64 pre-production host.
 
 ## Install
 

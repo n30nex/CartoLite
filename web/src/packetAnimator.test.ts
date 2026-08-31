@@ -17,6 +17,7 @@ import {
   OBSERVER_PING_MS,
   observerRadius,
   PacketAnimator,
+  packetTrail,
   packetDuration,
   payloadColor,
   pulseTiming,
@@ -132,6 +133,15 @@ describe('packet animation limits', () => {
 
     expect(route.control).toEqual({ x: 110, y: 40 });
     expect(quadraticPoint(route, 0.5)).toEqual({ x: 110, y: 40 });
+  });
+
+  it('keeps a short tapered trail on the exact straight route segment', () => {
+    const trail = packetTrail({ x: 0, y: 0 }, { x: 100, y: 0 }, 42);
+    expect(trail).toEqual({ tail: { x: 58, y: 0 }, head: { x: 100, y: 0 }, length: 42 });
+    const short = packetTrail({ x: 0, y: 0 }, { x: 10, y: 10 }, 42);
+    expect(short.tail.x).toBeCloseTo(0);
+    expect(short.tail.y).toBeCloseTo(0);
+    expect(short.length).toBeCloseTo(Math.sqrt(200));
   });
 
   it('adapts secondary detail without discarding directional route travel', () => {

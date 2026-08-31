@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.7.0 - 2026-08-30
+
+### Added
+
+- Add three dependency-free native Web Audio scenes: the refined warm Aurora default, rounded percussive Wood, and soft bright Chimes. Deterministic packet, route, and hop variation keeps repeat events stable while every visible hop retains exactly one articulation and one oscillator.
+- Replace the transient node tooltip with a persistent native MapLibre inspector on desktops and a bounded bottom sheet on phones. It shows public node details and every active-window neighbour, sorted newest first, with packet kind, count, role, and last-heard context.
+- Add a privacy-safe Node Finder that searches only downloaded public labels, ranks exact and prefix matches first, keeps duplicate labels distinct, and never sends or stores the query.
+
+### Changed
+
+- Replace broad progressive packet ribbons with a sharp coloured core, short tapered glow, two or three restrained sparks, explicit relay handoffs, a destination shimmer, and the existing 15-second low-opacity residue.
+- Share the same hop timeline between motion and sound, preserve every visible hop under burst load, and reduce only decoration and frame cadence through adaptive quality.
+- Build and incrementally maintain a node-to-route adjacency index so inspector updates and connected-route emphasis are proportional to the selected node's degree.
+- Build source stages on the Pi's native BuildKit platform while using `TARGETOS` and `TARGETARCH` for the final `linux/amd64` binary.
+
+### Fixed
+
+- Keep selection and inspector content stable across camera movement, close only through the explicit control, Escape, or an empty-map click, and refresh immediately when the route window or an adjacent route changes.
+- Keep live trails on the exact straight geographic route segment and prohibit full-map flashes, additive white saturation, moving historical geometry, and expired animation overlays.
+
+### Privacy and compatibility
+
+- Preserve public API schema v2, SSE events, health/readiness contracts, the 24-hour topology boundary, and all existing public-state redaction assertions.
+- Store only `{enabled, volume, scene}` under `cartolite:sound:v2`; migrate v1 preferences to Aurora without creating or resuming an AudioContext.
+
 ## 0.6.9 - 2026-08-30
 
 ### Fixed

@@ -12,6 +12,13 @@ import type {
 } from 'geojson';
 import canadaRegionsURL from './assets/meshmapper-canada-regions.geojson?url';
 import { cartoVectorRequestURL, cartoVectorStyle } from './basemap';
+import {
+  buildNodeInspectorModel,
+  createNodeInspectorContent,
+  relativeTime,
+  searchNodes,
+  type NodeSearchResult,
+} from './nodeInspector';
 import type { RegionWorkerOutput } from './regions';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
 import type { MapChanges } from './state';
@@ -138,6 +145,7 @@ export class LiveMap {
   private lastState?: Readonly<StateV2>;
   private nodesByID = new Map<string, NodeV2>();
   private routesByID = new Map<string, RouteV2>();
+  private routeIDsByNode = new Map<string, Set<string>>();
   private nodeFeatureIDs = new Set<string>();
   private heatFeatureIDs = new Set<string>();
   private heatScores = new Map<string, number>();
@@ -174,6 +182,9 @@ export class LiveMap {
   private tooltipSignature = '';
   private tooltipSize: TooltipSize = { width: 0, height: 0 };
   private lastFocusSignature: string | undefined;
+  private inspectorSignature = '';
+  private nodeInspectorPopup?: maplibregl.Popup;
+  private suppressPopupClose = false;
   private lastFollowMoveAt = 0;
   private directorTimer?: number;
   private readonly reducedMotion = prefersReducedMotion();
@@ -183,6 +194,7 @@ export class LiveMap {
   constructor(
     private readonly container: HTMLElement,
     private readonly tooltip: HTMLElement,
+    private readonly inspectorSheet: HTMLElement,
     private readonly options: LiveMapOptions
   ) {
     const lowPower = window.matchMedia('(max-width: 620px), (pointer: coarse)').matches;
@@ -227,6 +239,8 @@ export class LiveMap {
     this.map.on('load', () => this.installLayers());
     this.map.on('zoom', this.updateRouteRepresentation);
     this.map.on('zoomend', this.handleZoomEnd);
+    this.map.on('resize', this.handleInspectorResize);
+    document.addEventListener('keydown', this.handleKeyDown);
     this.freshnessTimer = window.setInterval(() => this.refreshRouteClock(), 60_000);
   }
 
@@ -255,7 +269,10 @@ export class LiveMap {
     if (changes?.routes?.length) {
       const routeIDs: string[] = [];
       for (const route of changes.routes) {
+        const previous = this.routesByID.get(route.id);
+        if (previous && (previous.fromId !== route.fromId || previous.toId !== route.toId)) this.unindexRoute(previous);
         this.routesByID.set(route.id, route);
+        this.indexRoute(route);
         routeIDs.push(route.id);
         routeFeatureIDs.add(route.id);
       }
@@ -272,13 +289,7 @@ export class LiveMap {
     }
     if (changes?.nodes?.length || changes?.routes?.length || routeFeatureIDs.size > 0) {
       this.updateFocusData();
-      if (this.hoveredRouteID && !isRouteInspectable(
-        state.routes,
-        this.selectedNodeID,
-        this.hoveredRouteID,
-        Date.now(),
-        this.effectiveRouteAgeMS()
-      )) this.clearRouteInspection();
+      if (this.hoveredRouteID && !this.isSelectedRouteInspectable(this.hoveredRouteID)) this.clearRouteInspection();
       if (this.selectedNodeID) this.applyFocusState(false);
     }
     // Live node and heat deltas are already painted by MapLibre. Do not restart
@@ -289,6 +300,7 @@ export class LiveMap {
     const now = Date.now();
     this.nodesByID = new Map(state.nodes.map((node) => [node.id, node]));
     this.routesByID = new Map(state.routes.map((route) => [route.id, route]));
+    this.rebuildRouteIndex();
 
     const nodes = nodeCollection(state.nodes, now);
     (this.map.getSource('nodes') as GeoJSONSource).setData(nodes);
@@ -630,6 +642,23 @@ export class LiveMap {
     return packetMatchesFollow(packet, this.selectedNodeID);
   }
 
+  findNodes(query: string, limit = 8): NodeSearchResult[] {
+    return searchNodes(this.nodesByID.values(), query, limit);
+  }
+
+  selectNodeByID(nodeID: string, recenter = true): boolean {
+    const node = this.nodesByID.get(nodeID);
+    if (!node) return false;
+    this.clearRouteInspection();
+    this.setSelectedNode(node.id, node.label);
+    if (recenter) this.centerNodeIfNeeded(node);
+    return true;
+  }
+
+  clearSelection(): void {
+    this.clearNodeSelection();
+  }
+
   setRoutesVisible(visible: boolean): void {
     this.routesVisible = visible;
     this.container.dataset.routesVisible = String(visible);
@@ -684,13 +713,7 @@ export class LiveMap {
       this.updateFocusData();
       this.applyFocusState(false);
     }
-    if (this.hoveredRouteID && !isRouteInspectable(
-      this.lastState?.routes ?? [],
-      this.selectedNodeID,
-      this.hoveredRouteID,
-      Date.now(),
-      this.effectiveRouteAgeMS()
-    )) this.clearRouteInspection();
+    if (this.hoveredRouteID && !this.isSelectedRouteInspectable(this.hoveredRouteID)) this.clearRouteInspection();
     this.emitRouteWindowChange();
     this.container.dataset.routeWindowApplyMs = (performance.now() - started).toFixed(1);
     this.markRendering(trunkChanged ? [ROUTE_TRUNK_SOURCE_ID] : undefined);
@@ -725,8 +748,11 @@ export class LiveMap {
     if (this.routeHydrationTimer !== undefined) window.clearTimeout(this.routeHydrationTimer);
     if (this.directorTimer !== undefined) window.clearTimeout(this.directorTimer);
     if (this.clusterFlashTimer !== undefined) window.clearTimeout(this.clusterFlashTimer);
+    this.closeInspector(false);
+    document.removeEventListener('keydown', this.handleKeyDown);
     this.map.off('zoom', this.updateRouteRepresentation);
     this.map.off('zoomend', this.handleZoomEnd);
+    this.map.off('resize', this.handleInspectorResize);
     this.map.remove();
   }
 
@@ -767,13 +793,7 @@ export class LiveMap {
       this.updateFocusData();
       this.applyFocusState(false);
     }
-    if (this.hoveredRouteID && !isRouteInspectable(
-      this.lastState?.routes ?? [],
-      this.selectedNodeID,
-      this.hoveredRouteID,
-      Date.now(),
-      this.effectiveRouteAgeMS()
-    )) this.clearRouteInspection();
+    if (this.hoveredRouteID && !this.isSelectedRouteInspectable(this.hoveredRouteID)) this.clearRouteInspection();
     this.markRendering();
   }
 
@@ -1443,7 +1463,7 @@ export class LiveMap {
     if (!nodeID) return;
     this.clearRouteInspection();
     this.setSelectedNode(nodeID, String(feature.properties?.label ?? 'MeshCore node'));
-    this.showNodeTooltip(event);
+    this.hideTooltip();
   }
 
   private clearNodeSelection(): void {
@@ -1467,20 +1487,16 @@ export class LiveMap {
   private updateFocusData(): void {
     const now = Date.now();
     const maxAge = this.effectiveRouteAgeMS();
-    const routes = recentNeighborRoutes(
-      this.lastState?.routes ?? [],
-      this.selectedNodeID,
-      now,
-      maxAge
-    );
+    const routes = this.adjacentRoutes(this.selectedNodeID).filter((route) => isRecentNeighborRoute(route, now, maxAge));
     this.neighborNodeIDs = neighborNodeIDs(routes, this.selectedNodeID);
     this.container.dataset.neighborRouteCount = String(routes.length);
     const focusSource = this.map.getSource(ROUTE_FOCUS_SOURCE_ID) as GeoJSONSource | undefined;
     if (focusSource) focusSource.setData(routeCollection(routes, this.nodesByID, now, maxAge));
     this.container.dataset.focusedRouteCount = String(routes.length);
-    const stateLabel = this.lastState?.nodes.find((node) => node.id === this.selectedNodeID)?.label;
+    const stateLabel = this.selectedNodeID ? this.nodesByID.get(this.selectedNodeID)?.label : undefined;
     if (stateLabel) this.selectedNodeLabel = stateLabel;
     this.emitFocusChange();
+    this.renderNodeInspector();
   }
 
   private emitFocusChange(): void {
@@ -1521,13 +1537,7 @@ export class LiveMap {
     if (!this.routesVisible || !this.selectedNodeID) return false;
     if (this.map.queryRenderedFeatures(event.point, { layers: [NODE_HIT_LAYER_ID] }).length > 0) return false;
     const feature = this.map.queryRenderedFeatures(event.point, { layers: [ROUTE_HIT_LAYER_ID] })
-      .find((candidate) => isRouteInspectable(
-        this.lastState?.routes ?? [],
-        this.selectedNodeID,
-        String(candidate.properties?.id ?? candidate.id ?? ''),
-        Date.now(),
-        this.effectiveRouteAgeMS()
-      ));
+      .find((candidate) => this.isSelectedRouteInspectable(String(candidate.properties?.id ?? candidate.id ?? '')));
     if (!feature) return false;
     const properties = feature.properties ?? {};
     const route = this.routesByID.get(String(properties.id ?? feature.id ?? ''));
@@ -1610,6 +1620,151 @@ export class LiveMap {
     this.tooltip.hidden = true;
     delete this.tooltip.dataset.kind;
   }
+
+  private adjacentRoutes(nodeID: string | null): RouteV2[] {
+    if (!nodeID) return [];
+    const routeIDs = this.routeIDsByNode.get(nodeID);
+    if (!routeIDs) return [];
+    const routes: RouteV2[] = [];
+    for (const routeID of routeIDs) {
+      const route = this.routesByID.get(routeID);
+      if (route) routes.push(route);
+    }
+    return routes;
+  }
+
+  private rebuildRouteIndex(): void {
+    this.routeIDsByNode.clear();
+    for (const route of this.routesByID.values()) this.indexRoute(route);
+  }
+
+  private indexRoute(route: RouteV2): void {
+    for (const nodeID of new Set([route.fromId, route.toId])) {
+      let routeIDs = this.routeIDsByNode.get(nodeID);
+      if (!routeIDs) {
+        routeIDs = new Set<string>();
+        this.routeIDsByNode.set(nodeID, routeIDs);
+      }
+      routeIDs.add(route.id);
+    }
+  }
+
+  private unindexRoute(route: RouteV2): void {
+    for (const nodeID of new Set([route.fromId, route.toId])) {
+      const routeIDs = this.routeIDsByNode.get(nodeID);
+      routeIDs?.delete(route.id);
+      if (routeIDs?.size === 0) this.routeIDsByNode.delete(nodeID);
+    }
+  }
+
+  private isSelectedRouteInspectable(routeID: string): boolean {
+    if (!this.selectedNodeID) return false;
+    const route = this.routesByID.get(routeID);
+    return Boolean(route
+      && (route.fromId === this.selectedNodeID || route.toId === this.selectedNodeID)
+      && isRecentNeighborRoute(route, Date.now(), this.effectiveRouteAgeMS()));
+  }
+
+  private renderNodeInspector(force = false): void {
+    if (!this.selectedNodeID) {
+      this.inspectorSignature = '';
+      this.closeInspector(false);
+      return;
+    }
+    const model = buildNodeInspectorModel(
+      this.selectedNodeID,
+      this.nodesByID,
+      this.adjacentRoutes(this.selectedNodeID),
+      Date.now(),
+      this.effectiveRouteAgeMS(),
+    );
+    if (!model) {
+      this.clearNodeSelection();
+      return;
+    }
+    const signature = [
+      model.node.id, model.node.label, model.node.role, model.node.observer, model.node.lat, model.node.lng,
+      model.node.lastSeen, this.routesVisible,
+      ...model.neighbors.flatMap((neighbor) => [
+        neighbor.id, neighbor.label, neighbor.role, neighbor.lastHeard, neighbor.lastKind, neighbor.packetCount,
+      ]),
+    ].join('|');
+    if (!force && signature === this.inspectorSignature) return;
+    this.inspectorSignature = signature;
+    const mobile = this.isMobileInspector();
+    const content = createNodeInspectorContent(document, model, {
+      mobile,
+      onClose: () => this.clearNodeSelection(),
+      onSelectNeighbor: (nodeID) => this.selectNodeByID(nodeID, true),
+    });
+    if (mobile) {
+      this.closePopup(false);
+      this.inspectorSheet.replaceChildren(content);
+      this.inspectorSheet.hidden = false;
+      return;
+    }
+    this.inspectorSheet.hidden = true;
+    this.inspectorSheet.replaceChildren();
+    if (!this.nodeInspectorPopup) {
+      this.nodeInspectorPopup = new maplibregl.Popup({
+        closeButton: true,
+        closeOnClick: false,
+        closeOnMove: false,
+        focusAfterOpen: false,
+        maxWidth: '350px',
+        offset: 14,
+        subpixelPositioning: true,
+        className: 'node-inspector-popup',
+      });
+      this.nodeInspectorPopup.on('close', () => {
+        if (!this.suppressPopupClose && this.selectedNodeID) this.clearNodeSelection();
+      });
+    }
+    this.nodeInspectorPopup
+      .setLngLat([model.node.lng, model.node.lat])
+      .setDOMContent(content)
+      .addTo(this.map);
+  }
+
+  private closeInspector(clearSelection: boolean): void {
+    this.closePopup(clearSelection);
+    this.inspectorSheet.hidden = true;
+    this.inspectorSheet.replaceChildren();
+  }
+
+  private closePopup(clearSelection: boolean): void {
+    if (!this.nodeInspectorPopup?.isOpen()) return;
+    this.suppressPopupClose = !clearSelection;
+    this.nodeInspectorPopup.remove();
+    this.suppressPopupClose = false;
+  }
+
+  private isMobileInspector(): boolean {
+    return this.container.clientWidth <= 620 || window.matchMedia('(pointer: coarse)').matches;
+  }
+
+  private centerNodeIfNeeded(node: NodeV2): void {
+    const point = this.map.project([node.lng, node.lat]);
+    const mobile = this.isMobileInspector();
+    const margin = 72;
+    const safeBottom = this.container.clientHeight - (mobile ? Math.min(360, this.container.clientHeight * 0.48) : margin);
+    const inSafeView = point.x >= margin
+      && point.x <= this.container.clientWidth - margin
+      && point.y >= margin
+      && point.y <= safeBottom;
+    if (inSafeView && this.map.getZoom() >= DETAIL_ZOOM) return;
+    const camera = { center: [node.lng, node.lat] as [number, number], zoom: Math.max(DETAIL_ZOOM + 0.4, this.map.getZoom()) };
+    if (this.reducedMotion) this.map.jumpTo(camera);
+    else this.map.easeTo({ ...camera, duration: 520, essential: false, easeId: 'cartolite-node-selection' });
+  }
+
+  private handleInspectorResize = (): void => {
+    if (this.selectedNodeID) this.renderNodeInspector(true);
+  };
+
+  private handleKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape' && this.selectedNodeID) this.clearNodeSelection();
+  };
 }
 
 type RouteLayerMap = Pick<maplibregl.Map, 'getLayer' | 'setLayoutProperty'>;
@@ -2505,12 +2660,4 @@ function clamp(value: number, minimum: number, maximum: number): number {
 function smoothstep(edge0: number, edge1: number, value: number): number {
   const progress = clamp((value - edge0) / (edge1 - edge0), 0, 1);
   return progress * progress * (3 - 2 * progress);
-}
-
-function relativeTime(timestamp: number): string {
-  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  if (seconds < 60) return 'now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86_400)}d ago`;
 }

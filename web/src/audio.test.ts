@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EndpointV2, RoutePacketView } from './types';
 import {
+  DEFAULT_SOUND_SCENE,
   DEFAULT_SOUND_VOLUME,
   loadSoundPreference,
   RouteSonifier,
@@ -97,26 +98,76 @@ describe('route hop sonification', () => {
     const text = routeSoundPlan(packet(points, 'Text'), projector, 100, 100)[0]!;
     const acknowledgement = routeSoundPlan(packet(points, 'ACK'), projector, 100, 100)[0]!;
 
-    expect(text.waveform).toBe('sine');
-    expect(acknowledgement.waveform).toBe('triangle');
     expect(text.brightness).toBeLessThan(acknowledgement.brightness);
     expect(text.frequency).not.toBe(acknowledgement.frequency);
+  });
+
+  it('keeps every visible hop deterministic in all three scenes', () => {
+    const route = packet([endpoint('a', 10, 50), endpoint('b', 50, 50), endpoint('c', 90, 50)]);
+    for (const scene of ['aurora', 'wood', 'chimes'] as const) {
+      const first = routeSoundPlan(route, projector, 100, 100, scene);
+      expect(first).toHaveLength(route.segments.length);
+      expect(routeSoundPlan(route, projector, 100, 100, scene)).toEqual(first);
+      expect(first.every((note) => note.scene === scene)).toBe(true);
+    }
+  });
+
+  it('creates exactly one oscillator for each visible hop in every scene', async () => {
+    const original = window.AudioContext;
+    FakeAudioContext.oscillators = 0;
+    Object.defineProperty(window, 'AudioContext', { configurable: true, value: FakeAudioContext });
+    const viewport = document.createElement('div');
+    Object.defineProperties(viewport, { clientWidth: { value: 100 }, clientHeight: { value: 100 } });
+    const sonifier = new RouteSonifier(projector as never, viewport);
+    const route = packet([endpoint('a', 10, 50), endpoint('b', 50, 50), endpoint('c', 90, 50)]);
+    try {
+      expect(await sonifier.setEnabled(true)).toBe(true);
+      for (const scene of ['aurora', 'wood', 'chimes'] as const) {
+        sonifier.setScene(scene);
+        const before = FakeAudioContext.oscillators;
+        expect(sonifier.play(route)).toBe(route.segments.length);
+        expect(FakeAudioContext.oscillators - before).toBe(route.segments.length);
+      }
+    } finally {
+      sonifier.destroy();
+      Object.defineProperty(window, 'AudioContext', { configurable: true, value: original });
+    }
   });
 });
 
 describe('sound preference and autoplay state', () => {
   beforeEach(() => localStorage.clear());
 
-  it('defaults to 80 percent and stores only enabled and volume', () => {
-    expect(loadSoundPreference(localStorage)).toEqual({ enabled: false, volume: DEFAULT_SOUND_VOLUME });
+  it('defaults to Aurora at 80 percent and stores only enabled, volume, and scene', () => {
+    expect(loadSoundPreference(localStorage)).toEqual({
+      enabled: false, volume: DEFAULT_SOUND_VOLUME, scene: DEFAULT_SOUND_SCENE,
+    });
     const sonifier = new RouteSonifier({} as never, document.createElement('div'));
     sonifier.setVolume(0.55);
 
-    expect(JSON.parse(localStorage.getItem(SOUND_STORAGE_KEY) ?? '{}')).toEqual({ enabled: false, volume: 0.55 });
+    expect(JSON.parse(localStorage.getItem(SOUND_STORAGE_KEY) ?? '{}')).toEqual({
+      enabled: false, volume: 0.55, scene: 'aurora',
+    });
+  });
+
+  it('migrates v1 preferences to Aurora without starting audio', () => {
+    localStorage.setItem('cartolite:sound:v1', JSON.stringify({ enabled: true, volume: 0.62 }));
+    const audioContext = vi.fn();
+    const original = window.AudioContext;
+    Object.defineProperty(window, 'AudioContext', { configurable: true, value: audioContext });
+    try {
+      expect(loadSoundPreference(localStorage)).toEqual({ enabled: true, volume: 0.62, scene: 'aurora' });
+      expect(JSON.parse(localStorage.getItem(SOUND_STORAGE_KEY) ?? '{}')).toEqual({
+        enabled: true, volume: 0.62, scene: 'aurora',
+      });
+      expect(audioContext).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, 'AudioContext', { configurable: true, value: original });
+    }
   });
 
   it('shows Tap to Resume for remembered sound without constructing an AudioContext', () => {
-    localStorage.setItem(SOUND_STORAGE_KEY, JSON.stringify({ enabled: true, volume: 0.8 }));
+    localStorage.setItem(SOUND_STORAGE_KEY, JSON.stringify({ enabled: true, volume: 0.8, scene: 'wood' }));
     const audioContext = vi.fn();
     const original = window.AudioContext;
     Object.defineProperty(window, 'AudioContext', { configurable: true, value: audioContext });
@@ -124,6 +175,7 @@ describe('sound preference and autoplay state', () => {
       const sonifier = new RouteSonifier({} as never, document.createElement('div'));
       expect(sonifier.status()).toBe('resume');
       expect(sonifier.getVolume()).toBe(0.8);
+      expect(sonifier.getScene()).toBe('wood');
       expect(audioContext).not.toHaveBeenCalled();
     } finally {
       Object.defineProperty(window, 'AudioContext', { configurable: true, value: original });
@@ -131,7 +183,51 @@ describe('sound preference and autoplay state', () => {
   });
 
   it('clamps malformed remembered volume while preserving the requested state', () => {
-    localStorage.setItem(SOUND_STORAGE_KEY, JSON.stringify({ enabled: true, volume: 4 }));
-    expect(loadSoundPreference(localStorage)).toEqual({ enabled: true, volume: 1 });
+    localStorage.setItem(SOUND_STORAGE_KEY, JSON.stringify({ enabled: true, volume: 4, scene: 'chimes' }));
+    expect(loadSoundPreference(localStorage)).toEqual({ enabled: true, volume: 1, scene: 'chimes' });
   });
 });
+
+const fakeParam = () => ({
+  value: 0,
+  cancelScheduledValues: vi.fn(),
+  exponentialRampToValueAtTime: vi.fn(),
+  setTargetAtTime: vi.fn(),
+  setValueAtTime: vi.fn(),
+});
+
+const fakeNode = <T extends object>(extra = {} as T): T & {
+  connect: (destination: unknown) => unknown;
+  disconnect: () => void;
+} => Object.assign(extra, {
+  connect: (destination: unknown) => destination,
+  disconnect: vi.fn(),
+});
+
+class FakeAudioContext {
+  static oscillators = 0;
+  currentTime = 0;
+  destination = fakeNode();
+  state: AudioContextState = 'running';
+  onstatechange: (() => void) | null = null;
+  createGain = () => fakeNode({ gain: fakeParam() });
+  createDelay = () => fakeNode({ delayTime: fakeParam() });
+  createBiquadFilter = () => fakeNode({ type: 'lowpass', frequency: fakeParam(), Q: fakeParam() });
+  createStereoPanner = () => fakeNode({ pan: fakeParam() });
+  createDynamicsCompressor = () => fakeNode({
+    threshold: fakeParam(), knee: fakeParam(), ratio: fakeParam(), attack: fakeParam(), release: fakeParam(),
+  });
+  createPeriodicWave = () => ({} as PeriodicWave);
+  createOscillator = () => {
+    FakeAudioContext.oscillators += 1;
+    return fakeNode({
+      frequency: fakeParam(),
+      onended: null as (() => void) | null,
+      setPeriodicWave: vi.fn(),
+      start: vi.fn(),
+      stop: vi.fn(),
+    });
+  };
+  resume = async () => undefined;
+  close = async () => undefined;
+}
