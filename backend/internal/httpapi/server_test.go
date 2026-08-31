@@ -81,6 +81,12 @@ func TestWebManifestUsesInstallableContentType(t *testing.T) {
 	}
 }
 
+func TestDigitalAssetLinksUsesJSONContentType(t *testing.T) {
+	if contentType := staticContentType(".well-known/assetlinks.json"); contentType != "application/json" {
+		t.Fatalf("unexpected Digital Asset Links content type: %q", contentType)
+	}
+}
+
 func TestRegionGeoJSONUsesGeographicContentType(t *testing.T) {
 	if contentType := staticContentType("assets/meshmapper-canada-regions.abc123.geojson"); contentType != "application/geo+json" {
 		t.Fatalf("unexpected region GeoJSON content type: %q", contentType)

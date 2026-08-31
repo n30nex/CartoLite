@@ -457,6 +457,8 @@ button { font: inherit; }
 .about-dialog dl div { display: grid; gap: 3px; }
 .about-dialog dt { color: #67d9cc; font-size: 11px; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
 .about-dialog dd { margin: 0; color: #c8d8e2; font-size: 12px; line-height: 1.5; }
+.about-link { color: #75e8d5; font-weight: 750; text-underline-offset: 3px; }
+.about-link:hover, .about-link:focus-visible { color: #f2ffff; outline: 2px solid #63d9cc; outline-offset: 3px; }
 .about-close {
   position: absolute;
   top: 8px;

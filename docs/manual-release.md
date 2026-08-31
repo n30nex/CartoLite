@@ -16,3 +16,9 @@ The default release path is GitHub Actions. Use this procedure only after the re
 12. Verify health, readiness, MQTT, checkpoint, queue, drops, privacy, SSE, vector resources, desktop and mobile inspector, Node Finder, packet animation, and audible live hops. Observe production for five minutes with zero restarts, drops, queue growth, console errors, or sustained resource regression.
 
 If any gate fails, stop. After cutover, restore the recorded image and configuration, restore the checkpoint only if required, and repeat health, readiness, privacy, SSE, vector map, and browser checks.
+
+## Android companion release
+
+The Android APK has a separate native version and signing identity but ships with the matching CartoLite source release. Build only from the exact reviewed commit with Android SDK 36, run unit tests and strict lint, and supply signing values through process environment variables from the protected secret store. Never place the keystore or passwords in Git, Gradle properties, command arguments, release logs, or the APK hosting directory.
+
+Verify the final APK with `apksigner`, confirm package `org.canadaverse.cartolite`, version code/name, minimum and target SDKs, and the public certificate fingerprint recorded under `android/signing/`. Install that exact signed APK on a physical Android device and prove immersive portrait/landscape layout, native keep-awake, forced sleep/resume, network recovery, live SSE, map rendering, and a touchscreen-unlocked Web Audio hop. Publish the APK and SHA-256 checksum at the versioned Canadaverse download path, update the stable product page, then require Digital Asset Links verification to succeed over public HTTPS.

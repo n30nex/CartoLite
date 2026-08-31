@@ -34,7 +34,7 @@ export function viewClass(
   viewportWidth = window.innerWidth,
   viewportHeight = window.innerHeight,
 ): ViewClass {
-  return Math.min(viewportWidth, viewportHeight) <= 620 ? 'mobile' : 'desktop';
+  return viewportWidth <= 900 || viewportHeight <= 520 ? 'mobile' : 'desktop';
 }
 
 export function viewStorageKey(kind: ViewClass): string {

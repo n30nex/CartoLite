@@ -24,10 +24,12 @@ describe('viewport preferences', () => {
     expect(loadSavedView(localStorage, 'mobile')).toEqual(mobile);
   });
 
-  it('classifies portrait and landscape phones by their short edge', () => {
+  it('uses the compact layout for phones and portrait tablets without shrinking tablet landscape', () => {
     expect(viewClass(390, 844)).toBe('mobile');
     expect(viewClass(620, 900)).toBe('mobile');
     expect(viewClass(844, 390)).toBe('mobile');
+    expect(viewClass(800, 1280)).toBe('mobile');
+    expect(viewClass(1280, 800)).toBe('desktop');
     expect(viewClass(1280, 720)).toBe('desktop');
   });
 

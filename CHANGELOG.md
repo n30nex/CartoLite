@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.2 - 2026-08-31
+
+### Added
+
+- Add CartoLite for Android 1.0.0: a signed, dependency-light native shell with an immersive map, branded connection recovery, native screen-awake behavior, lifecycle and network resume signalling, predictive back navigation, and strict same-origin HTTPS browsing.
+- Publish the Android release certificate and Digital Asset Links association for `org.canadaverse.cartolite`, allowing verified `carto.canadaverse.org` links to open directly in the installed app.
+- Add a first-party Android download link to the in-map About panel while keeping installation outside the live map flow.
+
+### Changed
+
+- Use the compact Layers layout on portrait tablets up to 900 CSS pixels wide while retaining the full desktop controls in tablet landscape. This prevents the status and map controls from overlapping at intermediate widths.
+
+### Privacy and security
+
+- Keep the Android app free of analytics, accounts, broker credentials, JavaScript bridges, cookies, cleartext traffic, file access, backups, and optional runtime permissions. The app requests only Internet and network-state access and loads the existing public CartoLite origin.
+- Keep public API schema v2, SSE event types, backend storage, topology bounds, and browser privacy guarantees unchanged.
+
 ## 0.8.1 - 2026-08-31
 
 ### Changed

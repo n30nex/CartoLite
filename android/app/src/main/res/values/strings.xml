@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CartoLite</string>
+    <string name="connecting_title">Entering CartoLite</string>
+    <string name="connecting_detail">Connecting to the live MeshCore Canada map…</string>
+    <string name="loading_progress">Preparing live map… %1$d%%</string>
+    <string name="connection_title">Connection paused</string>
+    <string name="connection_detail">CartoLite could not reach the live map. Check your connection and try again.</string>
+    <string name="service_title">Map temporarily unavailable</string>
+    <string name="service_detail">The CartoLite service returned an error. Your app and preferences are safe.</string>
+    <string name="security_title">Secure connection required</string>
+    <string name="security_detail">CartoLite stopped because the site identity could not be verified.</string>
+    <string name="retry">Try again</string>
+    <string name="link_blocked">That link was blocked for your safety.</string>
+    <string name="no_browser">No browser is available for that link.</string>
+</resources>
