@@ -46,6 +46,22 @@ Daily backup stages only `state-v1.json` and a nonsecret deployment manifest con
 
 After deployment, request the exact content-hashed region URL twice. Require `Content-Type: application/geo+json`, immutable origin caching, and a repeat Cloudflare `HIT`. Also request every protected live endpoint twice and prove none becomes a cache hit.
 
+## v0.8.0 mobile sound and terrain
+
+Use the owner-approved [manual Pi release exception](manual-release.md) and record the exact v0.7.1 production digest, container identity, configuration, boot ID, checkpoint checksum, and resource baseline before cutover. The candidate and released `linux/amd64` image must resolve to the exact merged SHA.
+
+In addition to the standard identity, hardening, health, readiness, MQTT, checkpoint, queue, drops, privacy, SSE, CARTO vector, region, cache, and bounded-load gates, require:
+
+- Android-style suspended Web Audio starts after the Sound tap, runs one silent unlock buffer, and retains one oscillator per visible hop in every scene.
+- Clusters can be disabled at national, regional, and local zooms without changing the node count; exposing all 4,000 test nodes produces no task of 100 ms or longer.
+- Live Follow holds its camera for five seconds and then chooses the newest queued eligible activity. Manual movement and Home still cancel it.
+- Route colours remain distinct, the live comet stays on exact route geometry, and recent live residue remains colored and sparkling for 45 seconds whether Routes is shown or hidden.
+- Heat is visibly stronger and its six layers use the dominant Advert, Trace, Text, ACK, Control, or Other colour at each hotspot.
+- Topography and 3D remain off by default, load attributed Mapterhorn Terrarium DEM data only after selection, retain the CARTO vector basemap, and return cleanly to zero pitch.
+- Desktop, phone portrait, phone landscape, and reduced-motion browser checks complete without overflow, style errors, failed resources, or console errors.
+
+After cutover, observe production for five minutes. Require zero restarts, drops, queue growth, console errors, or sustained CPU or memory regression. If any gate fails, restore the recorded v0.7.1 image and configuration, restore the checkpoint only if needed, recreate only CartoLite, and repeat health, readiness, privacy, SSE, vector map, and browser checks.
+
 ## v0.5.0 cutover
 
 The rollback boundary for this release is v0.4.3 at `ghcr.io/n30nex/cartolite@sha256:b5ee6321ae71599497ef3873bc0e8ba4c52b7b5459e26fca3bb2a13d8b023656`.

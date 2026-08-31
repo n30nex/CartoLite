@@ -5,6 +5,7 @@ import { NEIGHBOR_ROUTE_RECENT_MS, recentNeighborRoutes } from './routeFocus';
 import {
   activityHeatCollection,
   applyClusterHighlightFilter,
+  applyClusterVisibility,
   applyHeatmapFocus,
   applyNodeFocus,
   applyNeighborRingVisibility,
@@ -15,10 +16,12 @@ import {
   applyRouteVisibilityForZoom,
   applySelectedNodeFilter,
   canMoveLiveFollow,
+  CLUSTER_LAYER_IDS,
   CLUSTER_HIGHLIGHT_LAYER_ID,
+  dominantHeatKind,
   effectiveRouteWindowMS,
   HEAT_RENDER_BUDGET,
-  HEATMAP_LAYER_ID,
+  HEATMAP_LAYER_IDS,
   isRouteInspectable,
   isPointInSafeArea,
   labelSortKey,
@@ -53,7 +56,7 @@ import {
   selectedNodeFilter,
   tooltipPosition
 } from './map';
-import { PACKET_KIND_COLORS, ROUTE_MAX_AGE_MS } from './trafficVisuals';
+import { PACKET_KIND_COLORS, PACKET_KINDS, ROUTE_MAX_AGE_MS } from './trafficVisuals';
 
 describe('map glyph labels', () => {
   it('keeps readable text while removing glyph-server-hostile emoji ranges', () => {
@@ -196,9 +199,40 @@ describe('optional map layers', () => {
     } as unknown as Parameters<typeof applyHeatmapFocus>[0];
 
     expect(applyHeatmapFocus(map, ['selected', 'neighbor'])).toBe(true);
-    expect(setFilter).toHaveBeenLastCalledWith(HEATMAP_LAYER_ID, nodeIDFilter(['selected', 'neighbor']));
+    expect(setFilter.mock.calls).toEqual(HEATMAP_LAYER_IDS.map((layerID, index) => [
+      layerID,
+      ['all', ['==', ['get', 'kind'], PACKET_KINDS[index]], nodeIDFilter(['selected', 'neighbor'])]
+    ]));
+    setFilter.mockClear();
     expect(applyHeatmapFocus(map, [])).toBe(true);
-    expect(setFilter).toHaveBeenLastCalledWith(HEATMAP_LAYER_ID, null);
+    expect(setFilter.mock.calls).toEqual(HEATMAP_LAYER_IDS.map((layerID, index) => [
+      layerID,
+      ['==', ['get', 'kind'], PACKET_KINDS[index]]
+    ]));
+  });
+
+  it('can disable clusters while exposing individual nodes at national zoom', () => {
+    const visibility = Object.fromEntries(CLUSTER_LAYER_IDS.map((id) => [id, 'visible']));
+    const nodeLayerIDs = ['nodes-glow', NEIGHBOR_NODE_LAYER_ID, SELECTED_NODE_OUTER_LAYER_ID,
+      SELECTED_NODE_LAYER_ID, 'nodes', 'node-core', NODE_HIT_LAYER_ID];
+    const setLayoutProperty = vi.fn((id: string, _name: string, value: string) => { visibility[id] = value; });
+    const setLayerZoomRange = vi.fn();
+    const map = {
+      getLayer: vi.fn((id: string) => [...CLUSTER_LAYER_IDS, ...nodeLayerIDs].includes(id) ? {} : undefined),
+      getLayoutProperty: vi.fn((id: string) => visibility[id]),
+      setLayoutProperty,
+      setLayerZoomRange,
+    } as unknown as Parameters<typeof applyClusterVisibility>[0];
+
+    expect(applyClusterVisibility(map, false)).toBe(true);
+    expect(setLayoutProperty.mock.calls).toEqual(CLUSTER_LAYER_IDS.map((id) => [id, 'visibility', 'none']));
+    expect(setLayerZoomRange.mock.calls).toEqual(nodeLayerIDs.map((id) => [id, 3, 24]));
+
+    setLayoutProperty.mockClear();
+    setLayerZoomRange.mockClear();
+    expect(applyClusterVisibility(map, true)).toBe(true);
+    expect(setLayoutProperty.mock.calls).toEqual(CLUSTER_LAYER_IDS.map((id) => [id, 'visibility', 'visible']));
+    expect(setLayerZoomRange.mock.calls.every((call) => call[1] > 8)).toBe(true);
   });
 });
 
@@ -229,6 +263,21 @@ describe('activity heatmap data', () => {
     expect(collection.features.map((feature) => feature.id)).toEqual(['a', 'b', 'c']);
     expect(heatWeight(collection, 'a')).toBeGreaterThan(heatWeight(collection, 'b'));
     expect(heatWeight(collection, 'a')).toBeGreaterThan(heatWeight(collection, 'c'));
+  });
+
+  it('colors each hotspot by its strongest recent packet kind', () => {
+    const now = 1_900_000_000_000;
+    const collection = heatCollectionFor([
+      route('text-a', 'hub', 'text', now, 'Text', 16),
+      route('advert-a', 'hub', 'advert', now, 'Advert', 2),
+    ], now);
+    const hub = collection.features.find((feature) => feature.id === 'hub');
+
+    expect(hub?.properties?.kind).toBe('Text');
+    expect(dominantHeatKind(new Map<RouteV2['lastKind'], number>([
+      ['Advert', 1],
+      ['Trace', 1],
+    ]))).toBe(PACKET_KINDS[0]);
   });
 
   it('counts a self route once and excludes endpoints with invalid coordinates', () => {
@@ -424,10 +473,10 @@ describe('stable route visual data', () => {
     expect(Number(busyProperties?.width)).toBeGreaterThan(Number(quietProperties?.width));
     expect(Number(busyProperties?.glowWidth)).toBeGreaterThan(Number(quietProperties?.glowWidth));
     for (const properties of [quietProperties, busyProperties]) {
-      expect(Number(properties?.width)).toBeGreaterThanOrEqual(0.68);
-      expect(Number(properties?.width)).toBeLessThanOrEqual(1.5);
-      expect(Number(properties?.glowWidth)).toBeGreaterThanOrEqual(1.8);
-      expect(Number(properties?.glowWidth)).toBeLessThanOrEqual(3.4);
+      expect(Number(properties?.width)).toBeGreaterThanOrEqual(0.72);
+      expect(Number(properties?.width)).toBeLessThanOrEqual(1.72);
+      expect(Number(properties?.glowWidth)).toBeGreaterThanOrEqual(2);
+      expect(Number(properties?.glowWidth)).toBeLessThanOrEqual(4.1);
     }
   });
 });
@@ -577,7 +626,7 @@ describe('visual hierarchy and soft follow', () => {
     expect(isPointInSafeArea({ x: 0, y: 0 }, { width: 0, height: 0 })).toBe(false);
   });
 
-  it('throttles follow moves to one per 1.2 seconds', () => {
+  it('holds each live-follow view for five seconds', () => {
     expect(canMoveLiveFollow(0, 100)).toBe(true);
     expect(canMoveLiveFollow(10_000, 10_000 + LIVE_FOLLOW_MIN_INTERVAL_MS - 1)).toBe(false);
     expect(canMoveLiveFollow(10_000, 10_000 + LIVE_FOLLOW_MIN_INTERVAL_MS)).toBe(true);
@@ -636,8 +685,8 @@ describe('visual hierarchy and soft follow', () => {
     expect(active.width).toBeGreaterThan(quiet.width);
     expect(active.glowWidth).toBeGreaterThan(quiet.glowWidth);
     expect(active.opacity).toBeGreaterThan(old.opacity);
-    expect(active.width).toBeLessThanOrEqual(1.5);
-    expect(active.glowWidth).toBeLessThanOrEqual(3.4);
+    expect(active.width).toBeLessThanOrEqual(1.72);
+    expect(active.glowWidth).toBeLessThanOrEqual(4.1);
     expect(old.width).toBeLessThan(active.width);
     expect(old.glowWidth).toBeLessThan(active.glowWidth);
     for (const visual of [quiet, active, old]) {

@@ -51,6 +51,9 @@ func TestSecurityHeadersExcludeExternalGlyphOrigins(t *testing.T) {
 	if !strings.Contains(csp, "https://*.basemaps.cartocdn.com") {
 		t.Fatalf("CSP does not allow the configured vector map origin: %q", csp)
 	}
+	if !strings.Contains(csp, "https://tiles.mapterhorn.com") {
+		t.Fatalf("CSP does not allow the configured terrain origin: %q", csp)
+	}
 	for _, origin := range []string{"https://demotiles.maplibre.org", "https://fonts.openmaptiles.org"} {
 		if strings.Contains(csp, origin) {
 			t.Fatalf("CSP still allows external glyph origin %q: %q", origin, csp)

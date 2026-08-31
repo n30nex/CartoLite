@@ -15,12 +15,12 @@ import {
 describe('packet traffic palette', () => {
   it('keeps the stable route palette identical to live packet trails', () => {
     expect(PACKET_KIND_COLORS).toEqual({
-      Advert: '#48dcc1',
-      Trace: '#e9d72f',
-      Text: '#ec79b0',
-      ACK: '#8bd4ff',
-      Control: '#7dbfff',
-      Other: '#7dbfff'
+      Advert: '#4de7c4',
+      Trace: '#ffd15a',
+      Text: '#ff75b5',
+      ACK: '#78cfff',
+      Control: '#a78bfa',
+      Other: '#9caebd'
     });
 
     for (const [kind, color] of Object.entries(PACKET_KIND_COLORS)) {

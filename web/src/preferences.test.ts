@@ -41,6 +41,9 @@ describe('viewport preferences', () => {
       routes: true,
       heatmap: false,
       regions: true,
+      clusters: false,
+      hillshade: true,
+      terrain3D: true,
       routeWindow: '24h' as const,
       legendExpanded: true
     };

@@ -23,6 +23,12 @@ export interface SoundPreferenceV2 {
 
 export type SoundStatus = 'on' | 'off' | 'resume';
 
+type AudioContextConstructor = new (options?: AudioContextOptions) => AudioContext;
+
+interface WebKitAudioWindow extends Window {
+  webkitAudioContext?: AudioContextConstructor;
+}
+
 export function loadSoundPreference(storage: Storage): SoundPreferenceV2 {
   try {
     const value = JSON.parse(storage.getItem(SOUND_STORAGE_KEY) ?? 'null') as {
@@ -202,7 +208,7 @@ export class RouteSonifier {
   }
 
   supported(): boolean {
-    return typeof window.AudioContext === 'function';
+    return typeof audioContextConstructor() === 'function';
   }
 
   isEnabled(): boolean {
@@ -253,9 +259,15 @@ export class RouteSonifier {
     if (!this.supported()) return false;
     this.preferredEnabled = true;
     this.persist();
-    const context = this.context ?? this.createContext();
+    let context: AudioContext;
     try {
-      if (context.state === 'suspended') await context.resume();
+      context = this.context?.state === 'closed' || !this.context ? this.createContext() : this.context;
+      // Chrome on Android may expose a usable AudioContext but keep its output
+      // locked until a source starts during the tap itself. Queue one silent
+      // frame before the first await; it unlocks the output without a demo tone
+      // and does not affect the one-oscillator-per-visible-hop contract.
+      this.unlockMobileOutput(context);
+      if (context.state !== 'running') await context.resume();
     } catch {
       this.enabled = false;
       this.notify();
@@ -301,7 +313,9 @@ export class RouteSonifier {
   }
 
   private createContext(): AudioContext {
-    const context = new window.AudioContext({ latencyHint: 'interactive' });
+    const Context = audioContextConstructor();
+    if (!Context) throw new Error('Web Audio is unavailable');
+    const context = new Context({ latencyHint: 'interactive' });
     const master = context.createGain();
     master.gain.value = MIN_GAIN;
     const compressor = context.createDynamicsCompressor();
@@ -324,6 +338,19 @@ export class RouteSonifier {
     this.master = master;
     this.ambience = ambience;
     return context;
+  }
+
+  private unlockMobileOutput(context: AudioContext): void {
+    const source = context.createBufferSource();
+    const silence = context.createGain();
+    silence.gain.value = 0;
+    source.buffer = context.createBuffer(1, 1, Math.max(8_000, context.sampleRate || 44_100));
+    source.connect(silence).connect(context.destination);
+    source.onended = () => {
+      source.disconnect();
+      silence.disconnect();
+    };
+    source.start(0);
   }
 
   private schedule(note: HopNote, density: number): void {
@@ -419,6 +446,10 @@ export class RouteSonifier {
 
 export function isSoundScene(value: unknown): value is SoundScene {
   return value === 'aurora' || value === 'wood' || value === 'chimes';
+}
+
+function audioContextConstructor(): AudioContextConstructor | undefined {
+  return window.AudioContext ?? (window as WebKitAudioWindow).webkitAudioContext;
 }
 
 function stableHash(value: string): number {

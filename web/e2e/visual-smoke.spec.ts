@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { DESTINATION_BLOOM_MS, RESIDUE_MS, RESIDUE_REDRAW_MS, routeDuration } from '../src/packetAnimator';
+import { DESTINATION_BLOOM_MS, routeDuration } from '../src/packetAnimator';
 import { NEIGHBOR_ROUTE_RECENT_MS } from '../src/routeFocus';
 import type { StateV2 } from '../src/types';
 
@@ -10,6 +10,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   const consoleErrors = captureConsoleErrors(page);
   const regionAssetRequests: string[] = [];
   const cartoResponses = { tileJSON: 0, vector: 0, glyph: 0 };
+  const terrainResponses = { tileJSON: 0, dem: 0 };
   const rasterRequests: string[] = [];
   page.on('request', (request) => {
     if (isRegionAssetURL(request.url())) regionAssetRequests.push(request.url());
@@ -21,6 +22,8 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
     if (url.includes('/vector/carto.streets/v1/tiles.json')) cartoResponses.tileJSON += 1;
     else if (url.includes('/vectortiles/carto.streets/') && url.includes('.mvt')) cartoResponses.vector += 1;
     else if (url.includes('/fonts/') && url.includes('.pbf')) cartoResponses.glyph += 1;
+    else if (url.includes('tiles.mapterhorn.com/tilejson.json')) terrainResponses.tileJSON += 1;
+    else if (url.includes('tiles.mapterhorn.com/') && !url.includes('/tilejson.json')) terrainResponses.dem += 1;
   });
   const stateResponse = page.waitForResponse((response) => response.url().endsWith('/api/state') && response.ok());
   await page.goto('/');
@@ -131,6 +134,28 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'false');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'false');
   expect(regionAssetRequests, 'regional GeoJSON should stay lazy while the layer is off').toEqual([]);
+  const clustersButton = page.locator('#clusters-button');
+  const hillshadeButton = page.locator('#hillshade-button');
+  const terrainButton = page.locator('#terrain-button');
+  await expect(clustersButton).toHaveAttribute('aria-pressed', 'true');
+  await clustersButton.click();
+  await expect(page.locator('#map')).toHaveAttribute('data-clusters-visible', 'false');
+  await expect(clustersButton).toHaveAttribute('title', 'Show clusters');
+  await clustersButton.click();
+  await expect(page.locator('#map')).toHaveAttribute('data-clusters-visible', 'true');
+  await expect(hillshadeButton).toHaveAttribute('aria-pressed', 'false');
+  await hillshadeButton.click();
+  await expect(page.locator('#map')).toHaveAttribute('data-hillshade-visible', 'true');
+  await expect(page.locator('#map')).toHaveAttribute('data-terrain-ready', 'true');
+  await expect.poll(() => terrainResponses.tileJSON, { message: 'terrain TileJSON should load' }).toBeGreaterThan(0);
+  await expect.poll(() => terrainResponses.dem, { message: 'terrain elevation tiles should load' }).toBeGreaterThan(0);
+  await expect(page.locator('.maplibregl-ctrl-attrib-inner')).toContainText('Mapterhorn');
+  await terrainButton.click();
+  await expect(page.locator('#map')).toHaveAttribute('data-terrain3d', 'true');
+  await expect(page.locator('#map')).toHaveAttribute('data-camera-pitch', '52');
+  await terrainButton.click();
+  await expect(page.locator('#map')).toHaveAttribute('data-terrain3d', 'false');
+  await expect(page.locator('#map')).toHaveAttribute('data-camera-pitch', '0');
   const soundButton = page.locator('#sound-button');
   const soundPanel = page.locator('#sound-panel');
   const soundToggle = page.locator('#sound-toggle');
@@ -153,8 +178,10 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(soundButton).toHaveClass(/sounding/, { timeout: 15_000 });
   const audioCounts = await page.evaluate(() => ({
     oscillators: (window as unknown as { __cartoliteOscillators: number }).__cartoliteOscillators,
+    unlocks: (window as unknown as { __cartoliteAudioUnlocks: number }).__cartoliteAudioUnlocks,
     scheduled: Number(document.getElementById('sound-activity')?.dataset.scheduled ?? 0)
   }));
+  expect(audioCounts.unlocks, 'mobile-safe silent audio unlock should run inside the tap').toBe(1);
   expect(audioCounts.scheduled).toBeGreaterThan(0);
   expect(audioCounts.oscillators, 'one oscillator should be created for every scheduled visible hop').toBe(audioCounts.scheduled);
   await page.locator('#sound-volume').evaluate((element) => {
@@ -251,6 +278,7 @@ test('keeps the map primary with reduced motion and releases live follow on drag
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   await expect(page.locator('#map')).toBeVisible();
+  await expect(page.locator('#map')).toHaveAttribute('data-follow-dwell-ms', '5000');
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-motion-mode', 'static');
   await expect(page.locator('#follow-button')).toBeVisible();
   if (mobile) await openLayers(page);
@@ -336,9 +364,9 @@ test('keeps a recent packet trail after stable routes are hidden', async ({ page
   await expect(page.locator('#app')).toHaveAttribute('data-traffic-kind', 'text');
   const afterglowWindow = routeDuration([{ routeId: 'route-a-b', from, to }]) + DESTINATION_BLOOM_MS + 600;
   await page.waitForTimeout(afterglowWindow);
-  await expect.poll(() => canvasHasPixels(packetCanvas), { message: '15-second trail should outlive the moving comet and afterglow', timeout: 2_000 }).toBe(true);
-  await page.waitForTimeout(RESIDUE_MS + RESIDUE_REDRAW_MS + 600);
-  await expect.poll(() => canvasHasPixels(packetCanvas), { message: 'recent packet trail should clear after 15 seconds', timeout: 2_000 }).toBe(false);
+  await expect.poll(() => canvasHasPixels(packetCanvas), { message: '45-second trail should outlive the moving comet and afterglow', timeout: 2_000 }).toBe(true);
+  await page.waitForTimeout(Math.max(0, 15_500 - afterglowWindow));
+  await expect.poll(() => canvasHasPixels(packetCanvas), { message: 'recent packet trail should remain visible beyond the former 15-second lifetime', timeout: 2_000 }).toBe(true);
 });
 
 test('focuses recent route neighbors and clears selection on the map', async ({ page }, testInfo) => {
@@ -668,15 +696,24 @@ function captureConsoleErrors(page: Page): string[] {
 
 async function instrumentAudioContext(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const state = { count: 0 };
+    const state = { count: 0, unlocks: 0 };
     Object.defineProperty(window, '__cartoliteOscillators', {
       configurable: true,
       get: () => state.count
+    });
+    Object.defineProperty(window, '__cartoliteAudioUnlocks', {
+      configurable: true,
+      get: () => state.unlocks
     });
     const original = window.AudioContext.prototype.createOscillator;
     window.AudioContext.prototype.createOscillator = function createInstrumentedOscillator(): OscillatorNode {
       state.count += 1;
       return original.call(this);
+    };
+    const originalBufferStart = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function startInstrumentedBuffer(...args: Parameters<AudioBufferSourceNode['start']>): void {
+      state.unlocks += 1;
+      originalBufferStart.apply(this, args);
     };
   });
 }

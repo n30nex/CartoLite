@@ -6,11 +6,11 @@ CartoLite uses native Web Audio with no samples or audio dependency. **Aurora** 
 
 One visible route hop always schedules one articulation and one oscillator. The hop start time comes from the same geographic distance weights used by the animation. A segment crossing the viewport is audible even when both endpoints are outside; an off-screen segment and observer-only activity are silent. Density may shorten and soften envelopes but cannot remove a visible hop.
 
-Sound remains opt-in. Enabling or resuming requires a fresh browser gesture. The panel reports **On**, **Off**, or **Tap to Resume**, displays the chosen scene and 0–100% volume, and pulses only when a note is scheduled.
+Sound remains opt-in. Enabling or resuming requires a fresh browser gesture. During that tap CartoLite starts one inaudible buffer frame before awaiting `AudioContext.resume()`, which unlocks Android Chrome output without adding a preview tone or an oscillator. The panel reports **On**, **Off**, or **Tap to Resume**, displays the chosen scene and 0–100% volume, and pulses only when a live note is scheduled.
 
 ## Packet motion
 
-Each hop stays on the exact straight geographic segment used by the historical route layer. The moving cue consists of a sharp packet core, a short screen-bounded tapered glow, up to three restrained sparks, a relay ring and forward tick, and a destination shimmer. Completed segments enter the low-opacity 15-second residue cache.
+Each hop stays on the exact straight geographic segment used by the historical route layer. The moving cue consists of a sharp packet core, a short screen-bounded tapered glow, up to three restrained sparks, a relay ring and forward tick, and a destination shimmer. Completed segments enter a low-opacity 45-second residue cache with deterministic coloured sparkles. This recent-live layer remains visible whether the historical Routes layer is on or off.
 
 All drawing uses source-over composition. CartoLite does not use full-map traffic flashes, additive white blending, curved historical geometry, camera-relative route geometry, or animation that survives its route expiry.
 
