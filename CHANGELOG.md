@@ -9,7 +9,7 @@
 
 ### Fixed
 
-- Show the last complete route snapshot immediately when routes are enabled, while pending live deltas continue through the existing bounded refresh schedule.
+- Keep route layers precompiled and show the last complete snapshot immediately when routes are enabled, while pending live deltas continue through the existing bounded refresh schedule.
 
 ## 0.7.1 - 2026-08-31
 
