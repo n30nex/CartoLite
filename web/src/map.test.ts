@@ -11,7 +11,6 @@ import {
   applyNeighborRingVisibility,
   applyRouteHoverFilter,
   applyRouteHitLayerVisibility,
-  applyRouteExactWindowState,
   applyRouteSelectionFilter,
   applyRouteVisibilityForZoom,
   applySelectedNodeFilter,
@@ -67,14 +66,10 @@ describe('map glyph labels', () => {
 });
 
 describe('route layer visibility', () => {
-  it('activates only the route representation used at the current zoom', () => {
+  it('keeps individual routes active at every zoom', () => {
     const layerIDs = [
       'route-national-glow', 'route-national-core',
       'route-regional-glow', 'route-regional-core',
-      'route-exact-glow-0', 'route-exact-core-0',
-      'route-exact-glow-1', 'route-exact-core-1',
-      'route-exact-glow-2', 'route-exact-core-2',
-      'route-exact-glow-3', 'route-exact-core-3',
       'route-focus-glow', 'route-focus-core'
     ];
     const visibility = Object.fromEntries(layerIDs.map((id) => [id, 'none']));
@@ -87,18 +82,19 @@ describe('route layer visibility', () => {
 
     expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 3.4)).toBe(true);
     expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 3.4)).toBe(false);
-    expect(setLayoutProperty.mock.calls).toEqual([
-      ['route-national-glow', 'visibility', 'visible'],
-      ['route-national-core', 'visibility', 'visible']
-    ]);
+    expect(setLayoutProperty).toHaveBeenCalledTimes(2);
+    expect(setLayoutProperty.mock.calls).toContainEqual(['route-focus-core', 'visibility', 'visible']);
+    expect(setLayoutProperty.mock.calls).not.toContainEqual(['route-national-core', 'visibility', 'visible']);
 
     setLayoutProperty.mockClear();
-    expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 8)).toBe(true);
-    expect(setLayoutProperty).toHaveBeenCalledTimes(12);
-    expect(setLayoutProperty.mock.calls).toContainEqual(['route-national-core', 'visibility', 'none']);
-    expect(setLayoutProperty.mock.calls).toContainEqual(['route-exact-core-3', 'visibility', 'visible']);
-    expect(setLayoutProperty.mock.calls).toContainEqual(['route-focus-core', 'visibility', 'visible']);
+    expect(applyRouteVisibilityForZoom(map, true, ROUTE_MAX_AGE_MS, 8)).toBe(false);
+    expect(setLayoutProperty).not.toHaveBeenCalled();
+
+    expect(applyRouteVisibilityForZoom(map, false, ROUTE_MAX_AGE_MS, 3.4)).toBe(true);
+    expect(visibility['route-focus-glow']).toBe('none');
+    expect(visibility['route-focus-core']).toBe('none');
   });
+
 
   it('switches compact-trunk metrics without changing trunk geometry', () => {
     const geometry: LineString = { type: 'LineString', coordinates: [[-80, 43], [-79, 44]] };
@@ -128,20 +124,6 @@ describe('route layer visibility', () => {
       opacity: 0.6
     });
     expect(trunk.properties?.routeCount).toBe(99);
-  });
-
-  it('updates the deferred exact-line window independently', () => {
-    const globalState: Record<string, unknown> = { 'cartolite-exact-window': '15m' };
-    const setGlobalStateProperty = vi.fn((name: string, value: unknown) => { globalState[name] = value; });
-    const map = {
-      getGlobalState: vi.fn(() => globalState),
-      setGlobalStateProperty
-    } as unknown as Parameters<typeof applyRouteExactWindowState>[0];
-
-    expect(applyRouteExactWindowState(map, 6 * 60 * 60_000)).toBe(true);
-    expect(applyRouteExactWindowState(map, 6 * 60 * 60_000)).toBe(false);
-    expect(setGlobalStateProperty).toHaveBeenCalledOnce();
-    expect(setGlobalStateProperty).toHaveBeenCalledWith('cartolite-exact-window', '6h');
   });
 
   it('shows the wide route hit target only while neighbor routes are interactive', () => {
@@ -434,10 +416,10 @@ describe('stable route visual data', () => {
     expect(effectiveRouteWindowMS('auto', 11)).toBe(ROUTE_MAX_AGE_MS);
     expect(routeWindowLabel('auto', 4)).toBe('Auto · 15m');
     expect(routeWindowLabel('24h', 4)).toBe('24h');
-    expect(routeRepresentationForZoom(3.4)).toBe('national-trunks');
-    expect(routeRepresentationForZoom(4.799)).toBe('national-trunks');
-    expect(routeRepresentationForZoom(4.8)).toBe('regional-trunks');
-    expect(routeRepresentationForZoom(6.499)).toBe('regional-trunks');
+    expect(routeRepresentationForZoom(3.4)).toBe('individual-routes');
+    expect(routeRepresentationForZoom(4.799)).toBe('individual-routes');
+    expect(routeRepresentationForZoom(4.8)).toBe('individual-routes');
+    expect(routeRepresentationForZoom(6.499)).toBe('individual-routes');
     expect(routeRepresentationForZoom(6.5)).toBe('individual-routes');
   });
 

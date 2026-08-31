@@ -25,6 +25,7 @@ import {
   quadraticSlice,
   RESIDUE_HOT_MS,
   RESIDUE_MS,
+  RESIDUE_REDRAW_MS,
   residueLife,
   residueSparkleProgress,
   residueStyle,
@@ -152,7 +153,8 @@ describe('packet animation limits', () => {
     expect(visualQuality(true, 1)).toBe('low');
   });
 
-  it('refreshes the residue bitmap on content, projection, or 250ms fade ticks', () => {
+  it('refreshes the cached route glow on content, projection, or fade ticks', () => {
+    expect(RESIDUE_REDRAW_MS).toBe(250);
     expect(shouldRefreshResidueCache(1000, 1100, false, false)).toBe(false);
     expect(shouldRefreshResidueCache(1000, 1250, false, false)).toBe(true);
     expect(shouldRefreshResidueCache(1000, 1001, true, false)).toBe(true);

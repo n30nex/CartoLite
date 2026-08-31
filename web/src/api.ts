@@ -56,6 +56,10 @@ export class LiveFeed {
     this.closeSource();
   }
 
+  resume(): Promise<void> {
+    return this.requestRecovery();
+  }
+
   private connect(): void {
     if (this.source || this.stopped) return;
     const cursor = new URLSearchParams({ bootId: this.bootId, after: String(this.seq) });

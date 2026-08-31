@@ -14,4 +14,4 @@ Each hop stays on the exact straight geographic segment used by the historical r
 
 All drawing uses source-over composition. CartoLite does not use full-map traffic flashes, additive white blending, curved historical geometry, camera-relative route geometry, or animation that survives its route expiry.
 
-Adaptive quality preserves route travel and handoff timing. During bursts or on coarse-pointer devices it reduces sparks, signatures, observer decoration, residue resolution, pixel ratio, and frame cadence. Reduced-motion mode renders static route and endpoint cues without continuous travel.
+Adaptive quality preserves route travel, handoff timing, and animation-frame cadence. During bursts or on coarse-pointer devices it reduces sparks, signatures, observer decoration, residue resolution, and pixel ratio. Lingering route sparkles and node wakes stay on the display-cadence canvas while the heavier residue glow remains cached. Reduced-motion mode renders static route and endpoint cues without continuous travel.

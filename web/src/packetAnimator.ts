@@ -24,7 +24,6 @@ export const MAX_ACTIVE_EFFECTS = 32;
 export const MAX_RESIDUE = 480;
 export const LOW_POWER_MAX_ACTIVE_EFFECTS = 16;
 export const LOW_POWER_MAX_RESIDUE = 240;
-export const LOW_POWER_FRAME_MS = 1_000 / 30;
 export const NODE_WAKE_MS = 6_000;
 export const MAX_NODE_WAKES = 160;
 export const LOW_POWER_MAX_NODE_WAKES = 72;
@@ -339,7 +338,6 @@ export class PacketAnimator {
   private residueContentDirty = true;
   private residueCacheUpdatedAt = Number.NEGATIVE_INFINITY;
   private dpr = 1;
-  private lastDrawAt = Number.NEGATIVE_INFINITY;
   private scheduledWakeCount = 0;
   private appliedQuality?: VisualQuality;
 
@@ -537,11 +535,6 @@ export class PacketAnimator {
   private draw(now: number): void {
     this.frameId = 0;
     if (this.paused) return;
-    if (!this.reducedMotion && this.qualityMode() === 'low' && now - this.lastDrawAt < LOW_POWER_FRAME_MS) {
-      this.frameId = window.requestAnimationFrame(this.draw);
-      return;
-    }
-    this.lastDrawAt = now;
     this.clearCanvas();
     if (!this.reducedMotion) {
       for (const route of this.activeRoutes) this.completeRoute(route, now);
@@ -563,6 +556,10 @@ export class PacketAnimator {
     // overlapping cyan and amber effects wash out to white.
     this.context.globalCompositeOperation = 'source-over';
     this.context.lineCap = 'round';
+    if (!this.reducedMotion) {
+      this.drawResidueSparkles(now);
+      for (const item of this.nodeWakes) this.drawNodeWake(this.context, item, now);
+    }
     this.activeRoutes = this.activeRoutes.filter(
       (item) => now - item.started < item.duration + DESTINATION_BLOOM_MS,
     );
@@ -573,7 +570,7 @@ export class PacketAnimator {
     for (const route of this.activeRoutes) this.drawRoute(route, now);
     for (const observer of this.activeObservers) this.drawObserver(observer, now);
     this.context.restore();
-    if (!this.reducedMotion && (this.activeRoutes.length || this.activeObservers.length)) this.requestFrame();
+    if (!this.reducedMotion && this.hasVisibleEffects()) this.requestFrame();
     else this.requestTimedFrame(now);
   }
 
@@ -619,20 +616,27 @@ export class PacketAnimator {
     context.lineWidth = coreWidth;
     context.stroke();
     context.setLineDash([]);
-    if (!this.reducedMotion && style.life > 0.025) {
-      const quality = this.qualityMode();
-      const count = quality === 'full' ? 3 : quality === 'balanced' ? 2 : 1;
-      const route = { from, control, to };
+  }
+
+  private drawResidueSparkles(now: number): void {
+    const quality = this.qualityMode();
+    const count = quality === 'full' ? 3 : quality === 'balanced' ? 2 : 1;
+    const limit = quality === 'full' ? 160 : quality === 'balanced' ? 120 : 96;
+    for (const item of this.residue.slice(-limit)) {
+      const projected = this.projectedResidue.get(item);
+      if (!projected) continue;
+      const style = residueStyle(now - item.addedAt);
+      if (style.life <= 0.025) continue;
       const age = Math.max(0, now - item.addedAt);
       for (let index = 0; index < count; index += 1) {
         const progress = residueSparkleProgress(item.segment.routeId, age, index);
-        const point = quadraticPoint(route, progress);
+        const point = quadraticPoint(projected, progress);
         const twinkle = 0.32 + 0.68 * Math.abs(Math.sin(age / 240 + index * 2.1));
         const radius = quality === 'low' ? 0.85 : 0.9 + index * 0.12;
-        context.fillStyle = withAlpha(item.color, style.life * twinkle * 0.82);
-        context.beginPath();
-        context.arc(point.x, point.y, radius, 0, Math.PI * 2);
-        context.fill();
+        this.context.fillStyle = withAlpha(item.color, style.life * twinkle * 0.82);
+        this.context.beginPath();
+        this.context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        this.context.fill();
       }
     }
   }
@@ -689,7 +693,9 @@ export class PacketAnimator {
       const projected = this.projectedResidue.get(item);
       if (projected) this.drawResidue(this.residueContext, item, projected, now);
     }
-    for (const item of this.nodeWakes) this.drawNodeWake(this.residueContext, item, now);
+    if (this.reducedMotion) {
+      for (const item of this.nodeWakes) this.drawNodeWake(this.residueContext, item, now);
+    }
     this.residueContext.restore();
     this.residueProjectionDirty = false;
     this.residueContentDirty = false;

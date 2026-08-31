@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.1 - 2026-08-31
+
+### Changed
+
+- Keep the screen awake automatically on supported mobile browsers while CartoLite is visible, and reacquire the native screen wake lock after returning to the page.
+- Render the ordinary individual route layer at every zoom and stop generating or displaying national and regional route trunks.
+- Keep every exact route in one camera-stable MapLibre WebGL renderer: a georeferenced cached texture at national zoom and one compact line buffer at detail zoom. This removes GeoJSON retessellation from the Routes switch without replacing routes with trunks or dropping links.
+- Run active packet travel, lingering route sparkles, and node wakes at the browser's animation-frame cadence on phones while keeping the heavier route glow cached.
+
+### Fixed
+
+- Refresh public state and replace the SSE connection after an Android page resumes from sleep, returns from the back-forward cache, or comes back online.
+- Coalesce simultaneous resume signals through the existing recovery path so the page cannot create duplicate live streams.
+- Give detailed map nodes a 44-pixel minimum touch target so selection remains reliable on narrow phone screens.
+
+### Privacy and compatibility
+
+- Keep public API schema v2, terrain, route-age windows, sound preferences, and all public-state privacy guarantees unchanged. Wake-lock and resume state remain browser-local.
+
 ## 0.8.0 - 2026-08-31
 
 ### Added
