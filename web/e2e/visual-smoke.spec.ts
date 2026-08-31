@@ -137,15 +137,18 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(soundButton).toBeVisible();
   await expect(soundButton).toHaveAttribute('aria-label', 'Sound');
   await expect(soundButton).toHaveAttribute('aria-pressed', 'false');
-  await expect(soundButton).toHaveAttribute('title', 'Sound off — 80%');
+  await expect(soundButton).toHaveAttribute('title', 'Sound off — Aurora · 80%');
   await expect(page.locator('#sound-state')).toHaveText('Off');
   await soundButton.click();
   await expect(soundPanel).toBeVisible();
   await expect(page.locator('#sound-panel-state')).toHaveText('Off');
   await expect(page.locator('#sound-volume-output')).toHaveText('80%');
+  await expect(page.locator('#sound-scene')).toHaveValue('aurora');
+  await page.locator('#sound-scene').selectOption('wood');
+  await expect(soundButton).toHaveAttribute('title', 'Sound off — Wood · 80%');
   await soundToggle.click();
   await expect(soundButton).toHaveAttribute('aria-pressed', 'true');
-  await expect(soundButton).toHaveAttribute('title', 'Sound on — 80% · visible live hops only');
+  await expect(soundButton).toHaveAttribute('title', 'Sound on — Wood · 80% · visible live hops only');
   await expect(page.locator('#sound-panel-state')).toHaveText('On');
   await expect(soundButton).toHaveClass(/sounding/, { timeout: 15_000 });
   const audioCounts = await page.evaluate(() => ({
@@ -162,7 +165,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(page.locator('#sound-volume-output')).toHaveText('65%');
   await soundToggle.click();
   await expect(soundButton).toHaveAttribute('aria-pressed', 'false');
-  await expect(soundButton).toHaveAttribute('title', 'Sound off — 65%');
+  await expect(soundButton).toHaveAttribute('title', 'Sound off — Wood · 65%');
   await expect(page.locator('#sound-panel-state')).toHaveText('Off');
   await soundButton.click();
   await expect(soundPanel).toBeHidden();
@@ -397,6 +400,11 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
 
   await clickPoint(page, { x: alphaPoint.x + (mobile ? 12 : 0), y: alphaPoint.y }, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'a');
+  const inspector = mobile ? page.locator('#node-inspector-sheet') : page.locator('.node-inspector-popup');
+  await expect(inspector).toBeVisible();
+  await expect(inspector).toContainText('Alpha');
+  await expect(inspector.locator('.neighbor-row')).toHaveCount(1);
+  await expect(inspector.locator('.neighbor-row').first()).toContainText('Bravo');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '1');
   await expect(map).toHaveAttribute('data-focused-route-count', '1');
   await expect(focusChip).toBeVisible();
@@ -405,6 +413,8 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await page.locator('#route-window').selectOption('24h');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '2');
   await expect(map).toHaveAttribute('data-focused-route-count', '2');
+  await expect(inspector.locator('.neighbor-row')).toHaveCount(2);
+  await expect(inspector.locator('.neighbor-row strong')).toHaveText(['Bravo', 'Charlie']);
   await expect(map).toHaveAttribute('data-render-state', 'idle');
   await expect(focusChip).toContainText('Alpha · 2 neighbors');
   await expect(page.locator('#legend')).toHaveAttribute('data-focused', 'true');
@@ -453,6 +463,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
 
   await clickPoint(page, bravoPoint, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'b');
+  await expect(inspector).toContainText('Bravo');
   await expect(map).toHaveAttribute('data-neighbor-route-count', '2');
   await expect(map).toHaveAttribute('data-focused-route-count', '2');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
@@ -465,6 +476,12 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
     await hoverMidpoint(page, alphaPoint, charliePoint);
     await expect(tooltip).toBeHidden();
   }
+
+  await page.mouse.move(box.x + 30, box.y + 100);
+  await page.mouse.wheel(0, -120);
+  await expect(map).toHaveAttribute('data-selected-node-id', 'b');
+  await expect(inspector).toBeVisible();
+  await expect(inspector).toContainText('Bravo');
 
   await clickPoint(page, { x: box.x + box.width * 0.84, y: box.y + box.height * 0.82 }, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', '');
@@ -481,6 +498,19 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   } else {
     await expect(page.locator('#legend-items')).toBeVisible();
   }
+
+  if (mobile) await openLayers(page);
+  await page.locator('#find-button').click();
+  await expect(page.locator('#find-panel')).toBeVisible();
+  await page.locator('#node-search').fill('alpha');
+  await expect(page.locator('.node-search-result')).toHaveCount(1);
+  await expect(page.locator('.node-search-result')).toContainText('Alpha');
+  await page.locator('.node-search-result').click();
+  await expect(map).toHaveAttribute('data-selected-node-id', 'a');
+  await expect(inspector).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(map).toHaveAttribute('data-selected-node-id', '');
+  await expect(inspector).toBeHidden();
   await page.screenshot({ path: testInfo.outputPath('cartolite-neighbors.png') });
 });
 

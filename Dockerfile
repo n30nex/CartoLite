@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-bookworm-slim AS web-build
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS web-build
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
@@ -10,10 +10,12 @@ COPY web/ ./
 RUN --mount=type=secret,id=carto_basemap_api_key,required=false \
     VITE_CARTO_BASEMAP_API_KEY="$(cat /run/secrets/carto_basemap_api_key 2>/dev/null || true)" npm run build
 
-FROM golang:1.25.13-bookworm AS go-build
+FROM --platform=$BUILDPLATFORM golang:1.25.13-bookworm AS go-build
 ARG APP_VERSION=dev
 ARG GIT_SHA=unknown
 ARG BUILD_TIME=unknown
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
 WORKDIR /src
 COPY backend/go.mod backend/go.sum ./backend/
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -23,7 +25,7 @@ COPY --from=web-build /src/web/dist/ ./backend/internal/httpapi/static/
 RUN install -d -m 0750 -o 65532 -g 65532 /tmp/cartolite-data
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    cd backend && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
       -trimpath \
       -ldflags="-s -w -X main.version=${APP_VERSION} -X main.gitSHA=${GIT_SHA}" \
       -o /out/cartolite ./cmd/cartolite

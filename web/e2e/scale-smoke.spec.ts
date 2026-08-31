@@ -90,6 +90,27 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(await maximumLongTask(page), 'enabling Routes must not block the main thread for 100 ms').toBeLessThan(100);
 
+  await resetLongTasks(page);
+  await page.locator('#find-button').click();
+  await page.locator('#node-search').fill('MC 0');
+  await expect(page.locator('.node-search-result').first()).toContainText('MC 0');
+  expect(await maximumLongTask(page), 'searching 4,000 public labels must not block the main thread for 100 ms').toBeLessThan(100);
+  await resetLongTasks(page);
+  await page.locator('.node-search-result').first().click();
+  await expect(map).toHaveAttribute('data-selected-node-id', 'node-0');
+  const inspector = testInfo.project.name.startsWith('mobile')
+    ? page.locator('#node-inspector-sheet')
+    : page.locator('.node-inspector-popup');
+  await expect(inspector).toBeVisible();
+  await expect(inspector.locator('.neighbor-row').first()).toBeVisible();
+  expect(await maximumLongTask(page), 'opening an indexed node inspector must not block the main thread for 100 ms').toBeLessThan(100);
+  const firstNeighborID = await inspector.locator('.neighbor-row').first().getAttribute('data-node-id');
+  await resetLongTasks(page);
+  await inspector.locator('.neighbor-row').first().click();
+  if (firstNeighborID) await expect(map).toHaveAttribute('data-selected-node-id', firstNeighborID);
+  expect(await maximumLongTask(page), 'selecting an indexed neighbour must not block the main thread for 100 ms').toBeLessThan(100);
+  await page.keyboard.press('Escape');
+
   const mapBox = await page.locator('#map .maplibregl-canvas').boundingBox();
   expect(mapBox).not.toBeNull();
   if (mapBox) {
