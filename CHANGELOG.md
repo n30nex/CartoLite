@@ -7,10 +7,6 @@
 - Add a map-only background embed that can be framed exclusively by `https://canadaverse.org` while every other route remains unframeable.
 - Publish a readiness message only after the live state and MapLibre scene have loaded, so the homepage never promotes an empty frame as live.
 
-### Fixed
-
-- Keep route layers precompiled and switch their paint state without relaying out the map, restoring responsive route toggles at national scale.
-
 ## 0.7.1 - 2026-08-31
 
 ### Fixed
