@@ -13,7 +13,7 @@ The default release path is GitHub Actions. Use this procedure only after the re
 9. Promote the accepted digest without rebuilding to the release, minor, and `latest` tags. Create the annotated Git tag and GitHub release with manifest and checksums, explicitly stating that the manual release has no GitHub OIDC attestation.
 10. Re-enable both workflows immediately and verify their prior enabled state is restored.
 11. Record the current production image and container identity, and back up Compose, protected configuration, and the checkpoint. Pin the new manifest digest and recreate only the CartoLite service.
-12. Verify health, readiness, MQTT, checkpoint, queue, drops, privacy, SSE, vector resources, desktop and mobile inspector, Node Finder, packet animation, and audible live hops. Observe production for five minutes with zero restarts, drops, queue growth, console errors, or sustained resource regression.
+12. Verify health, readiness, MQTT, checkpoint, queue, drops, privacy, SSE, vector resources, desktop and mobile inspector, Node Finder, packet animation, audible live hops, `/labs/` deep links, all initial Labs renderers, experiment cleanup, demo isolation, and Labs audio/resume. Observe production for five minutes with zero restarts, drops, queue growth, console errors, or sustained resource regression.
 
 If any gate fails, stop. After cutover, restore the recorded image and configuration, restore the checkpoint only if required, and repeat health, readiness, privacy, SSE, vector map, and browser checks.
 

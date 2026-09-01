@@ -8,6 +8,12 @@ One visible route hop always schedules one articulation and one oscillator. The 
 
 Sound remains opt-in. Enabling or resuming requires a fresh browser gesture. During that tap CartoLite starts one inaudible buffer frame before awaiting `AudioContext.resume()`, which unlocks Android Chrome output without adding a preview tone or an oscillator. The panel reports **On**, **Off**, or **Tap to Resume**, displays the chosen scene and 0–100% volume, and pulses only when a live note is scheduled.
 
+CartoLite Labs reuses this exact sonifier and preference record through a renderer-neutral viewport projector. Because a Labs experiment presents the full Canadian stage, each public route hop on that stage keeps one articulation; observer-only events stay silent. The page stops active voices when paused or hidden and never starts remembered sound without a new tap.
+
+## Labs motion
+
+Packet Pond maps ordered hops to droplets, route-reuse channels, and resolving ripples. Firefly Meadow hands one light through stable public-node plants. Northern Lights maps rolling activity to an aurora field while its foreground ribbons preserve exact ordered geographic hops. Mesh Loom writes one bounded tapestry row per sanitized event. All four retain the established packet-kind palette, distinguish observer-only activity, cap their session objects, and clear their temporary memory on reset or stream recovery.
+
 ## Packet motion
 
 Each hop stays on the exact straight geographic segment used by the historical route layer. The moving cue consists of a sharp packet core, a short screen-bounded tapered glow, up to three restrained sparks, a relay ring and forward tick, and a destination shimmer. Completed segments enter a low-opacity 45-second residue cache with deterministic coloured sparkles. This recent-live layer remains visible whether the historical Routes layer is on or off.

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.3 - 2026-09-01
+
+### Added
+
+- Add **CartoLite Labs** at `/labs/` as a same-binary, dynamically loaded generative-art surface powered only by the existing sanitized state snapshot and SSE stream.
+- Ship four initial experiments: Packet Pond, Firefly Meadow, Northern Lights Relay Sky, and Mesh Loom. They preserve packet kind, ordered hops, geographic distance, route reuse, observer-only activity, and bounded session density instead of inventing traffic.
+- Add a responsive shared Labs shell with direct experiment links, live status, native Aurora/Wood/Chimes sound controls, pause and reset, reduced-motion support, factual live captions, exhibition rotation, full-screen presentation, Android wake lock, and hidden-page recovery.
+- Add a deterministic synthetic demo mode covering one-hop, multi-hop, observer-only, burst, and quiet cases without contacting the production API.
+
+### Changed
+
+- Build the map and Labs as two Vite HTML entries with shared hashed chunks; experiments load only after selection and remain absent from the main map entry.
+- Resolve extensionless trailing-slash directories such as `/labs/` to their own `index.html`, keep every HTML document uncached, and retain immutable caching for hashed assets and strict 404s for unknown paths.
+- Generalize the existing route sonifier to a small viewport-projector interface so Labs can reuse the proven gesture-gated sound engine without adding MapLibre or another audio dependency.
+
+### Privacy and compatibility
+
+- Keep public API schema v2, SSE events, MQTT isolation, checkpoint and topology limits, map behavior, and Android shell unchanged. Labs stores no packet stream, query, analytics identifier, or experiment history; only the existing `{enabled, volume, scene}` sound preference persists.
+- Keep observer-only events local and unconnected in every experiment. No message contents, payloads, hashes, keys, raw paths, credentials, or resolver details enter the browser.
+
 ## 0.8.2 - 2026-08-31
 
 ### Added

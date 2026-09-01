@@ -1,0 +1,151 @@
+:root {
+  color: #d9e8ee;
+  background: #0b151b;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color-scheme: dark;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+html, body, .labs-app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body { background: #0b151b; }
+button, select, input { font: inherit; }
+button, select { min-height: 44px; }
+button { color: #d9e8ee; cursor: pointer; }
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #63d9cc; outline-offset: 2px; }
+
+.labs-app { position: relative; isolation: isolate; background: #07131a; }
+.labs-stage { position: absolute; inset: 0; overflow: hidden; background: #07131a; }
+.lab-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.lab-overlay-canvas { z-index: 1; }
+
+.glass {
+  border: 1px solid rgba(151, 220, 224, 0.16);
+  background: linear-gradient(145deg, rgba(8, 20, 26, 0.9), rgba(2, 9, 14, 0.8));
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.34), inset 0 1px rgba(219, 255, 255, 0.04);
+  -webkit-backdrop-filter: blur(14px) saturate(1.18);
+  backdrop-filter: blur(14px) saturate(1.18);
+}
+
+.labs-topbar {
+  position: absolute;
+  z-index: 5;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 13px;
+  padding: 0 12px;
+  border-radius: 14px;
+}
+.labs-back { display: inline-flex; min-height: 44px; align-items: center; gap: 6px; color: #effdff; text-decoration: none; font-size: 13px; font-weight: 750; }
+.labs-back > span:first-child { color: #63d9cc; font-size: 16px; }
+.labs-title { display: inline-flex; align-items: center; gap: 5px; color: #9ccbc8; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+.labs-title > span { color: #63d9cc; text-shadow: 0 0 12px rgba(99, 217, 204, 0.75); }
+.labs-status { display: flex; align-items: center; gap: 6px; color: #aebdcb; font-size: 11px; font-weight: 650; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: #86919b; }
+.labs-status[data-state="active"] .status-dot { background: #45df9a; box-shadow: 0 0 9px #45df9a; }
+.labs-status[data-state="quiet"] .status-dot { background: #70a99f; }
+.labs-status[data-state="reconnecting"] .status-dot { background: #e9c35b; animation: status-pulse 1.1s ease-in-out infinite; }
+.labs-status[data-state="offline"] .status-dot { background: #ed7283; }
+.labs-status[data-state="demo"] .status-dot { background: #a78bfa; box-shadow: 0 0 9px #a78bfa; }
+
+.labs-controls {
+  position: absolute;
+  z-index: 5;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  display: flex;
+  min-height: 48px;
+  align-items: stretch;
+  border-radius: 14px;
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+.labs-controls button, .labs-controls select {
+  border: 0;
+  border-right: 1px solid rgba(139, 205, 214, 0.13);
+  color: #c7d8df;
+  background: transparent;
+  padding: 0 12px;
+}
+.labs-controls button:hover, .labs-controls button[aria-pressed="true"] { color: #efffff; background: rgba(41, 184, 169, 0.14); }
+.labs-controls > :last-child { border-right: 0; }
+.experiment-picker, .compact-field, .volume-field { display: grid; align-content: center; gap: 1px; padding: 4px 8px; border-right: 1px solid rgba(139, 205, 214, 0.13); }
+.experiment-picker > span, .compact-field > span, .volume-field > span { color: #7f96a4; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.experiment-picker select, .compact-field select { min-height: 44px; padding: 0 26px 0 0; font-size: 12px; font-weight: 700; }
+.volume-field { grid-template-columns: minmax(72px, 120px) auto; grid-template-rows: auto auto; column-gap: 6px; }
+.volume-field > span { grid-column: 1 / -1; }
+.volume-field input { width: 100%; accent-color: #63d9cc; }
+.volume-field output { align-self: center; color: #b7cacd; font-size: 10px; }
+
+.live-caption {
+  position: absolute;
+  z-index: 4;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  max-width: min(440px, calc(100vw - 24px));
+  min-height: 36px;
+  margin: 0;
+  padding: 9px 13px;
+  border-radius: 12px;
+  color: #b7c9d0;
+  font-size: 12px;
+}
+.burst-indicator { position: absolute; z-index: 5; bottom: max(58px, calc(env(safe-area-inset-bottom) + 58px)); left: 50%; padding: 7px 11px; border-radius: 999px; color: #ffd15a; font-size: 11px; font-weight: 800; transform: translateX(-50%); }
+
+.info-dialog {
+  width: min(520px, calc(100vw - 28px));
+  max-height: min(72vh, 620px);
+  overflow: auto;
+  border-radius: 18px;
+  color: #d9e8ee;
+  padding: 20px;
+}
+.info-dialog::backdrop { background: rgba(0, 6, 10, 0.68); backdrop-filter: blur(4px); }
+.info-dialog header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.info-dialog h1 { margin: 4px 0 12px; font-size: 24px; }
+.info-dialog p { color: #b9cbd2; line-height: 1.55; }
+.info-dialog button { width: 44px; min-width: 44px; border: 0; border-radius: 10px; color: #cce1e7; background: rgba(255, 255, 255, 0.04); font-size: 24px; }
+.experiment-status { display: inline-flex; padding: 4px 7px; border-radius: 999px; color: #75e8d6; background: rgba(77, 231, 196, 0.1); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.truth-note { padding-top: 12px; border-top: 1px solid rgba(151, 220, 224, 0.12); font-size: 12px; }
+.labs-fatal { position: absolute; z-index: 7; top: 50%; left: 50%; max-width: min(520px, calc(100vw - 30px)); margin: 0; padding: 16px; border-radius: 14px; color: #ffd7dd; transform: translate(-50%, -50%); }
+
+.labs-app.exhibition .labs-controls, .labs-app.exhibition .labs-topbar { opacity: 0.2; }
+.labs-app.exhibition .labs-controls:hover, .labs-app.exhibition .labs-controls:focus-within,
+.labs-app.exhibition .labs-topbar:hover, .labs-app.exhibition .labs-topbar:focus-within { opacity: 1; }
+.labs-app[data-loading="true"] .labs-stage::after { position: absolute; inset: 50% auto auto 50%; content: "Loading experiment…"; color: #9bb3bd; font-size: 12px; transform: translate(-50%, -50%); }
+
+@keyframes status-pulse { 50% { opacity: 0.35; } }
+
+@media (max-width: 1020px) {
+  .labs-controls { top: auto; right: max(8px, env(safe-area-inset-right)); bottom: max(58px, calc(env(safe-area-inset-bottom) + 58px)); left: max(8px, env(safe-area-inset-left)); display: grid; grid-template-columns: repeat(4, minmax(44px, 1fr)); max-height: min(50vh, 330px); overflow-y: auto; }
+  .experiment-picker { grid-column: 1 / -1; }
+  .experiment-picker select { width: 100%; }
+  .compact-field, .volume-field { grid-column: span 2; }
+  .labs-controls button, .labs-controls label { min-height: 48px; border-bottom: 1px solid rgba(139, 205, 214, 0.13); }
+  .labs-controls #info-button { grid-column: span 2; }
+  .live-caption { right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); left: 8px; max-width: none; text-align: center; }
+}
+
+@media (max-width: 520px) {
+  .labs-topbar { top: max(8px, env(safe-area-inset-top)); right: 8px; left: 8px; gap: 9px; }
+  .labs-back { min-width: 44px; justify-content: center; }
+  .labs-back > span:last-child, .labs-title { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .labs-status { margin-left: auto; }
+  .labs-controls { grid-template-columns: repeat(3, minmax(44px, 1fr)); }
+  .compact-field, .volume-field { grid-column: span 3; }
+  .labs-controls #info-button { grid-column: span 2; }
+  .labs-controls button { padding-inline: 7px; font-size: 11px; }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .labs-controls { top: 64px; right: 8px; bottom: auto; left: auto; width: min(520px, calc(100vw - 16px)); grid-template-columns: repeat(6, minmax(44px, 1fr)); max-height: calc(100vh - 118px); }
+  .experiment-picker { grid-column: span 3; }
+  .compact-field, .volume-field { grid-column: span 3; }
+  .labs-controls #info-button { grid-column: span 2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}

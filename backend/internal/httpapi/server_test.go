@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/n30nex/cartolite/backend/internal/engine"
@@ -24,6 +25,38 @@ func testHandler(t *testing.T, ready bool) http.Handler {
 		t.Fatal(err)
 	}
 	return server.Handler()
+}
+
+func TestLabsDeepLinkAndStaticCachePolicy(t *testing.T) {
+	server := &Server{static: fstest.MapFS{
+		"index.html":         {Data: []byte("<a href=\"/labs/\">Labs</a>")},
+		"labs/index.html":    {Data: []byte("<title>CartoLite Labs</title>")},
+		"assets/labs-abc.js": {Data: []byte("export {}")},
+	}}
+	handler := server.Handler()
+
+	for _, requestPath := range []string{"/labs/", "/labs/index.html"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, requestPath, nil))
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "CartoLite Labs") {
+			t.Fatalf("%s did not serve the Labs entry: status=%d body=%q", requestPath, response.Code, response.Body.String())
+		}
+		if cache := response.Header().Get("Cache-Control"); cache != "no-cache" {
+			t.Fatalf("%s HTML cache policy = %q", requestPath, cache)
+		}
+	}
+
+	asset := httptest.NewRecorder()
+	handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/labs-abc.js", nil))
+	if asset.Code != http.StatusOK || asset.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
+		t.Fatalf("Labs asset cache response = status %d, cache %q", asset.Code, asset.Header().Get("Cache-Control"))
+	}
+
+	missing := httptest.NewRecorder()
+	handler.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/labs/unknown", nil))
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("unknown Labs path returned %d", missing.Code)
+	}
 }
 
 func TestPublicRoutesAndPrivateBoundaries(t *testing.T) {

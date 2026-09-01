@@ -12,7 +12,8 @@ MeshCore MQTT
  normalized public v2 projection
       +---- GET /api/state
       +---- GET /api/events (SSE)
-      +---- embedded MapLibre + Canvas2D page
+      +---- embedded MapLibre map
+      +---- embedded lazy-loaded Labs experiments
 ```
 
 The engine alone owns nodes, observers, prefix indexes, routes, sequence numbers, and counters. Each route retains only its newest sanitized packet kind and one activity scalar capped at 64 with a 15-minute half-life; there is no traffic history. MQTT callbacks decode and enqueue bounded input. Slow SSE clients are disconnected, so they cannot apply backpressure to ingest. Dirty public state is serialized at most once per second. Routes reference node IDs instead of embedding repeated endpoint objects.
@@ -38,6 +39,14 @@ Route sonification is opt-in and visitor-local. The browser stores only `{enable
 The browser maintains a node-to-route adjacency index as topology deltas arrive. Inspector and selected-route work therefore scales with one node's degree instead of the complete route set. Desktop uses a camera-stable native MapLibre popup; phones use a bounded bottom sheet. The Node Finder ranks matching public labels entirely in memory and discards its query. Desktop and mobile view preferences use separate versioned browser keys. A restored view is accepted only when its bounds contain a node active in the last 24 hours; otherwise CartoLite returns to the live activity home view. Layer visibility, route window, and legend state use a separate versioned browser-local preference. On phones, Finder, secondary map layers, and the route-age window stay in one compact disclosure while status, Follow, Sound, and Home remain directly available.
 
 On supported coarse-pointer and phone layouts, CartoLite requests the native screen wake lock while the document is visible, releases it when hidden, and reacquires it on return. Visibility restoration, back-forward cache restoration, and network reconnection all use the existing single-flight recovery path: fetch a no-store state snapshot, atomically replace browser state, close the old EventSource, and reconnect from the refreshed boot and sequence cursor.
+
+## Labs runtime
+
+`/labs/` is a second Vite HTML entry embedded in the same Go binary, not a second service. It imports the existing state validator, `LiveStore`, single-flight `LiveFeed`, packet-kind vocabulary, and route sonifier. One active experiment receives normalized public hops with derived distance, bearing, hop count, and a stable visual seed. Bounded 10-second, 60-second, and five-minute in-memory windows drive density and route-reuse effects and are discarded on an explicit reset or stream recovery.
+
+Experiment modules are dynamic imports. Switching destroys the previous renderer before mounting one replacement, while a single shell owns SSE, animation frames, sound, visibility recovery, resize, wake lock, and controls. Packet Pond, Firefly Meadow, and Mesh Loom use Canvas2D. Northern Lights uses WebGL2 for its background shader and a geographic Canvas overlay, with a Canvas fallback after unsupported or lost WebGL context. Every renderer caps retained objects, reduces device pixel ratio on coarse pointers, stops frames while hidden, and exposes a static reduced-motion interpretation.
+
+The Labs page receives exactly the public information already available to the map. Observer-only traffic remains an isolated visual cue, never a fabricated route. Its hidden `?demo=1` fixture is deterministic synthetic data and does not contact `/api/state` or `/api/events`.
 
 ## Android shell
 
