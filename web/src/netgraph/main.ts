@@ -36,6 +36,7 @@ const soundActivity = required<HTMLElement>('sound-activity');
 const resetButton = required<HTMLButtonElement>('reset-button');
 const connectedCount = required<HTMLElement>('connected-count');
 const routeCount = required<HTMLElement>('route-count');
+const areaCount = required<HTMLElement>('area-count');
 const componentCount = required<HTMLElement>('component-count');
 const tooltip = required<HTMLElement>('tooltip');
 const inspectorSheet = required<HTMLElement>('node-inspector-sheet');
@@ -151,6 +152,7 @@ async function start(): Promise<void> {
     const updateSummary = (): void => {
       connectedCount.textContent = Number(stage.dataset.connectedNodes ?? 0).toLocaleString();
       routeCount.textContent = Number(stage.dataset.visibleRoutes ?? 0).toLocaleString();
+      areaCount.textContent = Number(stage.dataset.areas ?? 0).toLocaleString();
       componentCount.textContent = Number(stage.dataset.components ?? 0).toLocaleString();
       emptyState.hidden = Number(stage.dataset.visibleRoutes ?? 0) > 0;
     };

@@ -6,13 +6,14 @@
 
 - Every public node that participates in at least one current 24-hour route. Isolated nodes remain available on the geographic map but are omitted because a topology graph has no edge on which to place them.
 - Every route inside the visitor's 15-minute, one-hour, six-hour, or 24-hour window. There is no display-count limit and no trunk aggregation.
-- Deterministic connected-component packing. High-degree nodes anchor each component and established positions do not change during ordinary traffic or camera movement.
+- Deterministic geographic-area packing. Connected nodes are assigned to the nearest centre in a small browser-local catalogue: the existing MeshMapper centres plus nearby metros needed for nodes outside those Canadian zones. Nodes are arranged with generous spacing around that fixed area anchor and high-degree nodes near the centre. Area labels show the place code, city name, and node count. This is a visual partition, not a claim about MQTT origin or RF propagation.
+- Intermittent inter-area links never merge city clusters. They remain individual, quieter dashed historical links, while their live animation and musical hops cross the full straight segment normally.
 - Straight topology links coloured by the latest sanitized packet kind. Selecting a node dims unrelated links and gives all active-window neighbour links a clear glow.
 - The existing public node details and newest-first neighbour list, plus an in-memory Finder that searches only downloaded public labels.
 
 ## Live motion and sound
 
-Static topology and transient traffic use separate Canvas2D layers. A route packet travels hop by hop as a coloured core, tapered glow, sparks, relay handoff, destination shimmer, and 45-second sparkling residue. Both drawing and native Web Audio use the same distance-weighted hop timeline. Each segment crossing the viewport produces exactly one articulation after the visitor enables sound. Observer-only events may wake an existing graph node but never fabricate a link or sound.
+Static topology and transient traffic use separate Canvas2D layers. Subtle geographic-area halos and labels are painted with the static graph and do not animate. A route packet travels hop by hop as a coloured core, tapered glow, sparks, relay handoff, destination shimmer, and 45-second sparkling residue. Both drawing and native Web Audio use the same distance-weighted hop timeline. Each segment crossing the viewport produces exactly one articulation after the visitor enables sound. Observer-only events may wake an existing graph node but never fabricate a link or sound.
 
 ## Interaction and recovery
 

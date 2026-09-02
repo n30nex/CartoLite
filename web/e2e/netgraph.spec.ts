@@ -37,6 +37,8 @@ test('Netgraph renders stable topology, inspection, and synchronized musical hop
   await expect(stage).toHaveAttribute('data-render-state', 'idle');
   await expect(stage).toHaveAttribute('data-connected-nodes', '4');
   await expect(stage).toHaveAttribute('data-visible-routes', '4');
+  await expect(stage).toHaveAttribute('data-areas', /[2-9]/);
+  await expect(page.locator('#area-count')).not.toHaveText('0');
   await expect(page.locator('#graph-canvas')).toBeVisible();
   await expect.poll(() => canvasHasPixels(page, '#graph-canvas')).toBe(true);
 
@@ -62,6 +64,7 @@ test('Netgraph renders stable topology, inspection, and synchronized musical hop
   await stage.dispatchEvent('wheel', { deltaY: -180, clientX: 500, clientY: 400 });
   await expect.poll(() => stage.getAttribute('data-view-scale').then(Number)).toBeGreaterThan(initialScale);
   await expect(stage).toHaveAttribute('data-visible-routes', '5');
+  await expect(stage).toHaveAttribute('data-areas', /[2-9]/);
 
   await page.locator('#route-window').selectOption('15m');
   await expect(stage).toHaveAttribute('data-visible-routes', '4');

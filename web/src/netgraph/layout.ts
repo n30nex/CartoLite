@@ -1,6 +1,10 @@
 import type { NodeV2, RouteV2 } from '../types';
+import { nearestNetgraphArea } from './areas';
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const AREA_GEO_SCALE_X = 92;
+const AREA_GEO_SCALE_Y = 240;
+const AREA_GAP = 150;
 
 export type NetgraphWindow = '15m' | '1h' | '6h' | '24h';
 
@@ -10,21 +14,35 @@ export interface NetgraphPosition {
   y: number;
   degree: number;
   component: number;
+  areaCode: string;
+}
+
+export interface NetgraphArea {
+  code: string;
+  name: string;
+  x: number;
+  y: number;
+  radius: number;
+  nodeCount: number;
 }
 
 export interface NetgraphLayout {
   positions: Map<string, NetgraphPosition>;
   connectedNodeIDs: Set<string>;
   componentCount: number;
+  areas: NetgraphArea[];
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
 interface Component {
   ids: string[];
   rootID: string;
-  radius: number;
-  x: number;
-  y: number;
+}
+
+interface AreaDraft extends NetgraphArea {
+  ids: string[];
+  desiredX: number;
+  desiredY: number;
 }
 
 export function netgraphWindowMS(window: NetgraphWindow): number {
@@ -42,6 +60,7 @@ export function routesInWindow(routes: readonly RouteV2[], now: number, window: 
 }
 
 export function buildNetgraphLayout(nodes: readonly NodeV2[], routes: readonly RouteV2[]): NetgraphLayout {
+  const nodeByID = new Map(nodes.map((node) => [node.id, node]));
   const nodeIDs = new Set(nodes.map((node) => node.id));
   const sortKeys = new Map(nodes.map((node) => [node.id, `${node.label.toLowerCase()}\u0000${node.id}`]));
   const adjacency = new Map<string, Set<string>>();
@@ -53,36 +72,83 @@ export function buildNetgraphLayout(nodes: readonly NodeV2[], routes: readonly R
 
   const connectedNodeIDs = new Set(adjacency.keys());
   const components = connectedComponents(adjacency, sortKeys);
-  packComponents(components);
-  const positions = new Map<string, NetgraphPosition>();
-
+  const componentByNodeID = new Map<string, number>();
   components.forEach((component, componentIndex) => {
-    const ordered = component.ids;
-    const phase = (stableHash(component.rootID) % 6283) / 1000;
+    for (const id of component.ids) componentByNodeID.set(id, componentIndex);
+  });
+
+  const areaByCode = new Map<string, AreaDraft>();
+  for (const id of [...connectedNodeIDs].sort((left, right) => compareSortKey(sortKeys, left, right))) {
+    const node = nodeByID.get(id)!;
+    const anchor = nearestNetgraphArea(node.lat, node.lng);
+    let area = areaByCode.get(anchor.code);
+    if (!area) {
+      area = {
+        code: anchor.code,
+        name: anchor.name,
+        x: anchor.lng * AREA_GEO_SCALE_X,
+        y: -anchor.lat * AREA_GEO_SCALE_Y,
+        desiredX: anchor.lng * AREA_GEO_SCALE_X,
+        desiredY: -anchor.lat * AREA_GEO_SCALE_Y,
+        radius: 0,
+        nodeCount: 0,
+        ids: [],
+      };
+      areaByCode.set(anchor.code, area);
+    }
+    area.ids.push(id);
+  }
+
+  const areaDrafts = [...areaByCode.values()].sort((left, right) => left.code.localeCompare(right.code));
+  for (const area of areaDrafts) {
+    area.ids.sort((left, right) => (
+      (adjacency.get(right)?.size ?? 0) - (adjacency.get(left)?.size ?? 0)
+      || compareSortKey(sortKeys, left, right)
+    ));
+    area.nodeCount = area.ids.length;
+    area.radius = Math.max(104, 44 + 34 * Math.sqrt(area.nodeCount));
+  }
+  placeAreas(areaDrafts);
+
+  const positions = new Map<string, NetgraphPosition>();
+  for (const area of areaDrafts) {
+    const ordered = area.ids;
+    const phase = (stableHash(area.code) % 6283) / 1000;
     const count = Math.max(1, ordered.length - 1);
     ordered.forEach((id, index) => {
       const degree = adjacency.get(id)?.size ?? 0;
       if (index === 0) {
-        positions.set(id, { id, x: component.x, y: component.y, degree, component: componentIndex });
+        positions.set(id, {
+          id,
+          x: area.x,
+          y: area.y,
+          degree,
+          component: componentByNodeID.get(id) ?? -1,
+          areaCode: area.code,
+        });
         return;
       }
-      const radius = component.radius * 0.86 * Math.sqrt(index / count);
+      const radius = area.radius * 0.9 * Math.sqrt(index / count);
       const angle = phase + GOLDEN_ANGLE * index;
       positions.set(id, {
         id,
-        x: component.x + Math.cos(angle) * radius,
-        y: component.y + Math.sin(angle) * radius,
+        x: area.x + Math.cos(angle) * radius,
+        y: area.y + Math.sin(angle) * radius,
         degree,
-        component: componentIndex,
+        component: componentByNodeID.get(id) ?? -1,
+        areaCode: area.code,
       });
     });
-  });
+  }
+
+  const areas = areaDrafts.map(({ code, name, x, y, radius, nodeCount }) => ({ code, name, x, y, radius, nodeCount }));
 
   return {
     positions,
     connectedNodeIDs,
     componentCount: components.length,
-    bounds: layoutBounds(positions),
+    areas,
+    bounds: layoutBounds(positions, areas),
   };
 }
 
@@ -95,54 +161,32 @@ export function extendNetgraphLayout(
 
   const canonical = buildNetgraphLayout(nodes, routes);
   const positions = new Map<string, NetgraphPosition>();
-  const componentIDs = new Map<number, string[]>();
+  const canonicalAreas = new Map(canonical.areas.map((area) => [area.code, area]));
+  const previousAreas = new Map(previous.areas.map((area) => [area.code, area]));
+  const areas = canonical.areas.map((area) => {
+    const established = previousAreas.get(area.code);
+    return established ? { ...area, x: established.x, y: established.y } : area;
+  });
+  const stableAreas = new Map(areas.map((area) => [area.code, area]));
   for (const position of canonical.positions.values()) {
-    const ids = componentIDs.get(position.component) ?? [];
-    ids.push(position.id);
-    componentIDs.set(position.component, ids);
     const established = previous.positions.get(position.id);
     if (established) positions.set(position.id, { ...position, x: established.x, y: established.y });
   }
 
-  for (const [component, ids] of [...componentIDs].sort(([left], [right]) => left - right)) {
-    const missing = ids.filter((id) => !positions.has(id));
-    if (missing.length === 0) continue;
-    const anchorID = ids.find((id) => previous.positions.has(id));
-    if (anchorID) {
-      const established = previous.positions.get(anchorID)!;
-      const reference = canonical.positions.get(anchorID)!;
-      for (const id of missing) {
-        const position = canonical.positions.get(id)!;
-        const candidate = distinctPoint(
-          position.x + established.x - reference.x,
-          position.y + established.y - reference.y,
-          id,
-          positions,
-        );
-        positions.set(id, { ...position, ...candidate, component });
-      }
-      continue;
-    }
-
-    let componentMinX = Infinity;
-    let componentMinY = Infinity;
-    for (const id of ids) {
-      const position = canonical.positions.get(id)!;
-      componentMinX = Math.min(componentMinX, position.x);
-      componentMinY = Math.min(componentMinY, position.y);
-    }
-    const occupiedRight = positions.size > 0
-      ? Math.max(...[...positions.values()].map((position) => position.x))
-      : previous.bounds.maxX;
-    const shiftX = occupiedRight + 68 - componentMinX;
-    const shiftY = previous.bounds.minY + 34 - componentMinY;
-    for (const id of ids) {
-      const position = canonical.positions.get(id)!;
-      positions.set(id, { ...position, x: position.x + shiftX, y: position.y + shiftY, component });
-    }
+  for (const position of canonical.positions.values()) {
+    if (positions.has(position.id)) continue;
+    const canonicalArea = canonicalAreas.get(position.areaCode)!;
+    const stableArea = stableAreas.get(position.areaCode) ?? canonicalArea;
+    const candidate = distinctPoint(
+      position.x + stableArea.x - canonicalArea.x,
+      position.y + stableArea.y - canonicalArea.y,
+      position.id,
+      positions,
+    );
+    positions.set(position.id, { ...position, ...candidate });
   }
 
-  return { ...canonical, positions, bounds: layoutBounds(positions) };
+  return { ...canonical, positions, areas, bounds: layoutBounds(positions, areas) };
 }
 
 export function graphTopologyChanged(
@@ -183,43 +227,51 @@ function connectedComponents(adjacency: ReadonlyMap<string, Set<string>>, sortKe
     components.push({
       ids,
       rootID,
-      radius: Math.max(48, 18 + 14 * Math.sqrt(ids.length)),
-      x: 0,
-      y: 0,
     });
   }
   return components.sort((left, right) => right.ids.length - left.ids.length || left.rootID.localeCompare(right.rootID));
 }
 
-function packComponents(components: Component[]): void {
-  const placed: Component[] = [];
-  let rightEdge = 0;
-  for (const component of components) {
-    if (placed.length === 0) {
-      placed.push(component);
-      rightEdge = component.radius;
-      continue;
-    }
-    const phase = (stableHash(component.rootID) % 360) * Math.PI / 180;
-    let assigned = false;
-    for (let step = 1; step < 20_000; step += 1) {
-      const distance = 20 * Math.sqrt(step);
-      const angle = phase + GOLDEN_ANGLE * step;
-      const x = Math.cos(angle) * distance;
-      const y = Math.sin(angle) * distance;
-      if (placed.every((other) => Math.hypot(x - other.x, y - other.y) >= component.radius + other.radius + 34)) {
-        component.x = x;
-        component.y = y;
-        assigned = true;
-        break;
+function placeAreas(areas: AreaDraft[]): void {
+  separateAreas(areas, 100, true);
+  separateAreas(areas, 40, false);
+}
+
+function separateAreas(areas: AreaDraft[], iterations: number, pullToGeography: boolean): void {
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    let moved = false;
+    for (let leftIndex = 0; leftIndex < areas.length; leftIndex += 1) {
+      const left = areas[leftIndex]!;
+      for (let rightIndex = leftIndex + 1; rightIndex < areas.length; rightIndex += 1) {
+        const right = areas[rightIndex]!;
+        let deltaX = right.x - left.x;
+        let deltaY = right.y - left.y;
+        let distance = Math.hypot(deltaX, deltaY);
+        const minimum = left.radius + right.radius + AREA_GAP;
+        if (distance >= minimum) continue;
+        if (distance < 0.001) {
+          const angle = (stableHash(`${left.code}:${right.code}`) % 6283) / 1000;
+          deltaX = Math.cos(angle);
+          deltaY = Math.sin(angle);
+          distance = 1;
+        }
+        const shift = (minimum - distance) / 2 + 0.01;
+        const unitX = deltaX / distance;
+        const unitY = deltaY / distance;
+        left.x -= unitX * shift;
+        left.y -= unitY * shift;
+        right.x += unitX * shift;
+        right.y += unitY * shift;
+        moved = true;
       }
     }
-    if (!assigned) {
-      component.x = rightEdge + component.radius + 34;
-      component.y = 0;
+    if (pullToGeography) {
+      for (const area of areas) {
+        area.x += (area.desiredX - area.x) * 0.012;
+        area.y += (area.desiredY - area.y) * 0.012;
+      }
     }
-    placed.push(component);
-    rightEdge = Math.max(rightEdge, component.x + component.radius);
+    if (!moved) return;
   }
 }
 
@@ -248,7 +300,10 @@ function isDistinct(x: number, y: number, positions: ReadonlyMap<string, Netgrap
   return true;
 }
 
-function layoutBounds(positions: ReadonlyMap<string, NetgraphPosition>): NetgraphLayout['bounds'] {
+function layoutBounds(
+  positions: ReadonlyMap<string, NetgraphPosition>,
+  areas: readonly NetgraphArea[],
+): NetgraphLayout['bounds'] {
   if (positions.size === 0) return { minX: -1, minY: -1, maxX: 1, maxY: 1 };
   let minX = Infinity;
   let minY = Infinity;
@@ -260,7 +315,13 @@ function layoutBounds(positions: ReadonlyMap<string, NetgraphPosition>): Netgrap
     maxX = Math.max(maxX, point.x);
     maxY = Math.max(maxY, point.y);
   }
-  return { minX: minX - 34, minY: minY - 34, maxX: maxX + 34, maxY: maxY + 34 };
+  for (const area of areas) {
+    minX = Math.min(minX, area.x - area.radius - 42);
+    minY = Math.min(minY, area.y - area.radius - 72);
+    maxX = Math.max(maxX, area.x + area.radius + 42);
+    maxY = Math.max(maxY, area.y + area.radius + 42);
+  }
+  return { minX, minY, maxX, maxY };
 }
 
 function addNeighbor(adjacency: Map<string, Set<string>>, nodeID: string, neighborID: string): void {
