@@ -33,6 +33,48 @@ export class CanvasSurface {
   }
 }
 
+export interface CanvasImageAsset {
+  image: HTMLImageElement;
+  ready: Promise<void>;
+}
+
+export function loadCanvasImage(source: string): CanvasImageAsset {
+  const image = new Image();
+  image.decoding = 'async';
+  const ready = new Promise<void>((resolve, reject) => {
+    image.addEventListener('load', () => resolve(), { once: true });
+    image.addEventListener('error', () => reject(new Error(`Could not load visual asset: ${source}`)), { once: true });
+  });
+  image.src = source;
+  return { image, ready };
+}
+
+export function drawImageCover(
+  canvas: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  width: number,
+  height: number,
+  alpha = 1,
+  scale = 1,
+  offsetX = 0,
+  offsetY = 0,
+): void {
+  if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) return;
+  const ratio = Math.max(width / image.naturalWidth, height / image.naturalHeight) * scale;
+  const drawWidth = image.naturalWidth * ratio;
+  const drawHeight = image.naturalHeight * ratio;
+  canvas.save();
+  canvas.globalAlpha = alpha;
+  canvas.drawImage(
+    image,
+    (width - drawWidth) / 2 + offsetX,
+    (height - drawHeight) / 2 + offsetY,
+    drawWidth,
+    drawHeight,
+  );
+  canvas.restore();
+}
+
 export function rgba(color: string, alpha: number): string {
   const hex = color.replace('#', '');
   const value = Number.parseInt(hex, 16);

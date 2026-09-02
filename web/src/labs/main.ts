@@ -103,7 +103,7 @@ async function start(): Promise<void> {
       liveCaption.textContent = captionFor(packet);
       if (!effectivePause()) {
         activeExperiment?.handlePacket(packet);
-        routeSonifier.play(packetView);
+        routeSonifier.play(packetView, activeExperiment?.soundCharacter);
       }
       updateBurstState();
     };
@@ -235,6 +235,7 @@ async function switchExperiment(definition: ExperimentDefinition, snapshot: Read
   currentDefinition = definition;
   picker.value = definition.id;
   stage.dataset.renderer = definition.renderer;
+  delete stage.dataset.assets;
   stage.setAttribute('aria-label', `${definition.title} live traffic experiment`);
   next.mount({
     stage,

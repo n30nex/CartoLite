@@ -1,4 +1,4 @@
-import type { ViewportProjector } from '../audio';
+import type { SoundCharacter, ViewportProjector } from '../audio';
 import type { EndpointV2, NodeV2, PacketView, StateV2 } from '../types';
 import { normalizePacketKind, type PacketKind } from '../trafficVisuals';
 
@@ -55,6 +55,7 @@ export interface LabContext {
 }
 
 export interface LabExperiment {
+  readonly soundCharacter?: SoundCharacter;
   mount(context: LabContext): void;
   applySnapshot(snapshot: Readonly<StateV2>): void;
   handlePacket(packet: LabPacket): void;
@@ -72,7 +73,7 @@ export interface ExperimentDefinition {
   title: string;
   summary: string;
   explanation: string;
-  renderer: 'canvas2d' | 'webgl2';
+  renderer: 'canvas2d';
   status: ExperimentStatus;
   load: () => Promise<{ createExperiment(): LabExperiment }>;
 }

@@ -13,6 +13,7 @@ test('Labs supports direct links, bounded experiment switching, and synthetic de
   await page.goto('/labs/?demo=1&experiment=mesh-loom');
   await expect(page.locator('#labs-app')).toHaveAttribute('data-loading', 'false');
   await expect(page.locator('#experiment-select')).toHaveValue('mesh-loom');
+  await expect(page.locator('#experiment-select option[value="northern-lights"]')).toHaveCount(0);
   await expect(page.locator('#labs-status-text')).toHaveText('Demo · synthetic');
   await expect(page.locator('#labs-stage')).toHaveAttribute('aria-label', 'Mesh Loom live traffic experiment');
   await expect(page.locator('#labs-stage canvas')).toHaveCount(1);
@@ -22,15 +23,17 @@ test('Labs supports direct links, bounded experiment switching, and synthetic de
   await page.locator('#experiment-select').selectOption('packet-pond');
   await expect(page.locator('#labs-stage')).toHaveAttribute('aria-label', 'Packet Pond live traffic experiment');
   await expect(page.locator('#labs-stage canvas')).toHaveCount(1);
+  await expect(page.locator('#labs-stage')).toHaveAttribute('data-assets', 'ready');
 
   await page.locator('#experiment-select').selectOption('firefly-meadow');
   await expect(page.locator('#labs-stage')).toHaveAttribute('aria-label', 'Firefly Meadow live traffic experiment');
   await expect(page.locator('#labs-stage canvas')).toHaveCount(1);
+  await expect(page.locator('#labs-stage')).toHaveAttribute('data-assets', 'ready');
 
-  await page.locator('#experiment-select').selectOption('northern-lights');
-  await expect(page.locator('#labs-stage')).toHaveAttribute('aria-label', 'Northern Lights live traffic experiment');
-  await expect(page.locator('#labs-stage canvas')).toHaveCount(2);
-  await expect(page.locator('#labs-stage')).toHaveAttribute('data-renderer', /^(webgl2|canvas-fallback)$/);
+  await page.locator('#experiment-select').selectOption('little-mesh-villages');
+  await expect(page.locator('#labs-stage')).toHaveAttribute('aria-label', 'Little Mesh Villages live traffic experiment');
+  await expect(page.locator('#labs-stage canvas')).toHaveCount(1);
+  await expect(page.locator('.village-truth')).toContainText('not real-world population or permanent network coverage');
 
   await page.locator('#info-button').click();
   await expect(page.locator('#info-dialog')).toContainText('same sanitized live state and event stream');

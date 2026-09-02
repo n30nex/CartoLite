@@ -10,7 +10,7 @@ The browser stores only these visitor choices:
 - layer choices including Clusters, Topography, and 3D, plus route-window and legend preferences;
 - `{enabled, volume, scene}` under `cartolite:sound:v2`.
 
-CartoLite Labs uses the same `/api/state` and `/api/events` public boundary as the map. It derives hop count, distance, bearing, recent route reuse, and bounded session rates in memory. It does not connect to MQTT, persist the packet stream, log events to the console, add analytics, or contact a new third party. Changing experiments, pausing, resetting, and exhibition mode are session-only choices. The synthetic demo mode uses invented fixtures and makes no live API request.
+CartoLite Labs uses the same `/api/state` and `/api/events` public boundary as the map. It derives hop count, distance, bearing, recent route reuse, bounded session rates, and temporary Village grouping in memory. It does not connect to MQTT, persist the packet stream, log events to the console, add analytics, or contact a new third party. Pond and Meadow artwork is bundled into CartoLite as inert content-hashed WebP files. Loom and Village sound characters, changing experiments, pausing, resetting, and exhibition mode are session-only choices. The synthetic demo mode uses invented fixtures and makes no live API request.
 
 The v1 sound record is read only for migration to the Aurora scene. Remembered sound still shows **Tap to Resume** and cannot create or resume an `AudioContext` before a user gesture. Inspector selection and Finder queries are session state only.
 
