@@ -17,7 +17,29 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .labs-app { position: relative; isolation: isolate; background: #07131a; }
 .labs-stage { position: absolute; inset: 0; overflow: hidden; background: #07131a; }
 .lab-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.lab-water-canvas { z-index: 0; }
 .lab-overlay-canvas { z-index: 1; }
+
+.loom-legend {
+  position: absolute;
+  z-index: 2;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: max(12px, env(safe-area-inset-left));
+  display: flex;
+  max-width: min(720px, calc(100vw - 480px));
+  min-height: 38px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 11px;
+  padding: 7px 10px;
+  color: rgba(201, 222, 224, 0.78);
+  font-size: 9px;
+  pointer-events: none;
+}
+.loom-legend strong { color: #d9ecec; font-size: 9px; letter-spacing: 0.055em; text-transform: uppercase; }
+.loom-kind-item { display: inline-flex; align-items: center; gap: 4px; }
+.loom-kind-item i { width: 13px; height: 3px; border-radius: 999px; }
+.loom-legend small { flex-basis: 100%; color: rgba(164, 195, 197, 0.58); font-size: 8px; }
 
 .village-truth {
   position: absolute;
@@ -141,6 +163,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
   .labs-controls button, .labs-controls label { min-height: 48px; border-bottom: 1px solid rgba(139, 205, 214, 0.13); }
   .labs-controls #info-button { grid-column: span 2; }
   .live-caption { right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); left: 8px; max-width: none; text-align: center; }
+  .loom-legend { top: max(68px, calc(env(safe-area-inset-top) + 68px)); right: 8px; bottom: auto; left: 8px; max-width: none; justify-content: center; }
 }
 
 @media (max-width: 520px) {

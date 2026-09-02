@@ -3,7 +3,7 @@ import meadowNightUrl from '../assets/meadow-night.webp';
 import type { NodeV2, StateV2 } from '../../types';
 import { PACKET_KIND_COLORS } from '../../trafficVisuals';
 import { CanvasSurface, drawImageCover, easeOut, loadCanvasImage, rgba } from '../canvas';
-import { clamp, stableHash, stableNodeSample, type LabContext, type LabExperiment, type LabPacket, type LabPoint, type LabViewport } from '../runtime';
+import { clamp, spatiallySpacedNodes, stableHash, type LabContext, type LabExperiment, type LabPacket, type LabPoint, type LabViewport } from '../runtime';
 
 interface Firefly {
   from: LabPoint;
@@ -29,6 +29,7 @@ class FireflyMeadow implements LabExperiment {
   private surface?: CanvasSurface;
   private readonly backdrop = loadCanvasImage(meadowNightUrl);
   private readonly foreground = loadCanvasImage(meadowForegroundUrl);
+  private plantCandidates: NodeV2[] = [];
   private plants: NodeV2[] = [];
   private fireflies: Firefly[] = [];
   private wakes: PlantWake[] = [];
@@ -48,8 +49,8 @@ class FireflyMeadow implements LabExperiment {
 
   applySnapshot(snapshot: Readonly<StateV2>): void {
     const recent = snapshot.nodes.filter((node) => snapshot.serverTime - node.lastSeen <= DAY_MS);
-    const candidates = recent.length > 0 ? recent : snapshot.nodes;
-    this.plants = stableNodeSample(candidates, 180);
+    this.plantCandidates = [...(recent.length > 0 ? recent : snapshot.nodes)];
+    this.rebuildPlants();
   }
 
   handlePacket(packet: LabPacket): void {
@@ -63,7 +64,7 @@ class FireflyMeadow implements LabExperiment {
     } else {
       let handoffAt = now;
       packet.hops.forEach((hop) => {
-        const duration = clamp(460 + Math.sqrt(hop.distanceKm) * 18, 480, 1_120);
+        const duration = clamp(620 + Math.sqrt(hop.distanceKm) * 23, 660, 1_620);
         const seed = stableHash(`${packet.id}|${hop.routeId}`);
         const to = this.context!.project(hop.to);
         this.fireflies.push({
@@ -88,6 +89,7 @@ class FireflyMeadow implements LabExperiment {
       this.reset();
     }
     this.surface?.resize(viewport);
+    this.rebuildPlants();
   }
 
   frame(now: number): void {
@@ -99,7 +101,7 @@ class FireflyMeadow implements LabExperiment {
     this.drawBackdrop(canvas, surface.width, surface.height, now, reducedMotion);
     this.drawPlants(canvas, context, surface.height, now);
     this.drawWakes(canvas, now, reducedMotion);
-    drawImageCover(canvas, this.foreground.image, surface.width, surface.height, 0.54, 1.02, 0, surface.height * 0.02);
+    drawImageCover(canvas, this.foreground.image, surface.width, surface.height, 0.44, 1, 0, surface.height * 0.055);
     this.drawFireflies(canvas, context, now);
     this.drawAtmosphere(canvas, surface.width, surface.height);
   }
@@ -115,6 +117,7 @@ class FireflyMeadow implements LabExperiment {
 
   destroy(): void {
     this.reset();
+    this.plantCandidates = [];
     this.plants = [];
     this.surface?.destroy();
     this.surface = undefined;
@@ -159,13 +162,13 @@ class FireflyMeadow implements LabExperiment {
     for (const node of this.plants) {
       const point = context.project(node);
       const seed = stableHash(node.id);
-      const stem = 10 + seed % 28 + (node.role === 'repeater' ? 9 : 0);
+      const stem = 9 + seed % 20 + (node.role === 'repeater' ? 7 : 0);
       const sway = context.reducedMotion() ? 0 : Math.sin(now * 0.00032 + seed) * (1.2 + seed % 3);
       const baseY = Math.min(height + 4, point.y + stem * 0.45);
       const tipX = point.x + sway * 0.6;
       const tipY = point.y - stem;
-      canvas.strokeStyle = node.role === 'repeater' ? 'rgba(92, 218, 192, 0.32)' : 'rgba(121, 174, 139, 0.18)';
-      canvas.lineWidth = node.role === 'repeater' ? 1.35 : 0.85;
+      canvas.strokeStyle = node.role === 'repeater' ? 'rgba(92, 218, 192, 0.25)' : 'rgba(121, 174, 139, 0.13)';
+      canvas.lineWidth = node.role === 'repeater' ? 1.2 : 0.72;
       canvas.beginPath();
       canvas.moveTo(point.x, baseY);
       canvas.quadraticCurveTo(point.x + sway, point.y, tipX, tipY);
@@ -184,7 +187,7 @@ class FireflyMeadow implements LabExperiment {
         canvas.stroke();
       }
 
-      canvas.fillStyle = node.observer ? 'rgba(124, 203, 255, 0.3)' : 'rgba(93, 224, 193, 0.25)';
+      canvas.fillStyle = node.observer ? 'rgba(124, 203, 255, 0.25)' : 'rgba(93, 224, 193, 0.2)';
       canvas.beginPath();
       if (node.role === 'repeater') {
         for (let petal = 0; petal < 4; petal += 1) {
@@ -224,7 +227,7 @@ class FireflyMeadow implements LabExperiment {
 
   private drawFireflies(canvas: CanvasRenderingContext2D, context: LabContext, now: number): void {
     this.fireflies = this.fireflies.filter((firefly) => now <= firefly.start + firefly.duration + 160);
-    const secondaryDetail = context.metrics().burst ? 4 : 8;
+    const secondaryDetail = context.metrics().burst ? 6 : 13;
     for (const firefly of this.fireflies) {
       const raw = clamp((now - firefly.start) / firefly.duration, 0, 1);
       if (now < firefly.start) continue;
@@ -241,7 +244,7 @@ class FireflyMeadow implements LabExperiment {
           const alpha = (1 - trailIndex / (secondaryDetail + 1)) * 0.28 * (1 - raw * 0.35);
           canvas.fillStyle = rgba(firefly.color, alpha);
           canvas.beginPath();
-          canvas.arc(trailPoint.x, trailPoint.y, 0.7 + alpha * 2.2, 0, Math.PI * 2);
+          canvas.arc(trailPoint.x, trailPoint.y, 0.8 + alpha * 2.7, 0, Math.PI * 2);
           canvas.fill();
         }
       }
@@ -257,13 +260,13 @@ class FireflyMeadow implements LabExperiment {
       canvas.stroke();
       canvas.shadowColor = firefly.color;
       canvas.shadowBlur = 22 + pulse * 8;
-      const body = canvas.createRadialGradient(0, 0, 0, 0, 0, firefly.local ? 7 : 5.5);
+      const body = canvas.createRadialGradient(0, 0, 0, 0, 0, firefly.local ? 8 : 7);
       body.addColorStop(0, '#f5fff2');
       body.addColorStop(0.22, firefly.color);
       body.addColorStop(1, rgba(firefly.color, 0));
       canvas.fillStyle = body;
       canvas.beginPath();
-      canvas.arc(0, 0, firefly.local ? 6.5 * pulse : 5, 0, Math.PI * 2);
+      canvas.arc(0, 0, firefly.local ? 7.2 * pulse : 6.2, 0, Math.PI * 2);
       canvas.fill();
       canvas.restore();
     }
@@ -275,6 +278,16 @@ class FireflyMeadow implements LabExperiment {
     vignette.addColorStop(1, 'rgba(1, 8, 12, 0.48)');
     canvas.fillStyle = vignette;
     canvas.fillRect(0, 0, width, height);
+  }
+
+  private rebuildPlants(): void {
+    const context = this.context;
+    if (!context || this.plantCandidates.length === 0) return;
+    const minimumDistance = clamp(Math.min(context.stage.clientWidth, context.stage.clientHeight) / 15, 34, 68);
+    const limit = context.stage.clientWidth < 700 ? 52 : 88;
+    this.plants = spatiallySpacedNodes(this.plantCandidates, (node) => context.project(node), minimumDistance, limit);
+    context.stage.dataset.plantCount = String(this.plants.length);
+    context.stage.dataset.plantGap = String(Math.round(minimumDistance));
   }
 }
 

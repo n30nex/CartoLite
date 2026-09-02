@@ -8,8 +8,9 @@ test('keeps the Labs tablet portrait shell clear and touch sized', async ({ page
 
   await page.goto('/labs/?demo=1&experiment=packet-pond');
   await expect(page.locator('#labs-app')).toHaveAttribute('data-loading', 'false');
-  await expect(page.locator('#labs-stage canvas')).toHaveCount(1);
+  await expect(page.locator('#labs-stage canvas')).toHaveCount(2);
   await expect(page.locator('#labs-stage')).toHaveAttribute('data-assets', 'ready');
+  await expect(page.locator('#labs-stage')).toHaveAttribute('data-reactive-water', 'true');
 
   const targets = await page.locator('.labs-controls button, .labs-controls select, .labs-back').evaluateAll((elements) => elements.map((element) => {
     const bounds = element.getBoundingClientRect();
@@ -28,5 +29,6 @@ test('keeps the Labs tablet portrait shell clear and touch sized', async ({ page
   await page.locator('#experiment-select').selectOption('little-mesh-villages');
   await expect(page.locator('#labs-stage')).toHaveAttribute('aria-label', 'Little Mesh Villages live traffic experiment');
   await expect(page.locator('.village-truth')).toBeVisible();
+  await expect(page.locator('#labs-stage')).toHaveAttribute('data-settlement-columns', /[2-9][0-9]*/);
   expect(consoleErrors).toEqual([]);
 });

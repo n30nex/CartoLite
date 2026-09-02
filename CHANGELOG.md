@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.1 - 2026-09-02
+
+### Changed
+
+- Replace Packet Pond's painted surface motion with a full-screen WebGL2 water renderer using layered procedural waves, moving texture detail, caustics, normals, moon glints, and the newest packet impacts as shader ripple uniforms. Canvas droplets, route currents, coloured rings, vegetation, and a Canvas2D fallback remain layered above it.
+- Give every Pond hop a departure ripple, three travelling wake impacts, and a longer five-ring landing while bounding shader and Canvas ripple detail during bursts to preserve smooth animation.
+- Expand the shared Labs latitude cartogram so real Canadian activity uses the full stage instead of collecting along its southern edge.
+- Regenerate Firefly Meadow's foreground as widely separated vegetation clusters, spatially thin node-plants with a screen-space minimum gap, lengthen flight time, and strengthen firefly trails so live packets stay visible through the open meadow.
+- Separate Mesh Loom into seven nearest-public-hub lanes from YVR through YFB, widen live fibres and knots, and add a persistent packet-kind colour legend. Lane assignment derives only from already-public endpoint coordinates and does not add or expose a backend region field.
+- Split dense Village cells into bounded settlements and lay settlements out as a responsive geographic cartogram across the usable stage. Buildings retain deterministic node identity, local spacing adapts to each cell, and real routes remain the roads between them.
+
+### Compatibility and privacy
+
+- Keep public schema v2, SSE events, backend state, sound preferences, observer behavior, and all visitor privacy boundaries unchanged. WebGL2 failure falls back locally to the existing Canvas water path.
+
 ## 0.9.0 - 2026-09-02
 
 ### Added
