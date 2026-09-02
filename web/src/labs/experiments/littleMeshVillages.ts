@@ -155,7 +155,7 @@ class LittleMeshVillages implements LabExperiment {
   private layoutSettlements(settlements: readonly VillageSettlementModel[], width: number, height: number): void {
     const context = this.context!;
     for (const settlement of settlements) {
-      const projected = context.project({ id: settlement.id, label: '', ...settlement.center });
+      const projected = context.project(settlement.center);
       const center = {
         x: clamp(projected.x, 34, Math.max(34, width - 34)),
         y: clamp(projected.y, 74, Math.max(74, height - 52)),
