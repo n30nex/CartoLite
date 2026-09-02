@@ -1,7 +1,6 @@
 import type { NodeV2, RouteV2 } from '../types';
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-const LABEL_COLLATOR = new Intl.Collator(undefined, { sensitivity: 'base' });
 
 export type NetgraphWindow = '15m' | '1h' | '6h' | '24h';
 
@@ -43,24 +42,22 @@ export function routesInWindow(routes: readonly RouteV2[], now: number, window: 
 }
 
 export function buildNetgraphLayout(nodes: readonly NodeV2[], routes: readonly RouteV2[]): NetgraphLayout {
-  const nodeByID = new Map(nodes.map((node) => [node.id, node]));
+  const nodeIDs = new Set(nodes.map((node) => node.id));
+  const sortKeys = new Map(nodes.map((node) => [node.id, `${node.label.toLowerCase()}\u0000${node.id}`]));
   const adjacency = new Map<string, Set<string>>();
   for (const route of routes) {
-    if (route.fromId === route.toId || !nodeByID.has(route.fromId) || !nodeByID.has(route.toId)) continue;
+    if (route.fromId === route.toId || !nodeIDs.has(route.fromId) || !nodeIDs.has(route.toId)) continue;
     addNeighbor(adjacency, route.fromId, route.toId);
     addNeighbor(adjacency, route.toId, route.fromId);
   }
 
   const connectedNodeIDs = new Set(adjacency.keys());
-  const components = connectedComponents(adjacency, nodeByID);
+  const components = connectedComponents(adjacency, sortKeys);
   packComponents(components);
   const positions = new Map<string, NetgraphPosition>();
 
   components.forEach((component, componentIndex) => {
-    const ordered = component.ids.slice().sort((left, right) => (
-      (adjacency.get(right)?.size ?? 0) - (adjacency.get(left)?.size ?? 0)
-      || compareNode(nodeByID.get(left), nodeByID.get(right), left, right)
-    ));
+    const ordered = component.ids;
     const phase = (stableHash(component.rootID) % 6283) / 1000;
     const count = Math.max(1, ordered.length - 1);
     ordered.forEach((id, index) => {
@@ -161,11 +158,10 @@ export function routeTopology(routes: readonly RouteV2[]): Map<string, string> {
   return new Map(routes.map((route) => [route.id, `${route.fromId}>${route.toId}`]));
 }
 
-function connectedComponents(adjacency: ReadonlyMap<string, Set<string>>, nodeByID: ReadonlyMap<string, NodeV2>): Component[] {
+function connectedComponents(adjacency: ReadonlyMap<string, Set<string>>, sortKeys: ReadonlyMap<string, string>): Component[] {
   const visited = new Set<string>();
   const components: Component[] = [];
-  const orderedIDs = [...adjacency.keys()].sort((left, right) => compareNode(nodeByID.get(left), nodeByID.get(right), left, right));
-  for (const start of orderedIDs) {
+  for (const start of adjacency.keys()) {
     if (visited.has(start)) continue;
     const queue = [start];
     const ids: string[] = [];
@@ -179,10 +175,11 @@ function connectedComponents(adjacency: ReadonlyMap<string, Set<string>>, nodeBy
         queue.push(neighbor);
       }
     }
-    const rootID = ids.slice().sort((left, right) => (
+    ids.sort((left, right) => (
       (adjacency.get(right)?.size ?? 0) - (adjacency.get(left)?.size ?? 0)
-      || compareNode(nodeByID.get(left), nodeByID.get(right), left, right)
-    ))[0]!;
+      || compareSortKey(sortKeys, left, right)
+    ));
+    const rootID = ids[0]!;
     components.push({
       ids,
       rootID,
@@ -272,8 +269,10 @@ function addNeighbor(adjacency: Map<string, Set<string>>, nodeID: string, neighb
   adjacency.set(nodeID, neighbors);
 }
 
-function compareNode(left: NodeV2 | undefined, right: NodeV2 | undefined, leftID: string, rightID: string): number {
-  return LABEL_COLLATOR.compare(left?.label ?? leftID, right?.label ?? rightID) || leftID.localeCompare(rightID);
+function compareSortKey(sortKeys: ReadonlyMap<string, string>, leftID: string, rightID: string): number {
+  const left = sortKeys.get(leftID) ?? leftID;
+  const right = sortKeys.get(rightID) ?? rightID;
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function stableHash(value: string): number {
