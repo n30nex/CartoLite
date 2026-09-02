@@ -1,4 +1,3 @@
-import type maplibregl from 'maplibre-gl';
 import { routeDuration, segmentNearViewport, segmentTravelWeights } from './packetAnimator';
 import type { PacketView } from './types';
 import type { PacketKind } from './trafficVisuals';
@@ -136,7 +135,7 @@ export interface HopNote {
   variation: number;
 }
 
-interface ViewportProjector {
+export interface ViewportProjector {
   project(coordinates: [number, number]): { x: number; y: number };
 }
 
@@ -197,7 +196,7 @@ export class RouteSonifier {
   private statusListener?: (status: SoundStatus) => void;
 
   constructor(
-    private readonly map: maplibregl.Map,
+    private readonly map: ViewportProjector,
     private readonly viewport: HTMLElement,
     private readonly storage: Storage = window.localStorage,
   ) {

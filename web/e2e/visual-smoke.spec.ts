@@ -30,6 +30,9 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   const response = await stateResponse;
   const state = await response.json() as Record<string, unknown>;
 
+  await expect(page.locator('.labs-link')).toBeVisible();
+  await expect(page.locator('.labs-link')).toHaveAttribute('href', '/labs/');
+
   await expect(page.locator('#map .maplibregl-canvas')).toBeVisible();
   await expect(page.locator('.map-grade')).toBeVisible();
   await expect(page.locator('.map-grade')).toHaveCSS('pointer-events', 'none');

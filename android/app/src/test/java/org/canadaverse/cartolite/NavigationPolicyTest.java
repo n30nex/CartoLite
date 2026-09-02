@@ -9,6 +9,7 @@ public final class NavigationPolicyTest {
     @Test
     public void trustedOriginRequiresExactHttpsHost() {
         assertTrue(NavigationPolicy.isTrusted("https://carto.canadaverse.org/"));
+        assertTrue(NavigationPolicy.isTrusted("https://carto.canadaverse.org/labs/?experiment=packet-pond"));
         assertTrue(NavigationPolicy.isTrusted("https://CARTO.canadaverse.org/?embed=background"));
         assertTrue(NavigationPolicy.isTrusted("https://carto.canadaverse.org:443/api/state"));
         assertFalse(NavigationPolicy.isTrusted("http://carto.canadaverse.org/"));

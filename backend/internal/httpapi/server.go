@@ -160,6 +160,8 @@ func (s *Server) frontend(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
 	if name == "." || name == "" {
 		name = "index.html"
+	} else if strings.HasSuffix(r.URL.Path, "/") {
+		name = path.Join(name, "index.html")
 	}
 	body, err := fs.ReadFile(s.static, name)
 	if err != nil {
@@ -170,7 +172,7 @@ func (s *Server) frontend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "frontend unavailable", http.StatusInternalServerError)
 		return
 	}
-	if name == "index.html" {
+	if path.Ext(name) == ".html" {
 		w.Header().Set("Cache-Control", "no-cache")
 	} else if strings.HasPrefix(name, "assets/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")

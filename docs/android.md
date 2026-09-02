@@ -17,6 +17,10 @@ The implementation uses Android platform APIs and WebView only. There is no
 Compose, AndroidX runtime, analytics SDK, advertising SDK, JavaScript bridge,
 background service, account, notification channel, or downloaded audio.
 
+The exact trusted CartoLite origin also includes `/labs/`. Labs therefore stays
+inside the same immersive WebView and inherits native keep-awake and lifecycle
+recovery without an APK update or a broader navigation allowlist.
+
 ## Identity
 
 - Package: `org.canadaverse.cartolite`

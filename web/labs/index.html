@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b151b" />
+    <meta name="description" content="CartoLite Labs turns privacy-safe live MeshCore Canada traffic into interactive generative art." />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="CartoLite Labs" />
+    <meta property="og:description" content="Live MeshCore traffic interpreted as ponds, fireflies, aurora, and woven light." />
+    <meta property="og:url" content="https://carto.canadaverse.org/labs/" />
+    <link rel="canonical" href="https://carto.canadaverse.org/labs/" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>CartoLite Labs</title>
+  </head>
+  <body>
+    <main id="labs-app" class="labs-app" aria-label="CartoLite Labs live experiments" data-loading="true">
+      <div id="labs-stage" class="labs-stage" role="img" aria-label="Packet Pond live traffic experiment"></div>
+
+      <header class="labs-topbar glass" aria-label="CartoLite Labs navigation and live status">
+        <a class="labs-back" href="/" aria-label="Return to CartoLite map"><span aria-hidden="true">←</span><span>CartoLite</span></a>
+        <span class="labs-title"><span aria-hidden="true">✦</span> Labs</span>
+        <div id="labs-status" class="labs-status" data-state="loading" role="status">
+          <span class="status-dot" aria-hidden="true"></span><span id="labs-status-text">Starting…</span>
+        </div>
+      </header>
+
+      <section class="labs-controls glass" aria-label="Labs controls">
+        <label class="experiment-picker" for="experiment-select">
+          <span>Experiment</span>
+          <select id="experiment-select" aria-label="Choose a Labs experiment"></select>
+        </label>
+        <button id="pause-button" type="button" aria-pressed="false">Pause</button>
+        <button id="sound-button" type="button" aria-pressed="false">Sound Off</button>
+        <label class="compact-field" for="sound-scene"><span>Scene</span>
+          <select id="sound-scene">
+            <option value="aurora">Aurora</option>
+            <option value="wood">Wood</option>
+            <option value="chimes">Chimes</option>
+          </select>
+        </label>
+        <label class="volume-field" for="sound-volume"><span>Volume</span>
+          <input id="sound-volume" type="range" min="0" max="100" step="1" value="80" />
+          <output id="sound-volume-output" for="sound-volume">80%</output>
+        </label>
+        <button id="reset-button" type="button">Reset</button>
+        <button id="exhibit-button" type="button" aria-pressed="false">Exhibit</button>
+        <button id="info-button" type="button" aria-haspopup="dialog">What am I seeing?</button>
+      </section>
+
+      <div id="burst-indicator" class="burst-indicator glass" role="status" hidden>Burst mode</div>
+      <p id="live-caption" class="live-caption glass" aria-live="polite" aria-atomic="true">Waiting for live traffic…</p>
+
+      <dialog id="info-dialog" class="info-dialog glass" aria-labelledby="info-title">
+        <header><div><span id="info-status" class="experiment-status">Stable</span><h1 id="info-title">Packet Pond</h1></div><button id="info-close" type="button" aria-label="Close information">×</button></header>
+        <p id="info-summary"></p>
+        <p id="info-explanation"></p>
+        <p class="truth-note">Labs uses the same sanitized live state and event stream as CartoLite. It never receives message contents, keys, raw paths, or MQTT credentials.</p>
+      </dialog>
+
+      <p id="labs-fatal" class="labs-fatal glass" role="alert" hidden></p>
+    </main>
+    <script type="module" src="/src/labs/main.ts"></script>
+  </body>
+</html>
