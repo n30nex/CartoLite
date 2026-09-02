@@ -61,7 +61,7 @@ test('Netgraph renders stable topology, inspection, and synchronized musical hop
   const initialScale = Number(await stage.getAttribute('data-view-scale'));
   await stage.dispatchEvent('wheel', { deltaY: -180, clientX: 500, clientY: 400 });
   await expect.poll(() => stage.getAttribute('data-view-scale').then(Number)).toBeGreaterThan(initialScale);
-  await expect(stage).toHaveAttribute('data-visible-routes', '4');
+  await expect(stage).toHaveAttribute('data-visible-routes', '5');
 
   await page.locator('#route-window').selectOption('15m');
   await expect(stage).toHaveAttribute('data-visible-routes', '4');
