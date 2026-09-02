@@ -2,8 +2,12 @@ import { expect, test } from '@playwright/test';
 
 test('Labs supports direct links, bounded experiment switching, and synthetic demo traffic', async ({ page }) => {
   const apiRequests: string[] = [];
+  const consoleErrors: string[] = [];
   page.on('request', (request) => {
     if (new URL(request.url()).pathname.startsWith('/api/')) apiRequests.push(request.url());
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
   });
 
   await page.goto('/labs/?demo=1&experiment=mesh-loom');
@@ -34,6 +38,7 @@ test('Labs supports direct links, bounded experiment switching, and synthetic de
   await page.locator('#info-close').click();
   await expect(page.locator('#info-dialog')).toBeHidden();
   await expect(page.locator('.labs-back')).toHaveAttribute('href', '/');
+  expect(consoleErrors).toEqual([]);
 });
 
 test('Labs controls stay usable on small screens and respect reduced motion', async ({ page }) => {
