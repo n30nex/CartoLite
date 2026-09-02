@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.0 - 2026-09-02
+
+### Added
+
+- Add **Netgraph** at `/netgraph/`, a full-screen live topology view beside Map and Labs. It renders every connected public node and every route in the selected age window with deterministic component packing, stable straight links, role-specific node shapes, pan, zoom, whole-graph reset, a local Finder, and a persistent neighbour inspector.
+- Reuse the existing sanitized state snapshot, single-flight SSE recovery, Android screen wake lock, Aurora/Wood/Chimes sound preference, and one-articulation-per-visible-hop contract without adding a backend endpoint, analytics, or runtime dependency.
+- Add a separate transient canvas for protocol-coloured packet cores, tapered trails, sparks, relay handoffs, destination shimmer, observer wakes, and 45-second route residue. The topology canvas remains still while traffic animates so camera movement cannot jiggle links or nodes.
+
+### Performance and compatibility
+
+- Lay out connected components once and update route styling independently of the camera. New topology extends the existing layout without moving established nodes, and ordinary packet updates never rerun layout.
+- Keep public API schema v2, the 24-hour topology boundary, MapLibre map, Labs, Android shell, backend storage, and privacy guarantees unchanged. Netgraph searches only already-downloaded labels and stores only its route-window preference.
+
 ## 0.9.1 - 2026-09-02
 
 ### Changed

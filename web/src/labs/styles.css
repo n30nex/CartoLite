@@ -78,6 +78,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 }
 .labs-back { display: inline-flex; min-height: 44px; align-items: center; gap: 6px; color: #effdff; text-decoration: none; font-size: 13px; font-weight: 750; }
 .labs-back > span:first-child { color: #63d9cc; font-size: 16px; }
+.labs-netgraph { display: inline-flex; min-height: 44px; align-items: center; gap: 5px; color: #9ccbc8; text-decoration: none; font-size: 10px; font-weight: 720; letter-spacing: 0.035em; }
+.labs-netgraph > span:first-child { color: #63d9cc; }
+.labs-netgraph:hover, .labs-netgraph:focus-visible { color: #efffff; }
 .labs-title { display: inline-flex; align-items: center; gap: 5px; color: #9ccbc8; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
 .labs-title > span { color: #63d9cc; text-shadow: 0 0 12px rgba(99, 217, 204, 0.75); }
 .labs-status { display: flex; align-items: center; gap: 6px; color: #aebdcb; font-size: 11px; font-weight: 650; }

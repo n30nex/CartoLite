@@ -9,7 +9,7 @@ export function demoState(): StateV2 {
     bootId: 'cartolite-labs-demo',
     seq: 0,
     serverTime: now,
-    status: { feed: 'connected', activity: 'active', lastPacketAt: now, dropped: 0, version: '0.9.1-demo', gitSha: 'synthetic' },
+    status: { feed: 'connected', activity: 'active', lastPacketAt: now, dropped: 0, version: '0.10.0-demo', gitSha: 'synthetic' },
     map: { center: [-96, 58], zoom: 3 },
     nodes: [
       { id: 'demo-yvr', label: 'Demo Pacific', role: 'repeater', observer: false, lat: 49.28, lng: -123.12, lastSeen: now },

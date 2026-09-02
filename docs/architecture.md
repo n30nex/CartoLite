@@ -13,6 +13,7 @@ MeshCore MQTT
       +---- GET /api/state
       +---- GET /api/events (SSE)
       +---- embedded MapLibre map
+      +---- embedded Canvas2D Netgraph
       +---- embedded lazy-loaded Labs experiments
 ```
 
@@ -39,6 +40,12 @@ Route sonification is opt-in and visitor-local. The browser stores only `{enable
 The browser maintains a node-to-route adjacency index as topology deltas arrive. Inspector and selected-route work therefore scales with one node's degree instead of the complete route set. Desktop uses a camera-stable native MapLibre popup; phones use a bounded bottom sheet. The Node Finder ranks matching public labels entirely in memory and discards its query. Desktop and mobile view preferences use separate versioned browser keys. A restored view is accepted only when its bounds contain a node active in the last 24 hours; otherwise CartoLite returns to the live activity home view. Layer visibility, route window, and legend state use a separate versioned browser-local preference. On phones, Finder, secondary map layers, and the route-age window stay in one compact disclosure while status, Follow, Sound, and Home remain directly available.
 
 On supported coarse-pointer and phone layouts, CartoLite requests the native screen wake lock while the document is visible, releases it when hidden, and reacquires it on return. Visibility restoration, back-forward cache restoration, and network reconnection all use the existing single-flight recovery path: fetch a no-store state snapshot, atomically replace browser state, close the old EventSource, and reconnect from the refreshed boot and sequence cursor.
+
+## Netgraph runtime
+
+`/netgraph/` is a third Vite HTML entry embedded in the same Go binary. It consumes the existing `LiveStore` and `LiveFeed`; there is no topology endpoint or second subscription. The first public snapshot creates a deterministic, screen-filling connected-component layout from every connected node and route. Packet-count and last-heard updates repaint the static graph without moving it. A newly connected node receives a stable position beside an existing neighbour, so normal live changes and camera interaction do not trigger force simulation or topology jitter.
+
+The static topology and transient traffic use separate Canvas2D layers. All active-window routes remain individual straight links with no visual count cap or trunk representation. Packet cores, tapered trails, sparks, handoffs, destination shimmer, observer wakes, and 45-second residue share the geographic map's packet timing and colour vocabulary. The shared sonifier uses endpoint-aware screen projection so each visible Netgraph hop retains one note and off-screen hops remain silent. Search uses downloaded public labels only; the inspector uses the indexed adjacent routes of the selected node.
 
 ## Labs runtime
 

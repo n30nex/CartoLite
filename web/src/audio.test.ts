@@ -82,6 +82,21 @@ describe('route hop sonification', () => {
     expect(notes[2]!.startMS).toBeGreaterThan(notes[1]!.startMS);
   });
 
+  it('uses endpoint-aware projection for non-geographic views', () => {
+    const route = packet([
+      endpoint('hidden-geography-a', 900, 900),
+      endpoint('hidden-geography-b', 950, 950),
+    ]);
+    const graphProjector = {
+      project: () => ({ x: 900, y: 900 }),
+      projectEndpoint: (value: EndpointV2) => value.id.endsWith('-a')
+        ? { x: 20, y: 50 }
+        : { x: 80, y: 50 },
+    };
+
+    expect(routeSoundPlan(route, graphProjector, 100, 100)).toHaveLength(1);
+  });
+
   it('does not sonify observer-only activity because it has no public hops', () => {
     expect(routeSoundPlan({
       seq: 8,
