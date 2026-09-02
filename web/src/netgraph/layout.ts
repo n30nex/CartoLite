@@ -1,6 +1,7 @@
 import type { NodeV2, RouteV2 } from '../types';
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const LABEL_COLLATOR = new Intl.Collator(undefined, { sensitivity: 'base' });
 
 export type NetgraphWindow = '15m' | '1h' | '6h' | '24h';
 
@@ -179,7 +180,7 @@ function addNeighbor(adjacency: Map<string, Set<string>>, nodeID: string, neighb
 }
 
 function compareNode(left: NodeV2 | undefined, right: NodeV2 | undefined, leftID: string, rightID: string): number {
-  return (left?.label ?? leftID).localeCompare(right?.label ?? rightID, undefined, { sensitivity: 'base' }) || leftID.localeCompare(rightID);
+  return LABEL_COLLATOR.compare(left?.label ?? leftID, right?.label ?? rightID) || leftID.localeCompare(rightID);
 }
 
 function stableHash(value: string): number {

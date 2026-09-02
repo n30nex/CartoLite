@@ -190,11 +190,13 @@ export class NetgraphRenderer implements ViewportProjector {
   }
 
   setRouteWindow(window: NetgraphWindow): void {
+    const started = performance.now();
     this.routeWindow = window;
     this.visibleRoutes = routesInWindow([...this.routesByID.values()], Date.now(), window);
     this.visibleRouteIDs = new Set(this.visibleRoutes.map((route) => route.id));
     this.stage.dataset.routeWindow = window;
     this.stage.dataset.visibleRoutes = String(this.visibleRoutes.length);
+    this.stage.dataset.routeWindowApplyMs = (performance.now() - started).toFixed(1);
     this.requestStaticDraw();
   }
 
