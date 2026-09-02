@@ -48,6 +48,7 @@ let recentTraffic: number[] = [];
 let scheduledNotes = 0;
 let wakeLock: ScreenWakeLockSentinel | undefined;
 let wakeLockRequest: Promise<void> | undefined;
+let screenAwakeWanted = true;
 
 interface ScreenWakeLockSentinel extends EventTarget {
   readonly released: boolean;
@@ -176,6 +177,7 @@ async function start(): Promise<void> {
       onPacket(event) {
         const packet = liveStore.applyPacket(event);
         if (!packet) return;
+        graph.preparePacket(packet);
         graph.addPacket(packet);
         const noteCount = routeSonifier.play(packet);
         if (noteCount > 0) pulseSound(noteCount);
@@ -216,6 +218,9 @@ async function start(): Promise<void> {
         return;
       }
       void requestScreenAwake();
+      graph.refreshRouteWindow();
+      updateSummary();
+      if (selectedNodeID) renderInspector();
       if (wasHidden) {
         wasHidden = false;
         void liveFeed.resume();
@@ -237,6 +242,8 @@ async function start(): Promise<void> {
       if (selectedNodeID) selectNode(null);
     });
     minuteTimer = window.setInterval(() => {
+      graph.refreshRouteWindow();
+      updateSummary();
       if (selectedNodeID) renderInspector();
     }, 60_000);
     window.addEventListener('beforeunload', () => {
@@ -255,6 +262,7 @@ async function start(): Promise<void> {
     store?.destroy();
     sonifier?.destroy();
     renderer?.destroy();
+    releaseScreenAwake();
     statusElement.dataset.state = 'offline';
     statusText.textContent = 'Unavailable';
     fatal.textContent = error instanceof Error ? error.message : 'CartoLite Netgraph could not start';
@@ -442,6 +450,7 @@ function isNetgraphWindow(value: unknown): value is NetgraphWindow {
 }
 
 function requestScreenAwake(): Promise<void> {
+  screenAwakeWanted = true;
   if (!matchMedia('(pointer: coarse)').matches) {
     app.dataset.screenAwake = 'desktop';
     return Promise.resolve();
@@ -456,8 +465,9 @@ function requestScreenAwake(): Promise<void> {
   app.dataset.screenAwake = 'requesting';
   wakeLockRequest = api.request('screen')
     .then(async (sentinel) => {
-      if (document.hidden) {
+      if (!screenAwakeWanted || document.hidden) {
         await sentinel.release();
+        app.dataset.screenAwake = 'false';
         return;
       }
       wakeLock = sentinel;
@@ -475,10 +485,11 @@ function requestScreenAwake(): Promise<void> {
 }
 
 function releaseScreenAwake(): void {
+  screenAwakeWanted = false;
+  app.dataset.screenAwake = 'false';
   const sentinel = wakeLock;
   wakeLock = undefined;
   if (sentinel && !sentinel.released) {
-    app.dataset.screenAwake = 'false';
     void sentinel.release().catch(() => undefined);
   }
 }

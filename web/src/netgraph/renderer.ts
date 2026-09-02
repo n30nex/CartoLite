@@ -28,12 +28,12 @@ import {
 import type { EndpointV2, NodeRole, NodeV2, PacketView, RoutePacketView, RouteV2, StateV2 } from '../types';
 import {
   buildNetgraphLayout,
+  extendNetgraphLayout,
   graphTopologyChanged,
   netgraphWindowMS,
   routeTopology,
   routesInWindow,
   type NetgraphLayout,
-  type NetgraphPosition,
   type NetgraphWindow,
 } from './layout';
 
@@ -111,6 +111,7 @@ export class NetgraphRenderer implements ViewportProjector {
   private staticFrame = 0;
   private motionFrame = 0;
   private viewFrame = 0;
+  private residueCleanupTimer = 0;
   private width = 1;
   private height = 1;
   private dpr = 1;
@@ -169,7 +170,7 @@ export class NetgraphRenderer implements ViewportProjector {
       if (changes.reset || firstLayout) {
         this.layout = buildNetgraphLayout(state.nodes, state.routes);
       } else {
-        this.extendStableLayout(state.routes);
+        this.layout = extendNetgraphLayout(this.layout, state.nodes, state.routes);
       }
       this.topology = routeTopology(state.routes);
       this.rebuildAdjacency(state.routes);
@@ -191,12 +192,21 @@ export class NetgraphRenderer implements ViewportProjector {
   setRouteWindow(window: NetgraphWindow): void {
     const started = performance.now();
     this.routeWindow = window;
-    this.visibleRoutes = routesInWindow([...this.routesByID.values()], Date.now(), window);
-    this.visibleRouteIDs = new Set(this.visibleRoutes.map((route) => route.id));
     this.stage.dataset.routeWindow = window;
-    this.stage.dataset.visibleRoutes = String(this.visibleRoutes.length);
+    this.refreshRouteWindow();
     this.stage.dataset.routeWindowApplyMs = (performance.now() - started).toFixed(1);
-    this.requestStaticDraw();
+  }
+
+  refreshRouteWindow(now = Date.now()): boolean {
+    const nextRoutes = routesInWindow([...this.routesByID.values()], now, this.routeWindow);
+    const nextIDs = new Set(nextRoutes.map((route) => route.id));
+    const changed = nextIDs.size !== this.visibleRouteIDs.size
+      || [...nextIDs].some((routeID) => !this.visibleRouteIDs.has(routeID));
+    this.visibleRoutes = nextRoutes;
+    this.visibleRouteIDs = nextIDs;
+    this.stage.dataset.visibleRoutes = String(nextRoutes.length);
+    if (changed) this.requestStaticDraw();
+    return changed;
   }
 
   getRouteWindowMS(): number {
@@ -278,6 +288,31 @@ export class NetgraphRenderer implements ViewportProjector {
     }
     this.trimResidue();
     this.requestMotionFrame();
+    this.scheduleReducedMotionCleanup();
+  }
+
+  preparePacket(packet: PacketView): void {
+    if (packet.mode !== 'route' || packet.segments.every((segment) => (
+      this.layout.positions.has(segment.from.id) && this.layout.positions.has(segment.to.id)
+    ))) return;
+    const routes = new Map(this.routesByID);
+    for (const segment of packet.segments) {
+      if (routes.has(segment.routeId)) continue;
+      routes.set(segment.routeId, {
+        id: segment.routeId,
+        fromId: segment.from.id,
+        toId: segment.to.id,
+        packetCount: 1,
+        lastHeard: packet.at,
+        intensity: 0,
+        lastKind: normalizePacketKind(packet.payloadType),
+        traffic: 1,
+      });
+    }
+    this.layout = extendNetgraphLayout(this.layout, [...this.nodesByID.values()], [...routes.values()]);
+    this.stage.dataset.connectedNodes = String(this.layout.connectedNodeIDs.size);
+    this.stage.dataset.components = String(this.layout.componentCount);
+    this.requestStaticDraw();
   }
 
   setPaused(paused: boolean): void {
@@ -286,6 +321,7 @@ export class NetgraphRenderer implements ViewportProjector {
       this.activeRoutes = [];
       this.observerWakes = [];
       this.residue = [];
+      this.clearResidueCleanup();
       if (this.motionFrame) cancelAnimationFrame(this.motionFrame);
       this.motionFrame = 0;
       this.packetContext.clearRect(0, 0, this.width, this.height);
@@ -313,6 +349,7 @@ export class NetgraphRenderer implements ViewportProjector {
     if (!this.resizeObserver) window.removeEventListener('resize', this.handleResize);
     if (this.staticFrame) cancelAnimationFrame(this.staticFrame);
     if (this.motionFrame) cancelAnimationFrame(this.motionFrame);
+    this.clearResidueCleanup();
     this.cancelViewAnimation();
   }
 
@@ -449,7 +486,7 @@ export class NetgraphRenderer implements ViewportProjector {
     const selectedNeighbors = new Set<string>();
     for (const routeID of selectedRoutes) {
       const route = this.routesByID.get(routeID);
-      if (!route) continue;
+      if (!route || !this.visibleRouteIDs.has(route.id)) continue;
       selectedNeighbors.add(route.fromId === this.selectedNodeID ? route.toId : route.fromId);
     }
     const nodeRecords: ScreenNode[] = [];
@@ -554,6 +591,7 @@ export class NetgraphRenderer implements ViewportProjector {
     this.stage.dataset.activePackets = String(this.activeRoutes.length + this.observerWakes.length);
     this.stage.dataset.residueCount = String(this.residue.length);
     if (!this.reducedMotionQuery.matches && (this.activeRoutes.length || this.observerWakes.length || this.residue.length)) this.requestMotionFrame();
+    else this.scheduleReducedMotionCleanup(now);
   }
 
   private drawResidue(context: CanvasRenderingContext2D, now: number): void {
@@ -768,39 +806,24 @@ export class NetgraphRenderer implements ViewportProjector {
     this.adjacentRouteIDs.set(nodeID, routes);
   }
 
-  private extendStableLayout(routes: readonly RouteV2[]): void {
-    const positions = new Map(this.layout.positions);
-    const connectedNodeIDs = new Set(this.layout.connectedNodeIDs);
-    let added = 0;
-    for (const route of routes) {
-      for (const [nodeID, neighborID] of [[route.fromId, route.toId], [route.toId, route.fromId]] as const) {
-        connectedNodeIDs.add(nodeID);
-        if (positions.has(nodeID)) continue;
-        const anchor = positions.get(neighborID);
-        const phase = stableHash(nodeID) / 0xffffffff * Math.PI * 2;
-        const ring = 30 + (stableHash(`${nodeID}:ring`) % 5) * 7;
-        positions.set(nodeID, {
-          id: nodeID,
-          x: (anchor?.x ?? this.layout.bounds.maxX + 70) + Math.cos(phase) * ring,
-          y: (anchor?.y ?? this.layout.bounds.minY) + Math.sin(phase) * ring,
-          degree: 1,
-          component: anchor?.component ?? this.layout.componentCount + added,
-        });
-        added += 1;
-      }
-    }
-    const degree = new Map<string, number>();
-    for (const route of routes) {
-      degree.set(route.fromId, (degree.get(route.fromId) ?? 0) + 1);
-      degree.set(route.toId, (degree.get(route.toId) ?? 0) + 1);
-    }
-    for (const [nodeID, position] of positions) positions.set(nodeID, { ...position, degree: degree.get(nodeID) ?? 0 });
-    this.layout = {
-      positions,
-      connectedNodeIDs,
-      componentCount: Math.max(0, ...[...positions.values()].map((position) => position.component + 1)),
-      bounds: boundsForPositions(positions),
-    };
+  private scheduleReducedMotionCleanup(now = performance.now()): void {
+    if (!this.reducedMotionQuery.matches || this.residueCleanupTimer) return;
+    const expiries = [
+      ...this.residue.map((item) => item.addedAt + RESIDUE_MS),
+      ...this.observerWakes.map((wake) => wake.started + 6_000),
+    ];
+    if (expiries.length === 0) return;
+    const nextExpiry = Math.min(...expiries);
+    this.residueCleanupTimer = window.setTimeout(() => {
+      this.residueCleanupTimer = 0;
+      this.requestMotionFrame();
+    }, Math.max(0, nextExpiry - now) + 20);
+  }
+
+  private clearResidueCleanup(): void {
+    if (!this.residueCleanupTimer) return;
+    window.clearTimeout(this.residueCleanupTimer);
+    this.residueCleanupTimer = 0;
   }
 
   private screenPoint(nodeID: string): ScreenPoint {
@@ -952,23 +975,9 @@ export class NetgraphRenderer implements ViewportProjector {
   private handleMotionPreference = (): void => {
     this.stage.dataset.motionMode = this.reducedMotionQuery.matches ? 'static' : 'animated';
     if (this.reducedMotionQuery.matches) this.activeRoutes = [];
+    else this.clearResidueCleanup();
     this.requestMotionFrame();
   };
-}
-
-function boundsForPositions(positions: ReadonlyMap<string, NetgraphPosition>): NetgraphLayout['bounds'] {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const position of positions.values()) {
-    minX = Math.min(minX, position.x);
-    minY = Math.min(minY, position.y);
-    maxX = Math.max(maxX, position.x);
-    maxY = Math.max(maxY, position.y);
-  }
-  if (!Number.isFinite(minX)) return { minX: -1, minY: -1, maxX: 1, maxY: 1 };
-  return { minX: minX - 34, minY: minY - 34, maxX: maxX + 34, maxY: maxY + 34 };
 }
 
 function coordinateKey(lng: number, lat: number): string {
@@ -990,15 +999,6 @@ function truncateLabel(label: string, length: number): string {
 function roundRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void {
   context.beginPath();
   context.roundRect(x, y, width, height, radius);
-}
-
-function stableHash(value: string): number {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
 }
 
 function modulo(value: number, modulus: number): number {

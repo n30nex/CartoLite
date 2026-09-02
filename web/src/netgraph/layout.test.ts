@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NodeV2, RouteV2 } from '../types';
-import { buildNetgraphLayout, graphTopologyChanged, routesInWindow, routeTopology } from './layout';
+import { buildNetgraphLayout, extendNetgraphLayout, graphTopologyChanged, routesInWindow, routeTopology } from './layout';
 
 function node(id: string, label = id): NodeV2 {
   return { id, label, lat: 45, lng: -75, role: 'repeater', observer: false, lastSeen: 2_000_000 };
@@ -53,6 +53,40 @@ describe('netgraph layout', () => {
     expect(graphTopologyChanged(topology, [{ ...routes[0]!, packetCount: 2 }], 1)).toBe(false);
     expect(graphTopologyChanged(topology, [route('ab', 'a', 'c')], 1)).toBe(true);
     expect(graphTopologyChanged(topology, [], 2)).toBe(true);
+  });
+
+  it('keeps established coordinates while reconciling components joined by a new route', () => {
+    const nodes = [node('a'), node('b'), node('c'), node('d')];
+    const initial = buildNetgraphLayout(nodes, [route('ab', 'a', 'b'), route('cd', 'c', 'd')]);
+    const next = extendNetgraphLayout(initial, nodes, [
+      route('ab', 'a', 'b'),
+      route('cd', 'c', 'd'),
+      route('bc', 'b', 'c'),
+    ]);
+
+    expect(next.componentCount).toBe(1);
+    expect(new Set([...next.positions.values()].map(({ component }) => component))).toEqual(new Set([0]));
+    for (const id of ['a', 'b', 'c', 'd']) {
+      expect(next.positions.get(id)?.x).toBe(initial.positions.get(id)?.x);
+      expect(next.positions.get(id)?.y).toBe(initial.positions.get(id)?.y);
+    }
+    expect(next.positions.get('b')?.degree).toBe(2);
+    expect(next.positions.get('c')?.degree).toBe(2);
+  });
+
+  it('places multiple newly connected components apart in the same update', () => {
+    const initial = buildNetgraphLayout([node('a'), node('b')], [route('ab', 'a', 'b')]);
+    const next = extendNetgraphLayout(
+      initial,
+      ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => node(id)),
+      [route('ab', 'a', 'b'), route('cd', 'c', 'd'), route('ef', 'e', 'f')],
+    );
+
+    const cd = ['c', 'd'].map((id) => next.positions.get(id)!.x);
+    const ef = ['e', 'f'].map((id) => next.positions.get(id)!.x);
+    expect(Math.max(...cd)).toBeLessThan(Math.min(...ef));
+    expect(next.componentCount).toBe(3);
+    expect(next.positions.size).toBe(6);
   });
 
   it('keeps the complete 4,000-node and 7,000-link topology without a display cap', () => {

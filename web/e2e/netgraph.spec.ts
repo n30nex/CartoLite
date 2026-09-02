@@ -22,6 +22,7 @@ test('Netgraph renders stable topology, inspection, and synchronized musical hop
         { routeId: 'a-b', fromId: 'a', toId: 'b' },
         { routeId: 'b-c', fromId: 'b', toId: 'c' },
         { routeId: 'c-d', fromId: 'c', toId: 'd' },
+        { routeId: 'd-e', fromId: 'd', toId: 'e' },
       ],
     };
     await route.fulfill({
@@ -42,9 +43,9 @@ test('Netgraph renders stable topology, inspection, and synchronized musical hop
   await page.locator('#sound-button').click();
   await page.locator('#sound-toggle').click();
   await expect(page.locator('#sound-state')).toHaveText('On');
-  await expect.poll(() => page.locator('#sound-activity').getAttribute('data-scheduled').then(Number), { timeout: 6_000 }).toBe(3);
-  expect(await page.evaluate(() => (window as unknown as { __netgraphOscillators: number }).__netgraphOscillators)).toBe(3);
-  await expect(stage).toHaveAttribute('data-last-packet-hops', '3');
+  await expect.poll(() => page.locator('#sound-activity').getAttribute('data-scheduled').then(Number), { timeout: 6_000 }).toBe(4);
+  expect(await page.evaluate(() => (window as unknown as { __netgraphOscillators: number }).__netgraphOscillators)).toBe(4);
+  await expect(stage).toHaveAttribute('data-last-packet-hops', '4');
   await expect.poll(() => canvasHasPixels(page, '#packet-canvas'), { timeout: 5_000 }).toBe(true);
 
   await page.locator('#find-button').click();
@@ -63,7 +64,7 @@ test('Netgraph renders stable topology, inspection, and synchronized musical hop
   await expect(stage).toHaveAttribute('data-visible-routes', '4');
 
   await page.locator('#route-window').selectOption('15m');
-  await expect(stage).toHaveAttribute('data-visible-routes', '3');
+  await expect(stage).toHaveAttribute('data-visible-routes', '4');
   await expect(page.locator('#node-inspector-sheet')).not.toContainText('Delta Sensor');
 
   if (testInfo.project.name !== 'desktop') {
@@ -108,6 +109,7 @@ function netgraphState(now: number): StateV2 {
       { id: 'b', label: 'Bravo Companion', lat: 45, lng: -79, role: 'companion', observer: false, lastSeen: now - 1_000 },
       { id: 'c', label: 'Charlie Room', lat: 46, lng: -78, role: 'room_server', observer: false, lastSeen: now - 2_000 },
       { id: 'd', label: 'Delta Sensor', lat: 47, lng: -77, role: 'sensor', observer: false, lastSeen: now - 3_000 },
+      { id: 'e', label: 'Echo Repeater', lat: 48, lng: -76, role: 'repeater', observer: false, lastSeen: now - 4_000 },
       { id: 'isolated', label: 'Isolated', lat: 48, lng: -76, role: 'unknown', observer: false, lastSeen: now },
     ],
     routes: [
