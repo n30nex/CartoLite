@@ -154,14 +154,18 @@ class LittleMeshVillages implements LabExperiment {
 
   private layoutSettlements(settlements: readonly VillageSettlementModel[], width: number, height: number): void {
     const context = this.context!;
+    const safeTop = Math.max(132, height * 0.18);
+    const safeBottom = height * (width < 900 ? 0.68 : 0.84);
     for (const settlement of settlements) {
       const projected = context.project(settlement.center);
+      const normalizedX = clamp((projected.x / width - 0.04) / 0.92, 0, 1);
+      const normalizedY = clamp((projected.y / height - 0.04) / 0.92, 0, 1);
       const center = {
-        x: clamp(projected.x, 34, Math.max(34, width - 34)),
-        y: clamp(projected.y, 74, Math.max(74, height - 52)),
+        x: clamp(width * (0.08 + normalizedX * 0.84), 46, Math.max(46, width - 46)),
+        y: clamp(safeTop + normalizedY * Math.max(1, safeBottom - safeTop), safeTop, safeBottom),
       };
       this.settlementCenters.set(settlement.id, center);
-      const cell = clamp(4.8 + Math.sqrt(settlement.buildings.length) * 0.22, 5.4, 9.2);
+      const cell = clamp(6.8 + Math.sqrt(settlement.buildings.length) * 0.32, 7.2, 11.5);
       for (const building of settlement.buildings) {
         const x = center.x + (building.localX - building.localY) * cell;
         const y = center.y + (building.localX + building.localY) * cell * 0.46;
@@ -191,6 +195,21 @@ class LittleMeshVillages implements LabExperiment {
     horizon.addColorStop(1, 'rgba(9, 27, 20, 0)');
     canvas.fillStyle = horizon;
     canvas.fillRect(0, height * 0.45, width, height * 0.37);
+    const moon = canvas.createRadialGradient(width * 0.72, height * 0.24, 0, width * 0.72, height * 0.24, Math.min(width, height) * 0.22);
+    moon.addColorStop(0, 'rgba(156, 207, 196, 0.09)');
+    moon.addColorStop(1, 'rgba(60, 104, 101, 0)');
+    canvas.fillStyle = moon;
+    canvas.fillRect(0, 0, width, height * 0.58);
+    canvas.fillStyle = 'rgba(5, 21, 22, 0.74)';
+    canvas.beginPath();
+    canvas.moveTo(0, height * 0.62);
+    for (let x = 0; x <= width; x += Math.max(24, width / 42)) {
+      canvas.lineTo(x, height * (0.57 + Math.sin(x * 0.009) * 0.025 + Math.sin(x * 0.021) * 0.012));
+    }
+    canvas.lineTo(width, height * 0.76);
+    canvas.lineTo(0, height * 0.76);
+    canvas.closePath();
+    canvas.fill();
     canvas.restore();
   }
 
@@ -203,14 +222,14 @@ class LittleMeshVillages implements LabExperiment {
       const strength = clamp(road.traffic / 20, 0.08, 1);
       canvas.save();
       canvas.lineCap = 'round';
-      canvas.strokeStyle = road.intercity ? 'rgba(33, 48, 53, 0.72)' : 'rgba(26, 40, 39, 0.85)';
-      canvas.lineWidth = road.intercity ? 3.6 : 2.5;
+      canvas.strokeStyle = road.intercity ? 'rgba(42, 62, 65, 0.78)' : 'rgba(34, 52, 49, 0.9)';
+      canvas.lineWidth = road.intercity ? 4.2 : 3.1;
       canvas.beginPath();
       canvas.moveTo(from.x, from.y);
       canvas.lineTo(to.x, to.y);
       canvas.stroke();
-      canvas.strokeStyle = rgba(color, 0.08 + strength * (road.intercity ? 0.24 : 0.14));
-      canvas.lineWidth = road.intercity ? 1.1 : 0.75;
+      canvas.strokeStyle = rgba(color, 0.12 + strength * (road.intercity ? 0.3 : 0.2));
+      canvas.lineWidth = road.intercity ? 1.45 : 1;
       if (road.intercity) canvas.setLineDash([4, 5]);
       canvas.stroke();
       canvas.restore();
@@ -221,7 +240,7 @@ class LittleMeshVillages implements LabExperiment {
     for (const settlement of settlements) {
       const center = this.settlementCenters.get(settlement.id);
       if (!center) continue;
-      const radius = clamp(8 + Math.sqrt(settlement.buildings.length) * 4.2, 10, 62);
+      const radius = clamp(17 + Math.sqrt(settlement.buildings.length) * 5.2, 21, 76);
       const ground = canvas.createRadialGradient(center.x, center.y, 0, center.x, center.y, radius);
       ground.addColorStop(0, settlement.traffic > 0 ? 'rgba(76, 104, 74, 0.17)' : 'rgba(47, 69, 54, 0.13)');
       ground.addColorStop(1, 'rgba(14, 27, 21, 0)');
@@ -229,6 +248,7 @@ class LittleMeshVillages implements LabExperiment {
       canvas.beginPath();
       canvas.ellipse(center.x, center.y + 4, radius, radius * 0.47, 0, 0, Math.PI * 2);
       canvas.fill();
+      this.drawSettlementTrees(canvas, settlement, center, radius);
       const ordered = settlement.buildings.slice().sort((left, right) => {
         const leftPoint = this.layout.get(left.nodeId)?.y ?? 0;
         const rightPoint = this.layout.get(right.nodeId)?.y ?? 0;
@@ -241,17 +261,45 @@ class LittleMeshVillages implements LabExperiment {
     }
   }
 
+  private drawSettlementTrees(
+    canvas: CanvasRenderingContext2D,
+    settlement: VillageSettlementModel,
+    center: LabPoint,
+    radius: number,
+  ): void {
+    const count = Math.min(14, 4 + Math.ceil(Math.sqrt(settlement.buildings.length) * 1.8));
+    canvas.save();
+    for (let index = 0; index < count; index += 1) {
+      const seed = stableHash(`${settlement.id}:tree:${index}`);
+      const angle = (seed % 6_283) / 1_000;
+      const distance = radius * (0.56 + ((seed >>> 9) % 36) / 100);
+      const x = center.x + Math.cos(angle) * distance;
+      const y = center.y + Math.sin(angle) * distance * 0.38;
+      const size = 3.5 + (seed % 30) / 10;
+      canvas.fillStyle = index % 3 === 0 ? 'rgba(30, 69, 57, 0.72)' : 'rgba(19, 51, 45, 0.78)';
+      canvas.beginPath();
+      canvas.moveTo(x, y - size * 1.9);
+      canvas.lineTo(x + size, y + size * 0.35);
+      canvas.lineTo(x - size, y + size * 0.35);
+      canvas.closePath();
+      canvas.fill();
+      canvas.fillStyle = 'rgba(13, 35, 32, 0.86)';
+      canvas.fillRect(x - 0.6, y - 1, 1.2, size * 0.75);
+    }
+    canvas.restore();
+  }
+
   private drawBuilding(canvas: CanvasRenderingContext2D, building: VillageBuildingModel, point: LabPoint): void {
-    const footprint = clamp(3.2 + building.degree * 0.32, 3.2, 7.2);
-    const roleHeight = building.role === 'repeater' ? 13
-      : building.role === 'room_server' ? 10
-        : building.role === 'sensor' ? 7
-          : building.role === 'companion' ? 8 : 6;
-    const height = roleHeight + Math.min(7, building.degree * 0.7);
+    const footprint = clamp(4.5 + building.degree * 0.38, 4.5, 8.6);
+    const roleHeight = building.role === 'repeater' ? 18
+      : building.role === 'room_server' ? 15
+        : building.role === 'sensor' ? 11
+          : building.role === 'companion' ? 13 : 10;
+    const height = roleHeight + Math.min(8, building.degree * 0.78);
     const hue = building.seed % 4;
-    const walls = ['#274047', '#30433d', '#3b3e42', '#33464b'][hue]!;
-    const side = ['#17292e', '#1e2d29', '#24262c', '#1e3035'][hue]!;
-    const roof = building.role === 'sensor' ? '#38595b' : ['#20333a', '#2a3432', '#352f35', '#24353a'][hue]!;
+    const walls = ['#35565c', '#415a50', '#514d52', '#3d5960'][hue]!;
+    const side = ['#1c3338', '#273b34', '#302f36', '#263b41'][hue]!;
+    const roof = building.role === 'sensor' ? '#487074' : ['#29454d', '#38463f', '#463d46', '#30474c'][hue]!;
     canvas.save();
     canvas.translate(point.x, point.y);
     canvas.fillStyle = 'rgba(0, 4, 7, 0.36)';
@@ -287,8 +335,8 @@ class LittleMeshVillages implements LabExperiment {
       const glow = building.observer ? '#8bdcff' : '#f0ca6d';
       canvas.fillStyle = glow;
       canvas.shadowColor = glow;
-      canvas.shadowBlur = 7;
-      canvas.fillRect(footprint * 0.22, -height * 0.52, Math.max(1, footprint * 0.24), Math.max(1.2, height * 0.16));
+      canvas.shadowBlur = 10;
+      canvas.fillRect(footprint * 0.18, -height * 0.54, Math.max(1.4, footprint * 0.3), Math.max(1.8, height * 0.18));
     }
     if (building.role === 'repeater') {
       canvas.shadowBlur = 0;
@@ -319,16 +367,18 @@ class LittleMeshVillages implements LabExperiment {
     canvas.font = '600 10px Inter, system-ui, sans-serif';
     canvas.textAlign = 'center';
     canvas.textBaseline = 'bottom';
-    const labelled = settlements.filter((settlement) => settlement.buildings.length >= 4).slice(0, width < 700 ? 4 : 8);
+    const labelled = settlements
+      .filter((settlement) => settlement.buildings.length >= 4 || settlement.routeCount > 0)
+      .slice(0, width < 700 ? 4 : 8);
     for (const settlement of labelled) {
       const center = this.settlementCenters.get(settlement.id);
       if (!center || center.y < 72 || center.y > height - 48) continue;
       const label = `${settlement.tier} · ${settlement.buildings.length} observed nodes`;
       const textWidth = canvas.measureText(label).width;
       canvas.fillStyle = 'rgba(3, 12, 16, 0.66)';
-      canvas.fillRect(center.x - textWidth / 2 - 5, center.y - 31, textWidth + 10, 15);
-      canvas.fillStyle = 'rgba(189, 216, 216, 0.76)';
-      canvas.fillText(label, center.x, center.y - 18);
+      canvas.fillRect(center.x - textWidth / 2 - 5, center.y - 48, textWidth + 10, 15);
+      canvas.fillStyle = 'rgba(203, 228, 224, 0.86)';
+      canvas.fillText(label, center.x, center.y - 35);
     }
     canvas.restore();
   }

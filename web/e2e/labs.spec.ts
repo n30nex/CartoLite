@@ -17,6 +17,7 @@ test('Labs supports direct links, bounded experiment switching, and synthetic de
   await expect(page.locator('#labs-status-text')).toHaveText('Demo · synthetic');
   await expect(page.locator('#labs-stage')).toHaveAttribute('aria-label', 'Mesh Loom live traffic experiment');
   await expect(page.locator('#labs-stage canvas')).toHaveCount(1);
+  await expect(page.locator('#labs-stage')).toHaveAttribute('data-topology-thread-count', /[1-9][0-9]*/);
   await expect(page.locator('#live-caption')).not.toHaveText('Waiting for live traffic…', { timeout: 5_000 });
   expect(apiRequests, 'hidden demo mode must not contact live APIs').toEqual([]);
 

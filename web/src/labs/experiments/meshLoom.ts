@@ -1,7 +1,7 @@
 import { PACKET_KIND_COLORS } from '../../trafficVisuals';
-import type { EndpointV2 } from '../../types';
+import type { EndpointV2, StateV2 } from '../../types';
 import { CanvasSurface, easeOut, rgba } from '../canvas';
-import { clamp, projectCanada, type LabContext, type LabExperiment, type LabPacket, type LabPoint, type LabViewport } from '../runtime';
+import { clamp, projectCanada, stableHash, type LabContext, type LabExperiment, type LabPacket, type LabPoint, type LabViewport } from '../runtime';
 
 interface LoomThread {
   at: number;
@@ -18,6 +18,7 @@ class MeshLoom implements LabExperiment {
   private context?: LabContext;
   private surface?: CanvasSurface;
   private threads: LoomThread[] = [];
+  private topologyThreads: LoomThread[] = [];
   private paused = false;
 
   mount(context: LabContext): void {
@@ -26,7 +27,28 @@ class MeshLoom implements LabExperiment {
     context.stage.dataset.renderer = 'canvas2d';
   }
 
-  applySnapshot(): void {}
+  applySnapshot(snapshot: Readonly<StateV2>): void {
+    const nodes = new Map(snapshot.nodes.map((node) => [node.id, node]));
+    this.topologyThreads = snapshot.routes
+      .filter((route) => nodes.has(route.fromId) && nodes.has(route.toId))
+      .sort((left, right) => stableHash(left.id) - stableHash(right.id))
+      .slice(0, 96)
+      .map((route) => {
+        const from = nodes.get(route.fromId)!;
+        const to = nodes.get(route.toId)!;
+        return {
+          at: 0,
+          color: PACKET_KIND_COLORS[route.lastKind],
+          points: [
+            projectCanada(from.lng, from.lat, 1, 1).x,
+            projectCanada(to.lng, to.lat, 1, 1).x,
+          ],
+          observer: false,
+          seed: stableHash(route.id),
+        };
+      });
+    if (this.context) this.context.stage.dataset.topologyThreadCount = String(this.topologyThreads.length);
+  }
 
   handlePacket(packet: LabPacket): void {
     if (this.paused) return;
@@ -49,6 +71,12 @@ class MeshLoom implements LabExperiment {
     if (!surface || !context || this.paused) return;
     const canvas = surface.context;
     this.drawCloth(canvas, surface.width, surface.height, now, context.reducedMotion());
+    this.topologyThreads.forEach((thread, index) => {
+      const band = (index + 1) / (this.topologyThreads.length + 1);
+      const y = surface.height * (0.15 + band * 0.68);
+      const alpha = 0.18 + (thread.seed % 5) * 0.018;
+      this.drawThread(canvas, thread, y, surface.width, alpha, 4_000, true);
+    });
     this.threads = this.threads.filter((thread) => now - thread.at <= THREAD_LIFETIME_MS);
     const reducedMotion = context.reducedMotion();
     this.threads.forEach((thread, index) => {
@@ -74,6 +102,7 @@ class MeshLoom implements LabExperiment {
 
   destroy(): void {
     this.reset();
+    this.topologyThreads = [];
     this.surface?.destroy();
     this.surface = undefined;
     this.context = undefined;
@@ -116,6 +145,13 @@ class MeshLoom implements LabExperiment {
       canvas.stroke();
     }
     canvas.restore();
+
+    const sheen = canvas.createLinearGradient(0, height * 0.12, width, height * 0.86);
+    sheen.addColorStop(0, 'rgba(112, 207, 195, 0)');
+    sheen.addColorStop(0.48, 'rgba(112, 207, 195, 0.045)');
+    sheen.addColorStop(0.56, 'rgba(112, 207, 195, 0)');
+    canvas.fillStyle = sheen;
+    canvas.fillRect(0, 28, width, Math.max(1, height - 52));
   }
 
   private drawThread(
@@ -224,6 +260,11 @@ class MeshLoom implements LabExperiment {
     canvas.moveTo(0, height - 24.5);
     canvas.lineTo(width, height - 24.5);
     canvas.stroke();
+    canvas.fillStyle = '#10272c';
+    canvas.fillRect(0, 18, 10, Math.max(1, height - 36));
+    canvas.fillRect(width - 10, 18, 10, Math.max(1, height - 36));
+    canvas.strokeStyle = 'rgba(138, 211, 203, 0.14)';
+    canvas.strokeRect(10.5, 28.5, Math.max(1, width - 21), Math.max(1, height - 53));
 
     const vignette = canvas.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.76);
     vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
