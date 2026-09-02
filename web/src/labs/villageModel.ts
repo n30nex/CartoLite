@@ -4,8 +4,9 @@ import { stableHash } from './runtime';
 
 const ACTIVE_NODE_WINDOW_MS = 24 * 60 * 60_000;
 const MAX_VILLAGE_NODES = 1_200;
-const LATITUDE_CELL = 4;
-const LONGITUDE_CELL = 8;
+const LATITUDE_CELL = 3;
+const LONGITUDE_CELL = 6;
+export const MAX_BUILDINGS_PER_SETTLEMENT = 48;
 
 export interface VillageBuildingModel {
   nodeId: string;
@@ -53,35 +54,21 @@ export function buildVillageModel(snapshot: Readonly<StateV2>): VillageModel {
     .slice(0, MAX_VILLAGE_NODES);
   const nodes = new Map(candidates.map((node) => [node.id, node]));
   const routes = snapshot.routes.filter((route) => nodes.has(route.fromId) && nodes.has(route.toId));
-  const parent = new Map(candidates.map((node) => [node.id, node.id]));
-  const find = (id: string): string => {
-    let root = parent.get(id) ?? id;
-    while ((parent.get(root) ?? root) !== root) root = parent.get(root)!;
-    let current = id;
-    while ((parent.get(current) ?? current) !== root) {
-      const next = parent.get(current)!;
-      parent.set(current, root);
-      current = next;
-    }
-    return root;
-  };
-  const union = (left: string, right: string): void => {
-    const leftRoot = find(left);
-    const rightRoot = find(right);
-    if (leftRoot === rightRoot) return;
-    const first = stableHash(leftRoot) <= stableHash(rightRoot) ? leftRoot : rightRoot;
-    parent.set(first === leftRoot ? rightRoot : leftRoot, first);
-  };
-  routes.forEach((route) => union(route.fromId, route.toId));
-
-  const groups = new Map<string, typeof candidates>();
+  const geographicGroups = new Map<string, typeof candidates>();
   for (const node of candidates) {
     const latitude = Math.floor((node.lat - 40) / LATITUDE_CELL);
     const longitude = Math.floor((node.lng + 144) / LONGITUDE_CELL);
-    const key = `${find(node.id)}:${latitude}:${longitude}`;
-    const group = groups.get(key) ?? [];
+    const key = `${latitude}:${longitude}`;
+    const group = geographicGroups.get(key) ?? [];
     group.push(node);
-    groups.set(key, group);
+    geographicGroups.set(key, group);
+  }
+  const groups = new Map<string, typeof candidates>();
+  for (const [cell, group] of geographicGroups) {
+    const ordered = group.slice().sort((left, right) => left.lng - right.lng || right.lat - left.lat || stableHash(left.id) - stableHash(right.id));
+    for (let offset = 0; offset < ordered.length; offset += MAX_BUILDINGS_PER_SETTLEMENT) {
+      groups.set(`${cell}:${offset / MAX_BUILDINGS_PER_SETTLEMENT}`, ordered.slice(offset, offset + MAX_BUILDINGS_PER_SETTLEMENT));
+    }
   }
 
   const nodeToSettlement = new Map<string, string>();

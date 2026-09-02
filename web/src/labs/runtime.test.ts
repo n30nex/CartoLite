@@ -7,6 +7,7 @@ import {
   haversineKm,
   normalizeLabPacket,
   projectCanada,
+  spatiallySpacedNodes,
   stableNodeSample,
 } from './runtime';
 
@@ -66,6 +67,7 @@ describe('Labs geographic helpers', () => {
     const projected = projectCanada(-52, 41, 1_000, 500);
     expect(projected.x).toBeCloseTo(960);
     expect(projected.y).toBeCloseTo(480);
+    expect(projectCanada(-79.38, 43.65, 1_000, 500).y).toBeLessThan(410);
   });
 
   it('samples nodes deterministically without changing the input', () => {
@@ -77,6 +79,21 @@ describe('Labs geographic helpers', () => {
     const original = nodes.map((node) => node.id);
     expect(stableNodeSample(nodes, 2).map((node) => node.id)).toEqual(stableNodeSample(nodes, 2).map((node) => node.id));
     expect(nodes.map((node) => node.id)).toEqual(original);
+  });
+
+  it('keeps decorative nodes a minimum screen distance apart', () => {
+    const nodes = Array.from({ length: 8 }, (_, index) => ({
+      ...toronto,
+      id: `node-${index}`,
+      lng: toronto.lng + index,
+      role: 'companion' as const,
+      observer: false,
+      lastSeen: index,
+    }));
+    const sample = spatiallySpacedNodes(nodes, (node) => ({ x: node.lng * 10, y: 20 }), 18, 8);
+    const xs = sample.map((node) => node.lng * 10);
+    expect(sample.length).toBeGreaterThan(2);
+    for (let index = 1; index < xs.length; index += 1) expect(Math.abs(xs[index]! - xs[index - 1]!)).toBeGreaterThanOrEqual(18);
   });
 });
 

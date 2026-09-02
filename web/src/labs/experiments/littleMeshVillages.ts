@@ -154,22 +154,47 @@ class LittleMeshVillages implements LabExperiment {
 
   private layoutSettlements(settlements: readonly VillageSettlementModel[], width: number, height: number): void {
     const context = this.context!;
-    const safeTop = Math.max(132, height * 0.18);
-    const safeBottom = height * (width < 900 ? 0.68 : 0.84);
-    for (const settlement of settlements) {
-      const projected = context.project(settlement.center);
-      const normalizedX = clamp((projected.x / width - 0.04) / 0.92, 0, 1);
-      const normalizedY = clamp((projected.y / height - 0.04) / 0.92, 0, 1);
-      const center = {
-        x: clamp(width * (0.08 + normalizedX * 0.84), 46, Math.max(46, width - 46)),
-        y: clamp(safeTop + normalizedY * Math.max(1, safeBottom - safeTop), safeTop, safeBottom),
-      };
-      this.settlementCenters.set(settlement.id, center);
-      const cell = clamp(6.8 + Math.sqrt(settlement.buildings.length) * 0.32, 7.2, 11.5);
-      for (const building of settlement.buildings) {
-        const x = center.x + (building.localX - building.localY) * cell;
-        const y = center.y + (building.localX + building.localY) * cell * 0.46;
-        this.layout.set(building.nodeId, { x, y });
+    const safeTop = Math.max(88, height * 0.1);
+    const safeBottom = Math.max(safeTop + 120, height - Math.max(58, height * 0.07));
+    const safeLeft = Math.max(42, width * 0.035);
+    const safeRight = Math.max(safeLeft + 120, width - Math.max(42, width * 0.035));
+    const usableWidth = Math.max(1, safeRight - safeLeft);
+    const usableHeight = Math.max(1, safeBottom - safeTop);
+    const aspect = usableWidth / usableHeight;
+    const columns = Math.max(1, Math.min(settlements.length, Math.ceil(Math.sqrt(settlements.length * aspect))));
+    const rows = Math.max(1, Math.ceil(settlements.length / columns));
+    const cellWidth = usableWidth / columns;
+    const cellHeight = usableHeight / rows;
+    const ordered = settlements.slice().sort((left, right) => left.center.lng - right.center.lng || right.center.lat - left.center.lat || stableHash(left.id) - stableHash(right.id));
+    context.stage.dataset.settlementColumns = String(columns);
+    context.stage.dataset.settlementRows = String(rows);
+    context.stage.dataset.settlementCount = String(settlements.length);
+    for (let column = 0; column < columns; column += 1) {
+      const columnSettlements = ordered.slice(column * rows, Math.min(ordered.length, (column + 1) * rows))
+        .sort((left, right) => right.center.lat - left.center.lat || stableHash(left.id) - stableHash(right.id));
+      for (let row = 0; row < columnSettlements.length; row += 1) {
+        const settlement = columnSettlements[row]!;
+        const projected = context.project(settlement.center);
+        const geographicX = clamp(projected.x / width, 0, 1);
+        const geographicY = clamp(projected.y / height, 0, 1);
+        const gridX = safeLeft + (column + 0.5) * cellWidth;
+        const gridY = safeTop + (row + 0.58) * cellHeight;
+        const center = {
+          x: clamp(gridX + (geographicX - 0.5) * cellWidth * 0.18, safeLeft + 16, safeRight - 16),
+          y: clamp(gridY + (geographicY - 0.5) * cellHeight * 0.14, safeTop + 22, safeBottom - 16),
+        };
+        this.settlementCenters.set(settlement.id, center);
+        const maximumHorizontal = Math.max(1, ...settlement.buildings.map((building) => Math.abs(building.localX - building.localY)));
+        const maximumVertical = Math.max(1, ...settlement.buildings.map((building) => Math.abs((building.localX + building.localY) * 0.46)));
+        const cell = clamp(Math.min(
+          cellWidth * 0.38 / maximumHorizontal,
+          cellHeight * 0.28 / maximumVertical,
+        ), 7.8, 16.5);
+        for (const building of settlement.buildings) {
+          const x = center.x + (building.localX - building.localY) * cell;
+          const y = center.y + (building.localX + building.localY) * cell * 0.46;
+          this.layout.set(building.nodeId, { x, y });
+        }
       }
     }
   }

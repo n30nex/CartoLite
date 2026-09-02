@@ -73,7 +73,7 @@ export interface ExperimentDefinition {
   title: string;
   summary: string;
   explanation: string;
-  renderer: 'canvas2d';
+  renderer: 'canvas2d' | 'webgl2+canvas2d';
   status: ExperimentStatus;
   load: () => Promise<{ createExperiment(): LabExperiment }>;
 }
@@ -190,8 +190,12 @@ export function bearingDegrees(from: Pick<EndpointV2, 'lat' | 'lng'>, to: Pick<E
 }
 
 export function projectCanada(lng: number, lat: number, width: number, height: number): LabPoint {
-  const x = 0.04 + clamp((lng + 141) / 89, 0, 1) * 0.92;
-  const y = 0.04 + clamp((84 - lat) / 43, 0, 1) * 0.92;
+  const longitude = clamp((lng + 141) / 89, 0, 1);
+  const latitude = clamp((lat - 41) / 43, 0, 1);
+  const x = 0.04 + longitude * 0.92;
+  // Labs is a geographic cartogram: expanding southern latitudes keeps Canada's
+  // inhabited band from collapsing against the bottom of a full-screen canvas.
+  const y = 0.04 + (1 - Math.pow(latitude, 0.58)) * 0.92;
   return { x: x * Math.max(1, width), y: y * Math.max(1, height) };
 }
 
@@ -208,6 +212,24 @@ export function stableNodeSample(nodes: readonly NodeV2[], limit: number): NodeV
   return [...nodes]
     .sort((left, right) => stableHash(left.id) - stableHash(right.id))
     .slice(0, Math.max(0, limit));
+}
+
+export function spatiallySpacedNodes(
+  nodes: readonly NodeV2[],
+  project: (node: NodeV2) => LabPoint,
+  minimumDistance: number,
+  limit: number,
+): NodeV2[] {
+  const accepted: NodeV2[] = [];
+  const points: LabPoint[] = [];
+  for (const node of stableNodeSample(nodes, nodes.length)) {
+    const point = project(node);
+    if (points.some((existing) => Math.hypot(existing.x - point.x, existing.y - point.y) < minimumDistance)) continue;
+    accepted.push(node);
+    points.push(point);
+    if (accepted.length >= Math.max(0, limit)) break;
+  }
+  return accepted;
 }
 
 export function clamp(value: number, minimum: number, maximum: number): number {

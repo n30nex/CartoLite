@@ -11,7 +11,8 @@ export default defineConfig({
   use: {
     baseURL: process.env.CARTOLITE_BASE_URL ?? 'http://127.0.0.1:39476',
     screenshot: 'only-on-failure',
-    trace: 'retain-on-failure'
+    trace: 'retain-on-failure',
+    launchOptions: { args: ['--enable-unsafe-swiftshader'] }
   },
   projects: [
     {

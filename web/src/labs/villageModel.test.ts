@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NodeV2, RouteV2, StateV2 } from '../types';
-import { buildVillageModel, settlementTier } from './villageModel';
+import { MAX_BUILDINGS_PER_SETTLEMENT, buildVillageModel, settlementTier } from './villageModel';
 
 const SERVER_TIME = 1_800_000_000_000;
 
@@ -58,6 +58,13 @@ describe('Little Mesh Villages model', () => {
     const nodes = Array.from({ length: 1_260 }, (_, index) => node(`node-${index}`, 42 + index / 10_000, -80));
     const model = buildVillageModel(state(nodes, []));
     expect(model.nodeCount).toBe(1_200);
+  });
+
+  it('splits dense geographic cells into readable bounded settlements', () => {
+    const nodes = Array.from({ length: 121 }, (_, index) => node(`dense-${index}`, 43.65 + index / 100_000, -79.38));
+    const model = buildVillageModel(state(nodes, []));
+    expect(model.settlements).toHaveLength(3);
+    expect(Math.max(...model.settlements.map((settlement) => settlement.buildings.length))).toBeLessThanOrEqual(MAX_BUILDINGS_PER_SETTLEMENT);
   });
 
   it('names settlement tiers by observed-node count only', () => {

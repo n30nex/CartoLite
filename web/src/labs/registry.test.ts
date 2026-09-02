@@ -9,6 +9,7 @@ describe('Labs experiment registry', () => {
       'mesh-loom',
       'little-mesh-villages',
     ]);
+    expect(EXPERIMENTS[0]?.renderer).toBe('webgl2+canvas2d');
   });
 
   it('falls back safely when an old Northern Lights deep link is opened', () => {

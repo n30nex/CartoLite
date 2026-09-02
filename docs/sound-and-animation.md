@@ -12,7 +12,7 @@ CartoLite Labs reuses this exact sonifier and preference record through a render
 
 ## Labs motion
 
-Packet Pond maps ordered hops to arcing droplets, animated route-reuse currents, splashes, and resolving multi-ring ripples over a locally bundled moonlit water plate. Firefly Meadow hands one winged light through stable public-node plants and leaves bounded relay blooms over a locally bundled night landscape. Mesh Loom reveals one bounded woven row per sanitized event with shuttle movement, fibre, and knots. Little Mesh Villages maps recently observed nodes and active connectivity into cached procedural settlements, then moves live lantern couriers through ordered hops. All four retain the established packet-kind palette, distinguish observer-only activity, cap their session objects, and clear temporary live memory on reset or stream recovery.
+Packet Pond maps ordered hops to arcing droplets, route-reuse currents, travelling wakes, splashes, and resolving five-ring landings over a reactive WebGL2 water simulation with a Canvas fallback. Firefly Meadow hands one winged light through spatially thinned public-node plants and leaves bounded relay blooms across a widely opened night landscape. Mesh Loom reveals wide packet-coloured fibres inside nearest-public-hub lanes with shuttle movement, knots, and an explicit colour legend. Little Mesh Villages maps recently observed nodes and active connectivity into cached, screen-filling cartogram settlements, then moves live lantern couriers through ordered hops. All four retain the established packet-kind palette, distinguish observer-only activity, cap their session objects, and clear temporary live memory on reset or stream recovery.
 
 ## Packet motion
 

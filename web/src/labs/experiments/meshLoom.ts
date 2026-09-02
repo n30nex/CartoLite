@@ -1,7 +1,20 @@
 import { PACKET_KIND_COLORS } from '../../trafficVisuals';
+import type { PacketKind } from '../../trafficVisuals';
 import type { EndpointV2, StateV2 } from '../../types';
 import { CanvasSurface, easeOut, rgba } from '../canvas';
-import { clamp, projectCanada, stableHash, type LabContext, type LabExperiment, type LabPacket, type LabPoint, type LabViewport } from '../runtime';
+import { clamp, haversineKm, projectCanada, stableHash, type LabContext, type LabExperiment, type LabPacket, type LabPoint, type LabViewport } from '../runtime';
+
+export const LOOM_REGIONS = [
+  { code: 'YVR', name: 'Pacific', lat: 49.28, lng: -123.12 },
+  { code: 'YYC', name: 'Prairies', lat: 51.05, lng: -114.07 },
+  { code: 'YWG', name: 'Central', lat: 49.9, lng: -97.14 },
+  { code: 'YYZ', name: 'Great Lakes', lat: 43.65, lng: -79.38 },
+  { code: 'YUL', name: 'St Lawrence', lat: 45.5, lng: -73.57 },
+  { code: 'YHZ', name: 'Atlantic', lat: 44.65, lng: -63.57 },
+  { code: 'YFB', name: 'North', lat: 63.75, lng: -68.52 },
+] as const;
+
+export type LoomRegion = typeof LOOM_REGIONS[number]['code'];
 
 interface LoomThread {
   at: number;
@@ -9,6 +22,7 @@ interface LoomThread {
   points: number[];
   observer: boolean;
   seed: number;
+  region: LoomRegion;
 }
 
 const THREAD_LIFETIME_MS = 72_000;
@@ -19,12 +33,16 @@ class MeshLoom implements LabExperiment {
   private surface?: CanvasSurface;
   private threads: LoomThread[] = [];
   private topologyThreads: LoomThread[] = [];
+  private legend?: HTMLElement;
   private paused = false;
 
   mount(context: LabContext): void {
     this.context = context;
     this.surface = new CanvasSurface(context.stage);
+    this.legend = createLegend();
+    context.stage.append(this.legend);
     context.stage.dataset.renderer = 'canvas2d';
+    context.stage.dataset.loomRegionLanes = String(LOOM_REGIONS.length);
   }
 
   applySnapshot(snapshot: Readonly<StateV2>): void {
@@ -45,6 +63,7 @@ class MeshLoom implements LabExperiment {
           ],
           observer: false,
           seed: stableHash(route.id),
+          region: loomRegionForEndpoints([from, to]),
         };
       });
     if (this.context) this.context.stage.dataset.topologyThreadCount = String(this.topologyThreads.length);
@@ -57,7 +76,17 @@ class MeshLoom implements LabExperiment {
         .filter((point): point is EndpointV2 => point !== undefined)
         .map((point) => projectCanada(point.lng, point.lat, 1, 1).x)
       : packet.observer ? [projectCanada(packet.observer.lng, packet.observer.lat, 1, 1).x] : [];
-    this.threads.push({ at: performance.now(), color: PACKET_KIND_COLORS[packet.kind], points, observer: packet.mode === 'observer', seed: packet.seed });
+    const endpoints = packet.mode === 'route'
+      ? [packet.hops[0]?.from, ...packet.hops.map((hop) => hop.to)].filter((point): point is EndpointV2 => point !== undefined)
+      : packet.observer ? [packet.observer] : [];
+    this.threads.push({
+      at: performance.now(),
+      color: PACKET_KIND_COLORS[packet.kind],
+      points,
+      observer: packet.mode === 'observer',
+      seed: packet.seed,
+      region: loomRegionForEndpoints(endpoints),
+    });
     if (this.threads.length > 240) this.threads.splice(0, this.threads.length - 240);
   }
 
@@ -71,21 +100,24 @@ class MeshLoom implements LabExperiment {
     if (!surface || !context || this.paused) return;
     const canvas = surface.context;
     this.drawCloth(canvas, surface.width, surface.height, now, context.reducedMotion());
-    this.topologyThreads.forEach((thread, index) => {
-      const band = (index + 1) / (this.topologyThreads.length + 1);
-      const y = surface.height * (0.15 + band * 0.68);
+    const loomTop = Math.max(70, surface.height * 0.075);
+    const loomBottom = Math.max(loomTop + 70, surface.height - 54);
+    const laneHeight = (loomBottom - loomTop) / LOOM_REGIONS.length;
+    this.topologyThreads.forEach((thread) => {
+      const lane = LOOM_REGIONS.findIndex((region) => region.code === thread.region);
+      const y = loomTop + laneHeight * (lane + 0.18 + (thread.seed % 650) / 1_000);
       const alpha = 0.18 + (thread.seed % 5) * 0.018;
-      this.drawThread(canvas, thread, y, surface.width, alpha, 4_000, true);
+      this.drawThread(canvas, thread, y, surface.width, alpha, 4_000, true, true);
     });
     this.threads = this.threads.filter((thread) => now - thread.at <= THREAD_LIFETIME_MS);
     const reducedMotion = context.reducedMotion();
-    this.threads.forEach((thread, index) => {
+    this.threads.forEach((thread) => {
       const age = now - thread.at;
-      const spacing = Math.max(3.4, Math.min(11, surface.height / 86));
-      const y = reducedMotion
-        ? surface.height - 50 - (this.threads.length - 1 - index) * spacing
-        : surface.height - 48 - age * 0.0155;
-      if (y < 34 || y > surface.height - 22) return;
+      const lane = LOOM_REGIONS.findIndex((region) => region.code === thread.region);
+      const laneTop = loomTop + lane * laneHeight;
+      const laneBottom = laneTop + laneHeight;
+      const travel = reducedMotion ? (thread.seed % 1_000) / 1_000 : clamp(age / THREAD_LIFETIME_MS, 0, 1);
+      const y = laneBottom - 9 - travel * Math.max(8, laneHeight - 18) + ((thread.seed % 7) - 3) * 0.45;
       const alpha = clamp(1 - age / THREAD_LIFETIME_MS, 0.07, 0.94);
       this.drawThread(canvas, thread, y, surface.width, alpha, age, reducedMotion);
     });
@@ -103,7 +135,9 @@ class MeshLoom implements LabExperiment {
   destroy(): void {
     this.reset();
     this.topologyThreads = [];
+    this.legend?.remove();
     this.surface?.destroy();
+    this.legend = undefined;
     this.surface = undefined;
     this.context = undefined;
   }
@@ -146,6 +180,28 @@ class MeshLoom implements LabExperiment {
     }
     canvas.restore();
 
+    const top = Math.max(70, height * 0.075);
+    const bottom = Math.max(top + 70, height - 54);
+    const laneHeight = (bottom - top) / LOOM_REGIONS.length;
+    canvas.save();
+    canvas.font = '700 9px Inter, system-ui, sans-serif';
+    canvas.textBaseline = 'middle';
+    for (let index = 0; index < LOOM_REGIONS.length; index += 1) {
+      const region = LOOM_REGIONS[index]!;
+      const y = top + laneHeight * index;
+      canvas.fillStyle = index % 2 === 0 ? 'rgba(86, 158, 156, 0.035)' : 'rgba(22, 55, 61, 0.045)';
+      canvas.fillRect(10, y, Math.max(1, width - 20), laneHeight);
+      canvas.strokeStyle = 'rgba(136, 206, 202, 0.075)';
+      canvas.lineWidth = 0.65;
+      canvas.beginPath();
+      canvas.moveTo(10, y + laneHeight);
+      canvas.lineTo(width - 10, y + laneHeight);
+      canvas.stroke();
+      canvas.fillStyle = 'rgba(164, 204, 203, 0.56)';
+      canvas.fillText(region.code, 16, y + laneHeight / 2);
+    }
+    canvas.restore();
+
     const sheen = canvas.createLinearGradient(0, height * 0.12, width, height * 0.86);
     sheen.addColorStop(0, 'rgba(112, 207, 195, 0)');
     sheen.addColorStop(0.48, 'rgba(112, 207, 195, 0.045)');
@@ -162,10 +218,11 @@ class MeshLoom implements LabExperiment {
     alpha: number,
     age: number,
     reducedMotion: boolean,
+    background = false,
   ): void {
     if (thread.points.length === 0) return;
     const points = thread.points.map((point, index) => ({
-      x: 28 + clamp(point, 0.04, 0.96) * Math.max(1, width - 56),
+      x: 54 + clamp(point, 0.04, 0.96) * Math.max(1, width - 82),
       y: y + Math.sin(index * 1.83 + thread.seed) * (3.2 + thread.seed % 4),
     }));
     const reveal = reducedMotion ? 1 : easeOut(clamp(age / 1_050, 0, 1));
@@ -194,11 +251,11 @@ class MeshLoom implements LabExperiment {
     canvas.lineJoin = 'round';
     canvas.lineCap = 'round';
     canvas.strokeStyle = 'rgba(0, 5, 8, 0.5)';
-    canvas.lineWidth = 5.6;
+    canvas.lineWidth = background ? 4.8 : 11.5;
     drawSmoothPath(canvas, visible);
     canvas.stroke();
     canvas.strokeStyle = rgba(thread.color, alpha * 0.28);
-    canvas.lineWidth = 4;
+    canvas.lineWidth = background ? 2.9 : 7.6;
     canvas.shadowColor = thread.color;
     canvas.shadowBlur = age < 2_200 ? 14 : 5;
     drawSmoothPath(canvas, visible);
@@ -207,7 +264,7 @@ class MeshLoom implements LabExperiment {
     canvas.setLineDash([1.4, 3.4]);
     canvas.lineDashOffset = thread.seed % 9;
     canvas.strokeStyle = rgba(thread.color, alpha * 0.88);
-    canvas.lineWidth = 1.15;
+    canvas.lineWidth = background ? 0.85 : 2.35;
     drawSmoothPath(canvas, visible);
     canvas.stroke();
     canvas.setLineDash([]);
@@ -222,8 +279,9 @@ class MeshLoom implements LabExperiment {
       canvas.fillStyle = rgba(thread.color, alpha * 0.86);
       canvas.strokeStyle = rgba('#e9ffff', alpha * 0.34);
       canvas.lineWidth = 0.6;
-      canvas.fillRect(-2.35, -2.35, 4.7, 4.7);
-      canvas.strokeRect(-2.35, -2.35, 4.7, 4.7);
+      const knot = background ? 2.1 : 3.45;
+      canvas.fillRect(-knot, -knot, knot * 2, knot * 2);
+      canvas.strokeRect(-knot, -knot, knot * 2, knot * 2);
       canvas.restore();
     }
 
@@ -298,6 +356,42 @@ function drawSmoothPath(canvas: CanvasRenderingContext2D, points: readonly LabPo
   }
   const last = points[points.length - 1]!;
   canvas.lineTo(last.x, last.y);
+}
+
+export function loomRegionForEndpoints(endpoints: readonly Pick<EndpointV2, 'lat' | 'lng'>[]): LoomRegion {
+  if (endpoints.length === 0) return 'YWG';
+  const center = {
+    lat: endpoints.reduce((sum, endpoint) => sum + endpoint.lat, 0) / endpoints.length,
+    lng: endpoints.reduce((sum, endpoint) => sum + endpoint.lng, 0) / endpoints.length,
+  };
+  return LOOM_REGIONS.reduce((closest, region) => (
+    haversineKm(center, region) < haversineKm(center, closest) ? region : closest
+  )).code;
+}
+
+function createLegend(): HTMLElement {
+  const legend = document.createElement('section');
+  legend.className = 'loom-legend glass';
+  legend.setAttribute('aria-label', 'Mesh Loom thread legend');
+  const title = document.createElement('strong');
+  title.textContent = 'Thread colour';
+  legend.append(title);
+  const kinds: readonly PacketKind[] = ['Advert', 'Trace', 'Text', 'ACK', 'Control', 'Other'];
+  for (const kind of kinds) {
+    const item = document.createElement('span');
+    item.className = 'loom-kind-item';
+    const swatch = document.createElement('i');
+    swatch.style.backgroundColor = PACKET_KIND_COLORS[kind];
+    swatch.style.boxShadow = `0 0 8px ${PACKET_KIND_COLORS[kind]}`;
+    const label = document.createElement('span');
+    label.textContent = kind;
+    item.append(swatch, label);
+    legend.append(item);
+  }
+  const note = document.createElement('small');
+  note.textContent = 'Lanes: nearest public hub · YVR to YFB';
+  legend.append(note);
+  return legend;
 }
 
 export function createExperiment(): LabExperiment {

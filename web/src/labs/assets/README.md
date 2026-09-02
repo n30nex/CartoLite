@@ -5,6 +5,6 @@ These four WebP files are original CartoLite scene layers generated with the bui
 - `pond-water.webp`: top-down nocturnal freshwater texture with deep navy/teal currents, restrained caustic threads, and no objects or data marks.
 - `pond-edge.webp`: genuinely transparent moonlit Canadian pond-edge vegetation kept around the perimeter with an open centre.
 - `meadow-night.webp`: wide Canadian meadow at blue hour with distant spruce/birch silhouettes, ground mist, and a quiet centre for live effects.
-- `meadow-foreground.webp`: genuinely transparent bottom-edge layer of meadow grasses, ferns, yarrow, and seed heads.
+- `meadow-foreground.webp`: genuinely transparent, widely separated bottom-edge clusters of meadow grasses, ferns, yarrow, and seed heads. It was regenerated for v0.9.1 against a temporary chroma background, converted to a true alpha channel, visually inspected, and compressed; most of the frame remains open for live firefly paths.
 
 All prompts prohibited text, logos, watermarks, people, packet-like glows, routes, and other marks that could be mistaken for live traffic. The images are decorative only. Experiment code renders every node, route, packet, observer cue, and animation from sanitized CartoLite data.
