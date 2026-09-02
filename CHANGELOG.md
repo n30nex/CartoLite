@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9.0 - 2026-09-02
+
+### Added
+
+- Add **Little Mesh Villages**, a deterministic 2.5D toy-Canada view where recently observed public nodes become role-specific buildings, active routes become local roads or intercity links, and ordered live hops carry porch-light couriers through the settlement.
+- Add four original, locally bundled visual assets for Packet Pond and Firefly Meadow: moonlit water, pond-edge vegetation, a nocturnal meadow plate, and transparent foreground grasses. The assets load only with their experiment and make no network request after the CartoLite asset fetch.
+- Add Loom and Village Web Audio characters layered under the existing Aurora, Wood, and Chimes scene choices. They retain one oscillator and one scheduled articulation per visible hop without changing saved sound preferences.
+
+### Changed
+
+- Rework Packet Pond with textured moving water, restrained caustics, animated route currents, curved luminous droplets, splash crowns, multi-ring landings, longer channel memory, and a moonlit botanical frame.
+- Rework Firefly Meadow with a deep layered environment, richer deterministic node-plants, winged fireflies, smooth particle trails, explicit relay blooms, longer plant wakes, atmospheric haze, and burst-aware secondary detail.
+- Rework Mesh Loom as a dimensional textile with animated shuttle reveal, layered fibre, woven knots, selvage beams, persistent cloth motion, richer observer patches, and a softer plucked-string sound character.
+
+### Removed
+
+- Remove the Northern Lights experiment and its WebGL shader/fallback code. Old `?experiment=northern-lights` links safely open Packet Pond.
+
+### Privacy and performance
+
+- Keep public schema v2, the single shared SSE connection, backend behavior, and visitor storage unchanged. Village grouping uses only the already-downloaded public node and route state, caps the most recently observed node set, partitions long geographic components before drawing settlements, and caches static roads and buildings offscreen.
+
 ## 0.8.3 - 2026-09-01
 
 ### Added

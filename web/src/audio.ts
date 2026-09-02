@@ -13,6 +13,7 @@ export const DEFAULT_SOUND_VOLUME = 0.8;
 export const DEFAULT_SOUND_SCENE: SoundScene = 'aurora';
 
 export type SoundScene = 'aurora' | 'wood' | 'chimes';
+export type SoundCharacter = 'map' | 'loom' | 'village';
 
 export interface SoundPreferenceV2 {
   enabled: boolean;
@@ -125,6 +126,57 @@ const SCENES: Readonly<Record<SoundScene, SceneProfile>> = {
   },
 };
 
+interface CharacterProfile {
+  durationScale: number;
+  brightnessScale: number;
+  attackScale: number;
+  sustainScale: number;
+  levelScale: number;
+  pitchEndRatio: number;
+  registerShifts: readonly number[];
+  harmonics?: readonly (readonly number[])[];
+}
+
+const CHARACTERS: Readonly<Record<SoundCharacter, CharacterProfile>> = {
+  map: {
+    durationScale: 1,
+    brightnessScale: 1,
+    attackScale: 1,
+    sustainScale: 1,
+    levelScale: 1,
+    pitchEndRatio: 1,
+    registerShifts: [0],
+  },
+  loom: {
+    durationScale: 1.2,
+    brightnessScale: 0.82,
+    attackScale: 0.72,
+    sustainScale: 0.76,
+    levelScale: 0.86,
+    pitchEndRatio: 0.997,
+    registerShifts: [-12, 0, 7, 0],
+    harmonics: [
+      [1, 0.38, 0.11, 0.22, 0.06, 0.12],
+      [1, 0.24, 0.26, 0.08, 0.15, 0.04],
+      [1, 0.44, 0.08, 0.16, 0.1, 0.05],
+    ],
+  },
+  village: {
+    durationScale: 0.88,
+    brightnessScale: 0.94,
+    attackScale: 0.64,
+    sustainScale: 0.68,
+    levelScale: 0.82,
+    pitchEndRatio: 1.002,
+    registerShifts: [0, 12, 7, 12],
+    harmonics: [
+      [1, 0.12, 0.33, 0.08, 0.18],
+      [1, 0.2, 0.18, 0.06, 0.24],
+      [1, 0.08, 0.38, 0.04, 0.14],
+    ],
+  },
+};
+
 export interface HopNote {
   startMS: number;
   durationMS: number;
@@ -132,6 +184,7 @@ export interface HopNote {
   pan: number;
   brightness: number;
   scene: SoundScene;
+  character: SoundCharacter;
   variation: number;
 }
 
@@ -145,6 +198,7 @@ export function routeSoundPlan(
   width: number,
   height: number,
   scene: SoundScene = DEFAULT_SOUND_SCENE,
+  character: SoundCharacter = 'map',
 ): HopNote[] {
   if (packet.mode !== 'route' || packet.segments.length === 0 || width <= 0 || height <= 0) return [];
   const projected = packet.segments.map((segment) => ({
@@ -155,6 +209,7 @@ export function routeSoundPlan(
   const totalDuration = routeDuration(packet.segments);
   const voice = VOICES[packet.payloadType] ?? VOICES.Other;
   const sceneProfile = SCENES[scene];
+  const characterProfile = CHARACTERS[character];
   const phraseSeed = stableHash(`${packet.id}|${packet.payloadType}`);
   let elapsed = 0;
 
@@ -168,14 +223,16 @@ export function routeSoundPlan(
     const step = (phraseSeed + stableHash(`${segment.from.id}|${segment.to.id}`) + index * 2) % voice.intervals.length;
     const variation = stableHash(`${packet.id}|${segment.routeId}|${index}|${scene}`) % sceneProfile.harmonics.length;
     const octave = index >= voice.intervals.length ? 12 : 0;
-    const midi = voice.root + voice.intervals[step]! + octave + (sceneProfile.registerShifts[variation] ?? 0);
+    const characterShift = characterProfile.registerShifts[index % characterProfile.registerShifts.length] ?? 0;
+    const midi = voice.root + voice.intervals[step]! + octave + (sceneProfile.registerShifts[variation] ?? 0) + characterShift;
     const note: HopNote = {
       startMS,
-      durationMS: Math.round(Math.max(150, Math.min(540, totalDuration * weight * 0.78 * voice.durationScale * sceneProfile.durationScale))),
+      durationMS: Math.round(Math.max(150, Math.min(640, totalDuration * weight * 0.78 * voice.durationScale * sceneProfile.durationScale * characterProfile.durationScale))),
       frequency: midiToFrequency(midi),
       pan: clamp((midpointX / width) * 1.5 - 0.75, -0.75, 0.75),
-      brightness: Math.max(1_600, (voice.brightness - index * 260) * sceneProfile.brightnessScale),
+      brightness: Math.max(1_400, (voice.brightness - index * 260) * sceneProfile.brightnessScale * characterProfile.brightnessScale),
       scene,
+      character,
       variation,
     };
     return [note];
@@ -285,7 +342,7 @@ export class RouteSonifier {
     this.notify();
   }
 
-  play(packet: PacketView): number {
+  play(packet: PacketView, character: SoundCharacter = 'map'): number {
     const context = this.context;
     if (!this.enabled || this.paused || !context || context.state !== 'running' || !this.master) return 0;
     const notes = routeSoundPlan(
@@ -294,6 +351,7 @@ export class RouteSonifier {
       this.viewport.clientWidth,
       this.viewport.clientHeight,
       this.scene,
+      character,
     );
     if (notes.length === 0) return 0;
     const density = 1 / Math.sqrt(1 + this.active.size / 10);
@@ -359,6 +417,7 @@ export class RouteSonifier {
     const audibleDuration = Math.max(0.14, note.durationMS / 1_000 * (0.55 + density * 0.45));
     const ends = starts + audibleDuration;
     const scene = SCENES[note.scene];
+    const character = CHARACTERS[note.character];
     const filter = context.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(note.brightness, starts);
@@ -366,11 +425,11 @@ export class RouteSonifier {
     const panner = context.createStereoPanner();
     panner.pan.setValueAtTime(note.pan, starts);
     const envelope = context.createGain();
-    const peak = Math.max(MIN_VOICE_LEVEL, VOICE_LEVEL * density * scene.levelScale);
-    const attackEnds = starts + Math.min(scene.attackSeconds, audibleDuration * 0.24);
+    const peak = Math.max(MIN_VOICE_LEVEL, VOICE_LEVEL * density * scene.levelScale * character.levelScale);
+    const attackEnds = starts + Math.min(scene.attackSeconds * character.attackScale, audibleDuration * 0.24);
     envelope.gain.setValueAtTime(MIN_GAIN, starts);
     envelope.gain.exponentialRampToValueAtTime(peak, attackEnds);
-    envelope.gain.exponentialRampToValueAtTime(Math.max(MIN_GAIN, peak * scene.sustainLevel), starts + audibleDuration * 0.42);
+    envelope.gain.exponentialRampToValueAtTime(Math.max(MIN_GAIN, peak * scene.sustainLevel * character.sustainScale), starts + audibleDuration * 0.42);
     envelope.gain.exponentialRampToValueAtTime(MIN_GAIN, ends);
     filter.connect(panner).connect(envelope).connect(master);
     if (this.ambience) envelope.connect(this.ambience);
@@ -392,9 +451,9 @@ export class RouteSonifier {
     destination: AudioNode,
   ): OscillatorNode {
     const oscillator = this.context!.createOscillator();
-    oscillator.setPeriodicWave(this.periodicWave(note.scene, note.variation));
+    oscillator.setPeriodicWave(this.periodicWave(note.scene, note.variation, note.character));
     oscillator.frequency.setValueAtTime(note.frequency, starts);
-    oscillator.frequency.exponentialRampToValueAtTime(note.frequency * SCENES[note.scene].pitchEndRatio, ends);
+    oscillator.frequency.exponentialRampToValueAtTime(note.frequency * SCENES[note.scene].pitchEndRatio * CHARACTERS[note.character].pitchEndRatio, ends);
     oscillator.connect(destination);
     oscillator.start(starts);
     oscillator.stop(ends + 0.04);
@@ -402,11 +461,15 @@ export class RouteSonifier {
     return oscillator;
   }
 
-  private periodicWave(scene: SoundScene, variation: number): PeriodicWave {
-    const key = `${scene}:${variation}`;
+  private periodicWave(scene: SoundScene, variation: number, character: SoundCharacter): PeriodicWave {
+    const key = `${scene}:${variation}:${character}`;
     const cached = this.waves.get(key);
     if (cached) return cached;
-    const harmonics = SCENES[scene].harmonics[variation] ?? SCENES[scene].harmonics[0]!;
+    const sceneHarmonics = SCENES[scene].harmonics[variation] ?? SCENES[scene].harmonics[0]!;
+    const characterHarmonics = CHARACTERS[character].harmonics?.[variation];
+    const harmonics = characterHarmonics
+      ? blendHarmonics(sceneHarmonics, characterHarmonics)
+      : sceneHarmonics;
     const real = new Float32Array(harmonics.length + 1);
     const imaginary = new Float32Array(harmonics.length + 1);
     harmonics.forEach((amplitude, index) => { imaginary[index + 1] = amplitude; });
@@ -491,6 +554,11 @@ function segmentIntersectsViewport(
 
 function midiToFrequency(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function blendHarmonics(scene: readonly number[], character: readonly number[]): number[] {
+  const length = Math.max(scene.length, character.length);
+  return Array.from({ length }, (_, index) => (scene[index] ?? 0) * 0.35 + (character[index] ?? 0) * 0.78);
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

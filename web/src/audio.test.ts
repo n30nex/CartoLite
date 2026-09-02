@@ -112,7 +112,21 @@ describe('route hop sonification', () => {
     }
   });
 
-  it('creates exactly one oscillator for each visible hop in every scene', async () => {
+  it('adds deterministic Loom and village voicing without changing visible-hop counts', () => {
+    const route = packet([endpoint('a', 10, 50), endpoint('b', 50, 50), endpoint('c', 90, 50)]);
+    const standard = routeSoundPlan(route, projector, 100, 100, 'aurora', 'map');
+    const loom = routeSoundPlan(route, projector, 100, 100, 'aurora', 'loom');
+    const village = routeSoundPlan(route, projector, 100, 100, 'aurora', 'village');
+
+    expect(loom).toHaveLength(standard.length);
+    expect(village).toHaveLength(standard.length);
+    expect(loom.every((note) => note.character === 'loom')).toBe(true);
+    expect(village.every((note) => note.character === 'village')).toBe(true);
+    expect(loom.map((note) => note.frequency)).not.toEqual(standard.map((note) => note.frequency));
+    expect(routeSoundPlan(route, projector, 100, 100, 'aurora', 'loom')).toEqual(loom);
+  });
+
+  it('creates exactly one oscillator for each visible hop in every scene and experiment character', async () => {
     const original = window.AudioContext;
     FakeAudioContext.oscillators = 0;
     Object.defineProperty(window, 'AudioContext', { configurable: true, value: FakeAudioContext });
@@ -124,9 +138,11 @@ describe('route hop sonification', () => {
       expect(await sonifier.setEnabled(true)).toBe(true);
       for (const scene of ['aurora', 'wood', 'chimes'] as const) {
         sonifier.setScene(scene);
-        const before = FakeAudioContext.oscillators;
-        expect(sonifier.play(route)).toBe(route.segments.length);
-        expect(FakeAudioContext.oscillators - before).toBe(route.segments.length);
+        for (const character of ['map', 'loom', 'village'] as const) {
+          const before = FakeAudioContext.oscillators;
+          expect(sonifier.play(route, character)).toBe(route.segments.length);
+          expect(FakeAudioContext.oscillators - before).toBe(route.segments.length);
+        }
       }
     } finally {
       sonifier.destroy();

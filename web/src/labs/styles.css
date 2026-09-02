@@ -19,6 +19,21 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .lab-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .lab-overlay-canvas { z-index: 1; }
 
+.village-truth {
+  position: absolute;
+  z-index: 2;
+  top: max(72px, calc(env(safe-area-inset-top) + 72px));
+  left: max(12px, env(safe-area-inset-left));
+  max-width: min(390px, calc(100vw - 24px));
+  margin: 0;
+  padding: 8px 11px;
+  border-radius: 10px;
+  color: rgba(202, 222, 222, 0.72);
+  font-size: 10px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
 .glass {
   border: 1px solid rgba(151, 220, 224, 0.16);
   background: linear-gradient(145deg, rgba(8, 20, 26, 0.9), rgba(2, 9, 14, 0.8));
@@ -137,6 +152,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
   .compact-field, .volume-field { grid-column: span 3; }
   .labs-controls #info-button { grid-column: span 2; }
   .labs-controls button { padding-inline: 7px; font-size: 11px; }
+  .village-truth { top: max(64px, calc(env(safe-area-inset-top) + 64px)); left: 8px; max-width: calc(100vw - 16px); font-size: 9px; }
 }
 
 @media (orientation: landscape) and (max-height: 520px) {
