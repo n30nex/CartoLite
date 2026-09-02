@@ -27,35 +27,49 @@ func testHandler(t *testing.T, ready bool) http.Handler {
 	return server.Handler()
 }
 
-func TestLabsDeepLinkAndStaticCachePolicy(t *testing.T) {
+func TestWorkspaceDeepLinksAndStaticCachePolicy(t *testing.T) {
 	server := &Server{static: fstest.MapFS{
-		"index.html":         {Data: []byte("<a href=\"/labs/\">Labs</a>")},
-		"labs/index.html":    {Data: []byte("<title>CartoLite Labs</title>")},
-		"assets/labs-abc.js": {Data: []byte("export {}")},
+		"index.html":          {Data: []byte("<a href=\"/labs/\">Labs</a><a href=\"/netgraph/\">Netgraph</a>")},
+		"labs/index.html":     {Data: []byte("<title>CartoLite Labs</title>")},
+		"netgraph/index.html": {Data: []byte("<title>CartoLite Netgraph</title>")},
+		"assets/labs-abc.js":  {Data: []byte("export {}")},
 	}}
 	handler := server.Handler()
 
-	for _, requestPath := range []string{"/labs/", "/labs/index.html"} {
+	for _, testCase := range []struct {
+		requestPath string
+		title       string
+	}{
+		{requestPath: "/labs/", title: "CartoLite Labs"},
+		{requestPath: "/labs/index.html", title: "CartoLite Labs"},
+		{requestPath: "/netgraph/", title: "CartoLite Netgraph"},
+		{requestPath: "/netgraph/index.html", title: "CartoLite Netgraph"},
+	} {
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, requestPath, nil))
-		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "CartoLite Labs") {
-			t.Fatalf("%s did not serve the Labs entry: status=%d body=%q", requestPath, response.Code, response.Body.String())
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, testCase.requestPath, nil))
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), testCase.title) {
+			t.Fatalf("%s did not serve %s: status=%d body=%q", testCase.requestPath, testCase.title, response.Code, response.Body.String())
 		}
 		if cache := response.Header().Get("Cache-Control"); cache != "no-cache" {
-			t.Fatalf("%s HTML cache policy = %q", requestPath, cache)
+			t.Fatalf("%s HTML cache policy = %q", testCase.requestPath, cache)
 		}
 	}
 
 	asset := httptest.NewRecorder()
 	handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/labs-abc.js", nil))
 	if asset.Code != http.StatusOK || asset.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
-		t.Fatalf("Labs asset cache response = status %d, cache %q", asset.Code, asset.Header().Get("Cache-Control"))
+		t.Fatalf("workspace asset cache response = status %d, cache %q", asset.Code, asset.Header().Get("Cache-Control"))
 	}
 
 	missing := httptest.NewRecorder()
 	handler.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/labs/unknown", nil))
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("unknown Labs path returned %d", missing.Code)
+	}
+	missing = httptest.NewRecorder()
+	handler.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/netgraph/unknown", nil))
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("unknown Netgraph path returned %d", missing.Code)
 	}
 }
 

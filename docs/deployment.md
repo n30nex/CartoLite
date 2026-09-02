@@ -29,7 +29,7 @@ The production defaults publish `0.0.0.0:80` for an edge proxy and `127.0.0.1:39
 1. Record the current `CARTOLITE_IMAGE` digest and copy the named `cartolite-data` volume using your normal encrypted backup process.
 2. Set `CARTOLITE_IMAGE` to the new digest from the GitHub release manifest.
 3. Run `docker compose pull cartolite && docker compose up -d --no-deps cartolite` so no unrelated container is recreated.
-4. Verify `/healthz`, `/readyz`, schema v2 at `/api/state`, a live SSE packet, the desktop and phone portrait/landscape browser map, `/labs/` plus every current experiment deep link and its lazy image assets, successful CARTO TileJSON/PBF/glyph requests, no raster basemap request, lazy Mapterhorn DEM/hillshade/3D loading, Android-style audio unlock on both map and Labs, the HTTP-to-HTTPS redirect, and HSTS.
+4. Verify `/healthz`, `/readyz`, schema v2 at `/api/state`, a live SSE packet, the desktop and phone portrait/landscape browser map, `/netgraph/`, `/labs/` plus every current experiment deep link and its lazy image assets, successful CARTO TileJSON/PBF/glyph requests, no raster basemap request, lazy Mapterhorn DEM/hillshade/3D loading, Android-style audio unlock on Map, Netgraph, and Labs, the HTTP-to-HTTPS redirect, and HSTS.
 
 ## Roll back
 

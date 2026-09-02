@@ -13,7 +13,8 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         main: inputPath('index.html'),
-        labs: inputPath('labs/index.html')
+        labs: inputPath('labs/index.html'),
+        netgraph: inputPath('netgraph/index.html')
       }
     }
   },

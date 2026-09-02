@@ -1,5 +1,5 @@
 import { routeDuration, segmentNearViewport, segmentTravelWeights } from './packetAnimator';
-import type { PacketView } from './types';
+import type { EndpointV2, PacketView } from './types';
 import type { PacketKind } from './trafficVisuals';
 
 const MASTER_LEVEL = 0.9;
@@ -190,6 +190,7 @@ export interface HopNote {
 
 export interface ViewportProjector {
   project(coordinates: [number, number]): { x: number; y: number };
+  projectEndpoint?(endpoint: EndpointV2): { x: number; y: number };
 }
 
 export function routeSoundPlan(
@@ -201,9 +202,12 @@ export function routeSoundPlan(
   character: SoundCharacter = 'map',
 ): HopNote[] {
   if (packet.mode !== 'route' || packet.segments.length === 0 || width <= 0 || height <= 0) return [];
+  const projectEndpoint = (endpoint: EndpointV2): { x: number; y: number } => (
+    projector.projectEndpoint?.(endpoint) ?? projector.project([endpoint.lng, endpoint.lat])
+  );
   const projected = packet.segments.map((segment) => ({
-    from: projector.project([segment.from.lng, segment.from.lat]),
-    to: projector.project([segment.to.lng, segment.to.lat]),
+    from: projectEndpoint(segment.from),
+    to: projectEndpoint(segment.to),
   }));
   const weights = segmentTravelWeights(packet.segments);
   const totalDuration = routeDuration(packet.segments);

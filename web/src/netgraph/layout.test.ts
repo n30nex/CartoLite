@@ -1,0 +1,71 @@
+import { describe, expect, it } from 'vitest';
+import type { NodeV2, RouteV2 } from '../types';
+import { buildNetgraphLayout, graphTopologyChanged, routesInWindow, routeTopology } from './layout';
+
+function node(id: string, label = id): NodeV2 {
+  return { id, label, lat: 45, lng: -75, role: 'repeater', observer: false, lastSeen: 2_000_000 };
+}
+
+function route(id: string, fromId: string, toId: string, lastHeard = 2_000_000): RouteV2 {
+  return { id, fromId, toId, lastHeard, packetCount: 1, intensity: 0, lastKind: 'Advert', traffic: 1 };
+}
+
+describe('netgraph layout', () => {
+  it('lays out every connected node and excludes only isolated nodes', () => {
+    const nodes = [node('a'), node('b'), node('c'), node('isolated')];
+    const routes = [route('ab', 'a', 'b'), route('bc', 'b', 'c')];
+    const layout = buildNetgraphLayout(nodes, routes);
+
+    expect([...layout.connectedNodeIDs].sort()).toEqual(['a', 'b', 'c']);
+    expect(layout.positions.size).toBe(3);
+    expect(layout.componentCount).toBe(1);
+    expect(layout.positions.get('b')?.degree).toBe(2);
+    expect(layout.positions.has('isolated')).toBe(false);
+  });
+
+  it('is deterministic regardless of source ordering', () => {
+    const nodes = [node('a'), node('b'), node('c'), node('d')];
+    const routes = [route('ab', 'a', 'b'), route('cd', 'c', 'd')];
+    const first = buildNetgraphLayout(nodes, routes);
+    const second = buildNetgraphLayout([...nodes].reverse(), [...routes].reverse());
+
+    expect([...second.positions]).toEqual([...first.positions]);
+    expect(second.bounds).toEqual(first.bounds);
+  });
+
+  it('keeps all routes inside the selected age window', () => {
+    const now = 100_000_000;
+    const routes = [
+      route('recent', 'a', 'b', now - 14 * 60_000),
+      route('hour', 'b', 'c', now - 59 * 60_000),
+      route('old', 'c', 'd', now - 25 * 60 * 60_000),
+    ];
+
+    expect(routesInWindow(routes, now, '15m').map(({ id }) => id)).toEqual(['recent']);
+    expect(routesInWindow(routes, now, '1h').map(({ id }) => id)).toEqual(['recent', 'hour']);
+    expect(routesInWindow(routes, now, '24h').map(({ id }) => id)).toEqual(['recent', 'hour']);
+  });
+
+  it('distinguishes traffic updates from topology changes', () => {
+    const routes = [route('ab', 'a', 'b')];
+    const topology = routeTopology(routes);
+
+    expect(graphTopologyChanged(topology, [{ ...routes[0]!, packetCount: 2 }], 1)).toBe(false);
+    expect(graphTopologyChanged(topology, [route('ab', 'a', 'c')], 1)).toBe(true);
+    expect(graphTopologyChanged(topology, [], 2)).toBe(true);
+  });
+
+  it('keeps the complete 4,000-node and 7,000-link topology without a display cap', () => {
+    const nodes = Array.from({ length: 4_000 }, (_, index) => node(`node-${index}`, `Node ${index}`));
+    const routes = Array.from({ length: 7_000 }, (_, index) => route(
+      `route-${index}`,
+      `node-${index % nodes.length}`,
+      `node-${(index * 17 + 1) % nodes.length}`,
+    ));
+    const layout = buildNetgraphLayout(nodes, routes);
+
+    expect(layout.positions.size).toBe(4_000);
+    expect(layout.connectedNodeIDs.size).toBe(4_000);
+    expect(routesInWindow(routes, 2_000_000, '24h')).toHaveLength(7_000);
+  });
+});
