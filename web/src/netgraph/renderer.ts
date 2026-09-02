@@ -19,7 +19,6 @@ import {
 import type { MapChanges } from '../state';
 import {
   PACKET_KIND_COLORS,
-  decayedRouteTraffic,
   normalizePacketKind,
   packetSignature,
   payloadColor,
@@ -380,12 +379,22 @@ export class NetgraphRenderer implements ViewportProjector {
     const selected = this.selectedNodeID;
     const selectedRoutes = selected ? this.adjacentRouteIDs.get(selected) ?? new Set<string>() : new Set<string>();
     const groups = new Map<PacketKind, RouteV2[]>();
+    const recentGroups = new Map<string, { kind: PacketKind; ageBucket: number; intensity: number; routes: RouteV2[] }>();
     for (const route of this.visibleRoutes) {
       if (selectedRoutes.has(route.id)) continue;
       const kind = normalizePacketKind(route.lastKind);
       const routes = groups.get(kind) ?? [];
       routes.push(route);
       groups.set(kind, routes);
+      const age = Math.max(0, now - route.lastHeard);
+      if (age <= 60 * 60_000) {
+        const ageBucket = Math.min(3, Math.floor(age / (15 * 60_000)));
+        const intensity = clamp(Math.round(route.intensity), 0, 4);
+        const key = `${kind}:${ageBucket}:${intensity}`;
+        const recent = recentGroups.get(key) ?? { kind, ageBucket, intensity, routes: [] };
+        recent.routes.push(route);
+        recentGroups.set(key, recent);
+      }
     }
 
     context.save();
@@ -398,16 +407,12 @@ export class NetgraphRenderer implements ViewportProjector {
       context.stroke();
     }
 
-    for (const route of this.visibleRoutes) {
-      if (selectedRoutes.has(route.id)) continue;
-      const age = Math.max(0, now - route.lastHeard);
-      if (age > 60 * 60_000) continue;
-      const traffic = decayedRouteTraffic(route.traffic, route.lastHeard, now);
-      const alpha = (1 - age / (60 * 60_000)) * (selected ? 0.08 : 0.28);
+    for (const group of recentGroups.values()) {
       context.beginPath();
-      this.appendRoute(context, route);
-      context.strokeStyle = colorWithAlpha(PACKET_KIND_COLORS[normalizePacketKind(route.lastKind)], alpha);
-      context.lineWidth = 0.9 + Math.min(1.6, Math.log2(1 + traffic) * 0.32);
+      for (const route of group.routes) this.appendRoute(context, route);
+      const ageStrength = 1 - (group.ageBucket + 0.5) / 4;
+      context.strokeStyle = colorWithAlpha(PACKET_KIND_COLORS[group.kind], ageStrength * (selected ? 0.08 : 0.3));
+      context.lineWidth = 0.9 + group.intensity * 0.34;
       context.stroke();
     }
 
