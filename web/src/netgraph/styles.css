@@ -212,6 +212,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .packet-legend i[data-kind="Text"] { background: #ff75b5; }
 .packet-legend i[data-kind="ACK"] { background: #78cfff; }
 .packet-legend i[data-kind="Control"] { background: #a78bfa; }
+.packet-legend i[data-kind="inter-area"] { background: transparent; border-top: 1px dashed #76a8af; box-shadow: none; }
 
 .tooltip { position: absolute; z-index: 7; max-width: min(260px, calc(100vw - 24px)); padding: 7px 9px; border-radius: 8px; color: #efffff; font-size: 10px; pointer-events: none; transform: translate(10px, calc(-100% - 10px)); }
 .tooltip[hidden] { display: none; }

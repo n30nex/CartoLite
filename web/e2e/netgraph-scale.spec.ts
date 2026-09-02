@@ -1,18 +1,23 @@
 import { expect, test } from '@playwright/test';
 import type { StateV2 } from '../src/types';
+import { NETGRAPH_AREA_ANCHORS } from '../src/netgraph/areas';
 
 test('Netgraph keeps all 4,000 nodes and 7,000 links responsive', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'the scale timing gate runs once on desktop');
   const now = Date.now();
-  const nodes = Array.from({ length: 4_000 }, (_, index) => ({
-    id: `node-${index}`,
-    label: `Scale Node ${index.toString().padStart(4, '0')}`,
-    lat: 42 + index % 30 * 0.1,
-    lng: -130 + index % 80 * 0.5,
-    role: index % 5 === 0 ? 'companion' as const : 'repeater' as const,
-    observer: false,
-    lastSeen: now - index,
-  }));
+  const nodes = Array.from({ length: 4_000 }, (_, index) => {
+    const area = NETGRAPH_AREA_ANCHORS[index % NETGRAPH_AREA_ANCHORS.length]!;
+    const ring = Math.floor(index / NETGRAPH_AREA_ANCHORS.length);
+    return {
+      id: `node-${index}`,
+      label: `Scale Node ${index.toString().padStart(4, '0')}`,
+      lat: area.lat + (ring % 9 - 4) * 0.01,
+      lng: area.lng + (ring % 7 - 3) * 0.01,
+      role: index % 5 === 0 ? 'companion' as const : 'repeater' as const,
+      observer: false,
+      lastSeen: now - index,
+    };
+  });
   const routes = Array.from({ length: 7_000 }, (_, index) => ({
     id: `route-${index}`,
     fromId: `node-${index % nodes.length}`,
@@ -44,6 +49,7 @@ test('Netgraph keeps all 4,000 nodes and 7,000 links responsive', async ({ page 
   await expect(stage).toHaveAttribute('data-render-state', 'idle', { timeout: 15_000 });
   await expect(stage).toHaveAttribute('data-connected-nodes', '4000');
   await expect(stage).toHaveAttribute('data-visible-routes', '7000');
+  expect(Number(await stage.getAttribute('data-areas'))).toBe(NETGRAPH_AREA_ANCHORS.length);
   expect(Number(await stage.getAttribute('data-render-apply-ms')), 'topology indexing and layout should stay bounded').toBeLessThan(250);
   expect(Number(await stage.getAttribute('data-static-draw-ms')), 'drawing every link should not block interaction').toBeLessThan(100);
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.1 - 2026-09-02
+
+### Improved
+
+- Segment Netgraph nodes with a lightweight nearest-metro catalogue built from CartoLite's MeshMapper region centres plus geographic gaps visible in the public topology. Waterloo, Hamilton, Toronto, Montreal, Vancouver, Seattle, Portland, and the other named areas now retain separate clusters even when an intermittent long-distance route briefly joins their topology.
+- Spread area centres across a geography-shaped, screen-filling layout, give dense clusters substantially more room between nodes, and draw restrained area halos with IATA-style codes, city names, and node counts. Reset now fits those labelled areas instead of packing every connected component around one origin, while individual node names wait until detail zoom, hover, or selection.
+- Keep every historical and live route. Inter-area history is rendered as a quieter dashed link so it remains visible without visually merging local meshes; live packet cores, trails, handoffs, residue, and musical hops remain unchanged and travel across the full link.
+- Preserve established node coordinates during live updates, keep all area assignment in the browser, and leave public API schema v2 and its privacy boundary unchanged.
+
 ## 0.10.0 - 2026-09-02
 
 ### Added

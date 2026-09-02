@@ -82,6 +82,13 @@ interface ScreenNode {
   degree: number;
 }
 
+interface LabelRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface NetgraphRendererCallbacks {
   onNodeSelect(nodeID: string | null): void;
   onNodeHover(node: NodeV2 | null, point?: ScreenPoint): void;
@@ -183,6 +190,7 @@ export class NetgraphRenderer implements ViewportProjector {
     this.stage.dataset.totalRoutes = String(state.routes.length);
     this.stage.dataset.visibleRoutes = String(this.visibleRoutes.length);
     this.stage.dataset.components = String(this.layout.componentCount);
+    this.stage.dataset.areas = String(this.layout.areas.length);
     this.stage.dataset.renderApplyMs = (performance.now() - started).toFixed(1);
     this.stage.dataset.renderState = 'scheduled';
     if (!this.initializedView && this.layout.positions.size > 0) this.home(false);
@@ -312,6 +320,7 @@ export class NetgraphRenderer implements ViewportProjector {
     this.layout = extendNetgraphLayout(this.layout, [...this.nodesByID.values()], [...routes.values()]);
     this.stage.dataset.connectedNodes = String(this.layout.connectedNodeIDs.size);
     this.stage.dataset.components = String(this.layout.componentCount);
+    this.stage.dataset.areas = String(this.layout.areas.length);
     this.requestStaticDraw();
   }
 
@@ -385,8 +394,10 @@ export class NetgraphRenderer implements ViewportProjector {
     const context = this.graphContext;
     context.clearRect(0, 0, this.width, this.height);
     this.drawGrid(context);
+    this.drawAreaHalos(context);
     this.drawRoutes(context);
     this.drawNodes(context);
+    this.drawAreaLabels(context);
     this.stage.dataset.staticDrawMs = (performance.now() - started).toFixed(1);
     this.stage.dataset.renderState = 'idle';
   }
@@ -411,24 +422,105 @@ export class NetgraphRenderer implements ViewportProjector {
     context.restore();
   }
 
+  private visibleAreas(): Array<{ area: NetgraphLayout['areas'][number]; point: ScreenPoint; radius: number }> {
+    return this.layout.areas
+      .map((area) => ({ area, point: this.worldToScreen(area.x, area.y), radius: area.radius * this.scale }))
+      .filter(({ point, radius }) => (
+        point.x + radius >= -80 && point.x - radius <= this.width + 80
+        && point.y + radius >= -80 && point.y - radius <= this.height + 80
+      ));
+  }
+
+  private drawAreaHalos(context: CanvasRenderingContext2D): void {
+    context.save();
+    context.setLineDash([4, 7]);
+    for (const { point, radius } of this.visibleAreas()) {
+      if (radius < 5) continue;
+      const edge = Math.max(8, radius);
+      const glow = context.createRadialGradient(point.x, point.y, 0, point.x, point.y, edge);
+      glow.addColorStop(0, 'rgba(69, 220, 202, 0.055)');
+      glow.addColorStop(0.72, 'rgba(39, 139, 150, 0.022)');
+      glow.addColorStop(1, 'rgba(39, 139, 150, 0)');
+      context.beginPath();
+      context.arc(point.x, point.y, edge, 0, Math.PI * 2);
+      context.fillStyle = glow;
+      context.fill();
+      context.strokeStyle = 'rgba(110, 220, 217, 0.12)';
+      context.lineWidth = 0.8;
+      context.stroke();
+    }
+
+    context.restore();
+  }
+
+  private drawAreaLabels(context: CanvasRenderingContext2D): void {
+    context.save();
+    const occupied: LabelRect[] = [];
+    const labels = this.visibleAreas().sort((left, right) => right.area.nodeCount - left.area.nodeCount || left.area.code.localeCompare(right.area.code));
+    for (const { area, point, radius } of labels) {
+      if (area.nodeCount < 2 && this.scale < 0.16) continue;
+      const title = `${area.code} · ${area.name}`;
+      const detail = `${area.nodeCount.toLocaleString()} nodes`;
+      context.font = '750 11px Inter, ui-sans-serif, system-ui, sans-serif';
+      const titleWidth = context.measureText(title).width;
+      context.font = '600 8px Inter, ui-sans-serif, system-ui, sans-serif';
+      const detailWidth = context.measureText(detail).width;
+      const width = Math.max(titleWidth, detailWidth) + 16;
+      const height = 31;
+      const x = clamp(point.x - width / 2, 6, Math.max(6, this.width - width - 6));
+      let y = point.y - Math.max(22, radius) - height - 9;
+      if (y < 64) y = point.y + Math.max(22, radius) + 9;
+      const labelCenterX = x + width / 2;
+      const rect = { x, y, width, height };
+      if (x + width < 5 || x > this.width - 5 || y + height < 5 || y > this.height - 5) continue;
+      if (occupied.some((other) => rectanglesOverlap(rect, other, 5))) continue;
+      occupied.push(rect);
+
+      const connectorY = y < point.y ? y + height : y;
+      context.beginPath();
+      context.moveTo(labelCenterX, connectorY);
+      context.lineTo(point.x, y < point.y ? point.y - Math.max(8, radius) : point.y + Math.max(8, radius));
+      context.strokeStyle = 'rgba(111, 219, 215, 0.18)';
+      context.lineWidth = 0.8;
+      context.stroke();
+      roundRect(context, x, y, width, height, 7);
+      context.fillStyle = 'rgba(4, 17, 22, 0.88)';
+      context.fill();
+      context.strokeStyle = 'rgba(119, 225, 219, 0.2)';
+      context.stroke();
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.font = '750 11px Inter, ui-sans-serif, system-ui, sans-serif';
+      context.fillStyle = 'rgba(220, 250, 247, 0.92)';
+      context.fillText(title, labelCenterX, y + 11);
+      context.font = '600 8px Inter, ui-sans-serif, system-ui, sans-serif';
+      context.fillStyle = 'rgba(116, 158, 166, 0.92)';
+      context.fillText(detail, labelCenterX, y + 23);
+    }
+    context.restore();
+  }
+
   private drawRoutes(context: CanvasRenderingContext2D): void {
     const now = Date.now();
     const selected = this.selectedNodeID;
     const selectedRoutes = selected ? this.adjacentRouteIDs.get(selected) ?? new Set<string>() : new Set<string>();
-    const groups = new Map<PacketKind, RouteV2[]>();
-    const recentGroups = new Map<string, { kind: PacketKind; ageBucket: number; intensity: number; routes: RouteV2[] }>();
+    const groups = new Map<string, { kind: PacketKind; interArea: boolean; routes: RouteV2[] }>();
+    const recentGroups = new Map<string, { kind: PacketKind; ageBucket: number; intensity: number; interArea: boolean; routes: RouteV2[] }>();
     for (const route of this.visibleRoutes) {
       if (selectedRoutes.has(route.id)) continue;
       const kind = normalizePacketKind(route.lastKind);
-      const routes = groups.get(kind) ?? [];
-      routes.push(route);
-      groups.set(kind, routes);
+      const interArea = this.isInterAreaRoute(route);
+      const scope = interArea ? 'inter' : 'local';
+      const groupKey = `${kind}:${scope}`;
+      const group = groups.get(groupKey) ?? { kind, interArea, routes: [] };
+      group.routes.push(route);
+      groups.set(groupKey, group);
       const age = Math.max(0, now - route.lastHeard);
       if (age <= 60 * 60_000) {
         const ageBucket = Math.min(3, Math.floor(age / (15 * 60_000)));
         const intensity = clamp(Math.round(route.intensity), 0, 4);
-        const key = `${kind}:${ageBucket}:${intensity}`;
-        const recent = recentGroups.get(key) ?? { kind, ageBucket, intensity, routes: [] };
+        const key = `${kind}:${ageBucket}:${intensity}:${scope}`;
+        const recent = recentGroups.get(key) ?? { kind, ageBucket, intensity, interArea, routes: [] };
         recent.routes.push(route);
         recentGroups.set(key, recent);
       }
@@ -436,24 +528,27 @@ export class NetgraphRenderer implements ViewportProjector {
 
     context.save();
     context.lineCap = 'round';
-    for (const [kind, routes] of groups) {
+    for (const group of groups.values()) {
+      context.setLineDash(group.interArea ? [3, 5] : []);
       context.beginPath();
-      for (const route of routes) this.appendRoute(context, route);
-      context.strokeStyle = colorWithAlpha(PACKET_KIND_COLORS[kind], selected ? 0.045 : 0.16);
-      context.lineWidth = selected ? 0.65 : 0.8;
+      for (const route of group.routes) this.appendRoute(context, route);
+      context.strokeStyle = colorWithAlpha(PACKET_KIND_COLORS[group.kind], selected ? 0.035 : group.interArea ? 0.09 : 0.16);
+      context.lineWidth = selected ? 0.6 : group.interArea ? 0.7 : 0.8;
       context.stroke();
     }
 
     for (const group of recentGroups.values()) {
+      context.setLineDash(group.interArea ? [4, 6] : []);
       context.beginPath();
       for (const route of group.routes) this.appendRoute(context, route);
       const ageStrength = 1 - (group.ageBucket + 0.5) / 4;
-      context.strokeStyle = colorWithAlpha(PACKET_KIND_COLORS[group.kind], ageStrength * (selected ? 0.08 : 0.3));
-      context.lineWidth = 0.9 + group.intensity * 0.34;
+      context.strokeStyle = colorWithAlpha(PACKET_KIND_COLORS[group.kind], ageStrength * (selected ? 0.08 : group.interArea ? 0.19 : 0.3));
+      context.lineWidth = (group.interArea ? 0.72 : 0.9) + group.intensity * 0.34;
       context.stroke();
     }
 
     if (selected) {
+      context.setLineDash([]);
       for (const routeID of selectedRoutes) {
         const route = this.routesByID.get(routeID);
         if (!route || !this.visibleRouteIDs.has(route.id)) continue;
@@ -471,6 +566,12 @@ export class NetgraphRenderer implements ViewportProjector {
       }
     }
     context.restore();
+  }
+
+  private isInterAreaRoute(route: RouteV2): boolean {
+    const from = this.layout.positions.get(route.fromId);
+    const to = this.layout.positions.get(route.toId);
+    return Boolean(from && to && from.areaCode !== to.areaCode);
   }
 
   private appendRoute(context: CanvasRenderingContext2D, route: RouteV2): void {
@@ -529,7 +630,11 @@ export class NetgraphRenderer implements ViewportProjector {
     }
 
     const labelCandidates = nodeRecords
-      .filter(({ node, degree }) => node.id === this.selectedNodeID || node.id === this.hoveredNodeID || degree >= (this.scale < 0.7 ? 18 : this.scale < 1.3 ? 8 : 3))
+      .filter(({ node, degree }) => (
+        node.id === this.selectedNodeID
+        || node.id === this.hoveredNodeID
+        || this.scale >= 0.42 && degree >= (this.scale < 0.7 ? 18 : this.scale < 1.3 ? 8 : 3)
+      ))
       .sort((left, right) => Number(right.node.id === this.selectedNodeID) - Number(left.node.id === this.selectedNodeID) || right.degree - left.degree)
       .slice(0, this.scale < 0.7 ? 22 : this.scale < 1.3 ? 54 : 120);
     context.font = '600 10px Inter, ui-sans-serif, system-ui, sans-serif';
@@ -999,6 +1104,13 @@ function truncateLabel(label: string, length: number): string {
 function roundRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void {
   context.beginPath();
   context.roundRect(x, y, width, height, radius);
+}
+
+function rectanglesOverlap(left: LabelRect, right: LabelRect, gap: number): boolean {
+  return left.x < right.x + right.width + gap
+    && left.x + left.width + gap > right.x
+    && left.y < right.y + right.height + gap
+    && left.y + left.height + gap > right.y;
 }
 
 function modulo(value: number, modulus: number): number {
