@@ -1,18 +1,51 @@
 import { expect, test } from '@playwright/test';
 import type { StateV2 } from '../src/types';
-import { NETGRAPH_AREA_ANCHORS } from '../src/netgraph/areas';
+
+const CANADIAN_TEST_AREAS = [
+  { code: 'MVRD', name: 'Metro Vancouver', lat: 49.28173, lng: -123.11928 },
+  { code: 'CRD', name: 'Capital', lat: 48.43719, lng: -123.361624 },
+  { code: 'FVRD', name: 'Fraser Valley', lat: 49.023309, lng: -122.368297 },
+  { code: 'CVRD', name: 'Cowichan Valley', lat: 48.8359655, lng: -124.1502799 },
+  { code: 'CXRD', name: 'Comox Valley', lat: 49.671948, lng: -125.016697 },
+  { code: 'RDN', name: 'Nanaimo', lat: 49.164167, lng: -123.936389 },
+  { code: 'ACRD', name: 'Alberni-Clayoquot', lat: 49.1977734, lng: -125.4363938 },
+  { code: 'SRD', name: 'Strathcona', lat: 49.99008, lng: -125.26207 },
+  { code: 'RDMW', name: 'Mount Waddington', lat: 50.5901579, lng: -127.0872202 },
+  { code: 'SCRD', name: 'Sunshine Coast', lat: 49.7650789, lng: -123.7644501 },
+  { code: 'QRD', name: 'qathet', lat: 50.1526491, lng: -124.3939674 },
+  { code: 'SLRD', name: 'Squamish-Lillooet', lat: 49.694255, lng: -123.161963 },
+] as const;
+
+const CROSS_BORDER_TEST_AREAS = [
+  { lat: 46.1879, lng: -123.8313 },
+  { lat: 48.7519, lng: -122.4787 },
+  { lat: 42.8864, lng: -78.8784 },
+  { lat: 47.4235, lng: -120.3103 },
+  { lat: 44.0521, lng: -123.0868 },
+  { lat: 47.6588, lng: -117.426 },
+  { lat: 42.3265, lng: -122.8756 },
+  { lat: 47.0379, lng: -122.9007 },
+  { lat: 45.5152, lng: -122.6784 },
+  { lat: 46.2396, lng: -119.1006 },
+  { lat: 43.1566, lng: -77.6088 },
+  { lat: 47.6062, lng: -122.3321 },
+  { lat: 44.9429, lng: -123.0351 },
+  { lat: 43.0481, lng: -76.1474 },
+] as const;
+
+const SCALE_AREAS = [...CANADIAN_TEST_AREAS, ...CROSS_BORDER_TEST_AREAS];
 
 test('Netgraph keeps all 4,000 nodes and 7,000 links responsive', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'the scale timing gate runs once on desktop');
   const now = Date.now();
   const nodes = Array.from({ length: 4_000 }, (_, index) => {
-    const area = NETGRAPH_AREA_ANCHORS[index % NETGRAPH_AREA_ANCHORS.length]!;
-    const ring = Math.floor(index / NETGRAPH_AREA_ANCHORS.length);
+    const area = SCALE_AREAS[index % SCALE_AREAS.length]!;
+    const ring = Math.floor(index / SCALE_AREAS.length);
     return {
       id: `node-${index}`,
       label: `Scale Node ${index.toString().padStart(4, '0')}`,
-      lat: area.lat + (ring % 9 - 4) * 0.01,
-      lng: area.lng + (ring % 7 - 3) * 0.01,
+      lat: area.lat + (ring % 9 - 4) * 0.0001,
+      lng: area.lng + (ring % 7 - 3) * 0.0001,
       role: index % 5 === 0 ? 'companion' as const : 'repeater' as const,
       observer: false,
       lastSeen: now - index,
@@ -49,7 +82,10 @@ test('Netgraph keeps all 4,000 nodes and 7,000 links responsive', async ({ page 
   await expect(stage).toHaveAttribute('data-render-state', 'idle', { timeout: 15_000 });
   await expect(stage).toHaveAttribute('data-connected-nodes', '4000');
   await expect(stage).toHaveAttribute('data-visible-routes', '7000');
-  expect(Number(await stage.getAttribute('data-areas'))).toBe(NETGRAPH_AREA_ANCHORS.length);
+  const areaCount = Number(await stage.getAttribute('data-areas'));
+  expect(areaCount).toBeGreaterThan(20);
+  expect(areaCount).toBeLessThanOrEqual(193 + CROSS_BORDER_TEST_AREAS.length);
+  expect(Number(await stage.getAttribute('data-region-assignments'))).toBeGreaterThan(1_000);
   expect(Number(await stage.getAttribute('data-render-apply-ms')), 'topology indexing and layout should stay bounded').toBeLessThan(250);
   expect(Number(await stage.getAttribute('data-static-draw-ms')), 'drawing every link should not block interaction').toBeLessThan(100);
 

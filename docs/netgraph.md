@@ -6,7 +6,7 @@
 
 - Every public node that participates in at least one current 24-hour route. Isolated nodes remain available on the geographic map but are omitted because a topology graph has no edge on which to place them.
 - Every route inside the visitor's 15-minute, one-hour, six-hour, or 24-hour window. There is no display-count limit and no trunk aggregation.
-- Deterministic geographic-area packing. Connected nodes are assigned to the nearest centre in a small browser-local catalogue: the existing MeshMapper centres plus nearby metros needed for nodes outside those Canadian zones. Nodes are arranged with generous spacing around that fixed area anchor and high-degree nodes near the centre. Area labels show the place code, city name, and node count. This is a visual partition, not a claim about MQTT origin or RF propagation.
+- Deterministic geographic-area packing. Canadian nodes are resolved in a Web Worker against the published 193-leaf MeshCore.ca partition also used by the main map. Nodes outside that partition use a small browser-local nearby-metro catalogue. Nodes are arranged with generous spacing around the region seed and high-degree nodes near the centre. Area labels show the canonical on-air tag, region name, and node count. This is geographic grouping, not a claim about MQTT origin or RF propagation.
 - Intermittent inter-area links never merge city clusters. They remain individual, quieter dashed historical links, while their live animation and musical hops cross the full straight segment normally.
 - Straight topology links coloured by the latest sanitized packet kind. Selecting a node dims unrelated links and gives all active-window neighbour links a clear glow.
 - The existing public node details and newest-first neighbour list, plus an in-memory Finder that searches only downloaded public labels.
@@ -18,5 +18,7 @@ Static topology and transient traffic use separate Canvas2D layers. Subtle geogr
 ## Interaction and recovery
 
 Drag to pan, use the wheel or trackpad to zoom, double-click to move closer, and use Reset to fit all components. Finder and selection never send or persist queries. The page stores only its route-window choice under `cartolite:netgraph:v1`; audio continues to use `cartolite:sound:v2`.
+
+The content-hashed partition and registry are bundled with CartoLite, fetched from the same origin, and never receive a node, query, or visitor identifier. They load once before the first layout and are reused by the worker for recovery snapshots, so classification cannot visibly jump after the graph appears.
 
 On coarse-pointer devices, controls move to their own row, the inspector becomes a bounded bottom sheet, and the page requests a screen wake lock while visible. Returning from sleep, the back-forward cache, or an offline period replaces public state and reconnects the single SSE stream without creating parallel streams.

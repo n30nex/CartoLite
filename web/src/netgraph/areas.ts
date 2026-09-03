@@ -1,3 +1,8 @@
+import regionPartitionURL from '../assets/meshcore-canada-region-partition.geojson?url';
+import regionRegistryURL from '../assets/meshcore-canada-regions.json?url';
+import type { NodeV2 } from '../types';
+import type { RegionWorkerOutput } from '../regions';
+
 export interface NetgraphAreaAnchor {
   code: string;
   name: string;
@@ -5,9 +10,71 @@ export interface NetgraphAreaAnchor {
   lng: number;
 }
 
-// Lightweight visual anchors combine the bundled MeshMapper region centres
-// with nearby metros represented in the public topology. They segment the
-// graph without adding a geocoder, API field, or runtime GeoJSON parse.
+interface PendingResolution {
+  resolve(value: Map<string, NetgraphAreaAnchor>): void;
+  reject(reason: Error): void;
+}
+
+export class NetgraphRegionResolver {
+  private readonly worker: Worker;
+  private readonly pending = new Map<number, PendingResolution>();
+  private nextRequestID = 1;
+
+  constructor() {
+    this.worker = new Worker(new URL('../regionWorker.ts', import.meta.url), {
+      type: 'module',
+    });
+    this.worker.onmessage = (event: MessageEvent<RegionWorkerOutput>): void => {
+      const message = event.data;
+      if (message.type === 'error') {
+        const error = new Error(message.message);
+        if (message.requestId !== undefined) this.reject(message.requestId, error);
+        else this.rejectAll(error);
+        return;
+      }
+      if (message.type !== 'resolved') return;
+      const request = this.pending.get(message.requestId);
+      if (!request) return;
+      this.pending.delete(message.requestId);
+      request.resolve(new Map(message.assignments.map(({ nodeID, area }) => [nodeID, area])));
+    };
+    this.worker.onerror = (event): void => this.rejectAll(new Error(event.message));
+  }
+
+  resolve(nodes: readonly NodeV2[]): Promise<Map<string, NetgraphAreaAnchor>> {
+    const requestId = this.nextRequestID++;
+    return new Promise((resolve, reject) => {
+      this.pending.set(requestId, { resolve, reject });
+      this.worker.postMessage({
+        type: 'resolve',
+        requestId,
+        partitionUrl: regionPartitionURL,
+        registryUrl: regionRegistryURL,
+        nodes: nodes.map(({ id, lat, lng }) => ({ id, lat, lng })),
+      });
+    });
+  }
+
+  destroy(): void {
+    this.worker.terminate();
+    this.pending.clear();
+  }
+
+  private reject(requestId: number, error: Error): void {
+    const request = this.pending.get(requestId);
+    if (!request) return;
+    this.pending.delete(requestId);
+    request.reject(error);
+  }
+
+  private rejectAll(error: Error): void {
+    for (const request of this.pending.values()) request.reject(error);
+    this.pending.clear();
+  }
+}
+
+// These are fallback anchors for nodes outside the Canadian partition. Exact
+// Canadian assignments come from MeshCore.ca's national region dataset.
 export const NETGRAPH_AREA_ANCHORS: readonly NetgraphAreaAnchor[] = [
   { code: 'AST', name: 'Astoria', lat: 46.1879, lng: -123.8313 },
   { code: 'BLI', name: 'Bellingham', lat: 48.7519, lng: -122.4787 },
@@ -23,46 +90,6 @@ export const NETGRAPH_AREA_ANCHORS: readonly NetgraphAreaAnchor[] = [
   { code: 'SEA', name: 'Seattle', lat: 47.6062, lng: -122.3321 },
   { code: 'SLE', name: 'Salem', lat: 44.9429, lng: -123.0351 },
   { code: 'SYR', name: 'Syracuse', lat: 43.0481, lng: -76.1474 },
-  { code: 'XCM', name: 'Chatham-Kent', lat: 42.406519, lng: -82.188273 },
-  { code: 'XPH', name: 'Port Hope', lat: 43.972045, lng: -78.209874 },
-  { code: 'YBL', name: 'Campbell River', lat: 49.99008, lng: -125.26207 },
-  { code: 'YCD', name: 'Nanaimo', lat: 49.164167, lng: -123.936389 },
-  { code: 'YCM', name: 'St. Catharines', lat: 43.1594, lng: -79.2469 },
-  { code: 'YEG', name: 'Edmonton', lat: 53.551268, lng: -113.491265 },
-  { code: 'YGK', name: 'Kingston', lat: 44.582323, lng: -76.589399 },
-  { code: 'YHM', name: 'Hamilton', lat: 43.2557, lng: -79.8711 },
-  { code: 'YKA', name: 'Kamloops', lat: 50.686535, lng: -120.349611 },
-  { code: 'YKF', name: 'Waterloo', lat: 43.343679, lng: -80.670063 },
-  { code: 'YLK', name: 'Barrie', lat: 44.329265, lng: -80.186228 },
-  { code: 'YLW', name: 'Kelowna', lat: 49.888, lng: -119.496 },
-  { code: 'YML', name: 'La Malbaie', lat: 47.73137, lng: -70.240941 },
-  { code: 'YOO', name: 'Oshawa', lat: 43.8971, lng: -78.8658 },
-  { code: 'YOW', name: 'Ottawa–Gatineau', lat: 45.414367, lng: -75.678441 },
-  { code: 'YPA', name: 'Prince Albert', lat: 53.204373, lng: -105.761435 },
-  { code: 'YQA', name: 'Muskoka', lat: 45.54754, lng: -79.069812 },
-  { code: 'YQB', name: 'Quebec City', lat: 46.894912, lng: -71.406054 },
-  { code: 'YQF', name: 'Red Deer', lat: 52.278035, lng: -113.813442 },
-  { code: 'YQG', name: 'Windsor', lat: 42.3149, lng: -83.0364 },
-  { code: 'YQL', name: 'Lethbridge', lat: 49.684963, lng: -112.834123 },
-  { code: 'YQQ', name: 'Courtenay', lat: 49.671948, lng: -125.016697 },
-  { code: 'YQT', name: 'Thunder Bay', lat: 49.478633, lng: -88.448439 },
-  { code: 'YQY', name: 'Cape Breton Island', lat: 46.064667, lng: -60.728121 },
-  { code: 'YSE', name: 'Squamish', lat: 49.697058, lng: -123.152517 },
-  { code: 'YTA', name: 'Pembroke', lat: 45.69912, lng: -77.050993 },
-  { code: 'YTF', name: 'Saguenay Lac-st-jean', lat: 48.503553, lng: -71.618181 },
-  { code: 'YTR', name: 'Quinte West', lat: 44.157979, lng: -77.368694 },
-  { code: 'YUL', name: 'Montreal', lat: 45.506474, lng: -73.583082 },
-  { code: 'YVR', name: 'Vancouver', lat: 49.28173, lng: -123.11928 },
-  { code: 'YWG', name: 'Winnipeg', lat: 49.896517, lng: -97.130584 },
-  { code: 'YWS', name: 'Whistler', lat: 50.317004, lng: -122.789747 },
-  { code: 'YXS', name: 'Prince George', lat: 53.9171, lng: -122.7497 },
-  { code: 'YXU', name: 'London', lat: 42.992904, lng: -81.241093 },
-  { code: 'YXX', name: 'Abbotsford', lat: 49.023309, lng: -122.368297 },
-  { code: 'YYB', name: 'North Bay', lat: 46.3091, lng: -79.4608 },
-  { code: 'YYC', name: 'Calgary', lat: 51.016738, lng: -114.001493 },
-  { code: 'YYJ', name: 'Victoria', lat: 48.43719, lng: -123.361624 },
-  { code: 'YYY', name: 'Bas-St-Laurent-Gaspésie', lat: 48.609293, lng: -68.206893 },
-  { code: 'YYZ', name: 'Toronto', lat: 43.791241, lng: -79.301717 },
 ] as const;
 
 export function nearestNetgraphArea(lat: number, lng: number): NetgraphAreaAnchor {

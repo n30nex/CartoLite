@@ -14,11 +14,12 @@ API = "https://api.cloudflare.com/client/v4"
 RULE_REF = "cartolite_region_geojson_v1"
 RULE = {
     "ref": RULE_REF,
-    "description": "CartoLite content-hashed MeshMapper region GeoJSON",
+    "description": "CartoLite content-hashed MeshCore Canada region data",
     "expression": (
         '(http.host eq "carto.canadaverse.org" '
-        'and starts_with(http.request.uri.path, "/assets/meshmapper-canada-regions-") '
-        'and ends_with(http.request.uri.path, ".geojson") '
+        'and starts_with(http.request.uri.path, "/assets/meshcore-canada-region") '
+        'and (ends_with(http.request.uri.path, ".geojson") '
+        'or ends_with(http.request.uri.path, ".json")) '
         'and not starts_with(http.request.uri.path, "/api/") '
         'and http.request.uri.path ne "/healthz" '
         'and http.request.uri.path ne "/readyz")'

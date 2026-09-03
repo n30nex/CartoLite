@@ -4,25 +4,29 @@
 
 Topography and 3D use the public Mapterhorn TileJSON endpoint at `https://tiles.mapterhorn.com/tilejson.json`. MapLibre reads its 512-pixel Terrarium-encoded elevation tiles as a `raster-dem` source for hillshade and terrain geometry only; the CARTO vector style remains the sole basemap and there is no raster basemap fallback. The source is created lazily after a visitor enables Topography or 3D, keeps Mapterhorn attribution visible, and receives no CartoLite state or visitor identifier.
 
-## MeshMapper Canada regions
+## MeshCore Canada regions
 
-`web/src/assets/meshmapper-canada-regions.geojson` is an unsimplified snapshot of the 34 Canadian region boundaries shown by MeshMapper. Its inclusion in CartoLite was authorized by a MeshMapper and MeshCore Canada administrator. The repository does not claim ownership of the source boundaries.
+CartoLite snapshots the public national region partition and registry used by [MeshCore.ca's region map](https://meshcore.ca/config/map/). These two source files power both the optional Regions overlay and Netgraph's Canadian node grouping:
 
-- Source: MeshMapper's bounded zones endpoint, `https://meshmapper.net/?ajax=zones_bbox&minLat=41&maxLat=84&minLon=-141&maxLon=-52&exclude=`
-- Retrieved: 2026-08-29
-- Scope: the exact 34 zone codes whose MeshMapper country suffix is `CA`
-- Transformation: Leaflet `[latitude, longitude]` points are converted to GeoJSON `[longitude, latitude]`, rings are explicitly closed, and features are sorted by region code
-- Geometry: no coordinates are removed, rounded, or simplified
-- Snapshot: 46,449 closed-ring vertices; SHA-256 `6013c8879e44904df0e91389257a43e9d4250fa5e612d1b6002bcd20d7b6fa2c`
+- Partition source: `https://meshcore.ca/assets/regions/canada-region-partition.geojson`
+- Registry source: `https://meshcore.ca/assets/regions/canada-regions.json`
+- Retrieved: 2026-09-02
+- Registry version: `2026-07-18-mcc-reg-1.1-proposed`
+- Scope: 193 non-overlapping Canadian leaf regions
+- Geometry: 7,886 closed rings and 381,683 published cartographic vertices; CartoLite removes, rounds, and simplifies none of them
+- Partition: 8,869,764 bytes; SHA-256 `ff7ddd6ae9d08e46df00add98878fa2189a831d58fb37a7653a333b8d4159814`
+- Registry: 186,627 bytes; SHA-256 `e91e0d394b7863ec87d9fff63bb38586eb95bfc8ee541390e043da60c4dc5d0b`
 
-Vite emits this snapshot as a content-hashed `.geojson` asset. CartoLite serves it as `application/geo+json` with immutable origin caching, and the production Cloudflare rule may cache only the matching `/assets/meshmapper-canada-regions-*.geojson` path. The overlay remains lazy and is fetched only when a visitor enables Regions. A Web Worker validates the exact code set and closed rings, then passes all 46,449 source vertices and the 34 labels to a zero-tolerance MapLibre GeoJSON source. Boundaries, labels, routes, and the basemap therefore share one camera transform and repaint together. The visible MeshMapper attribution remains attached to the source. This runtime change alters neither the cached snapshot nor its coordinates.
+The partition derives region ownership from Statistics Canada 2021 Census geography under the Statistics Canada Open Licence. MeshCore community definitions, MeshMapper boundaries, and other inputs guide that deterministic ownership process as documented by the source project's [`NOTICE.txt`](https://meshcore.ca/assets/regions/NOTICE.txt) and [region standard](https://meshcore.ca/config/standard/). CartoLite preserves visible MeshCore Canada and Statistics Canada attribution.
 
-Some individual outlines may ultimately incorporate data from OpenStreetMap or geoBoundaries. Their upstream provenance and licensing may therefore also apply; this snapshot preserves the geometry served by MeshMapper rather than asserting a separate origin.
+Vite emits both files as content-hashed assets. They are served from CartoLite's own origin with immutable caching, so no node coordinates, search query, visitor identifier, or traffic data is sent to MeshCore.ca. A Web Worker validates the exact registry version, matching 193-tag sets, Polygon/MultiPolygon geometry, finite coordinates, and closed rings before use.
 
-Refresh the committed snapshot from the repository root with:
+The main map fetches the pair only when a visitor enables Regions, then gives the unchanged polygon geometry directly to a zero-tolerance native MapLibre source. Netgraph loads the pair once before its first layout, resolves each Canadian node by point-in-polygon against the same partition, and keeps nearby U.S. fallback anchors separate. Boundaries, labels, routes, and the basemap share one camera transform.
+
+Refresh both committed snapshots from the repository root with:
 
 ```sh
-node scripts/update-meshmapper-regions.mjs
+node scripts/update-meshcore-canada-regions.mjs
 ```
 
-The updater checks the complete expected code set, requires every code exactly once, validates centers, radii, and every polygon coordinate, and refuses to write if the source set changes. Set `MESHMAPPER_RETRIEVED_AT=YYYY-MM-DD` to record an explicit retrieval date for a reproducible refresh.
+The updater fails closed unless the registry version, 193-feature count, uniqueness, and partition/seed tag sets remain exact. After a reviewed upstream release changes those contracts, update the expected version and documentation in the same commit.

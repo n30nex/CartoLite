@@ -135,7 +135,7 @@ func TestDigitalAssetLinksUsesJSONContentType(t *testing.T) {
 }
 
 func TestRegionGeoJSONUsesGeographicContentType(t *testing.T) {
-	if contentType := staticContentType("assets/meshmapper-canada-regions.abc123.geojson"); contentType != "application/geo+json" {
+	if contentType := staticContentType("assets/meshcore-canada-region-partition.abc123.geojson"); contentType != "application/geo+json" {
 		t.Fatalf("unexpected region GeoJSON content type: %q", contentType)
 	}
 }

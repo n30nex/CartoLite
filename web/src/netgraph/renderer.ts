@@ -26,6 +26,7 @@ import {
   type PacketSignature,
 } from '../trafficVisuals';
 import type { EndpointV2, NodeRole, NodeV2, PacketView, RoutePacketView, RouteV2, StateV2 } from '../types';
+import type { NetgraphAreaAnchor } from './areas';
 import {
   buildNetgraphLayout,
   extendNetgraphLayout,
@@ -104,6 +105,7 @@ export class NetgraphRenderer implements ViewportProjector {
   private routesByID = new Map<string, RouteV2>();
   private adjacentRouteIDs = new Map<string, Set<string>>();
   private coordinateNodeIDs = new Map<string, string>();
+  private assignedAreas = new Map<string, NetgraphAreaAnchor>();
   private topology = new Map<string, string>();
   private layout: NetgraphLayout = buildNetgraphLayout([], []);
   private visibleRoutes: RouteV2[] = [];
@@ -175,9 +177,9 @@ export class NetgraphRenderer implements ViewportProjector {
 
     if (changes.reset || graphTopologyChanged(this.topology, changes.routes ?? [], state.routes.length)) {
       if (changes.reset || firstLayout) {
-        this.layout = buildNetgraphLayout(state.nodes, state.routes);
+        this.layout = buildNetgraphLayout(state.nodes, state.routes, this.assignedAreas);
       } else {
-        this.layout = extendNetgraphLayout(this.layout, state.nodes, state.routes);
+        this.layout = extendNetgraphLayout(this.layout, state.nodes, state.routes, this.assignedAreas);
       }
       this.topology = routeTopology(state.routes);
       this.rebuildAdjacency(state.routes);
@@ -223,6 +225,11 @@ export class NetgraphRenderer implements ViewportProjector {
 
   getNodes(): ReadonlyMap<string, NodeV2> {
     return this.nodesByID;
+  }
+
+  setAreaAssignments(assignments: ReadonlyMap<string, NetgraphAreaAnchor>): void {
+    this.assignedAreas = new Map(assignments);
+    this.stage.dataset.regionAssignments = String(this.assignedAreas.size);
   }
 
   connectedNodes(): NodeV2[] {
@@ -317,7 +324,12 @@ export class NetgraphRenderer implements ViewportProjector {
         traffic: 1,
       });
     }
-    this.layout = extendNetgraphLayout(this.layout, [...this.nodesByID.values()], [...routes.values()]);
+    this.layout = extendNetgraphLayout(
+      this.layout,
+      [...this.nodesByID.values()],
+      [...routes.values()],
+      this.assignedAreas,
+    );
     this.stage.dataset.connectedNodes = String(this.layout.connectedNodeIDs.size);
     this.stage.dataset.components = String(this.layout.componentCount);
     this.stage.dataset.areas = String(this.layout.areas.length);

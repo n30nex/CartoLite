@@ -63,8 +63,8 @@ jobs:
       - name: Unit tests
         working-directory: web
         run: npm test -- --run
-      - name: MeshMapper snapshot contract
-        run: node scripts/check-meshmapper-regions.mjs
+      - name: MeshCore Canada region contract
+        run: node scripts/check-meshcore-canada-regions.mjs
       - name: Production build
         working-directory: web
         run: npm run build
