@@ -1493,6 +1493,11 @@ export class LiveMap {
     const regionSpread = ['number', ['feature-state', 'activitySpread'], 0.5] as ExpressionSpecification;
     const regionLongHaul = ['number', ['feature-state', 'longHaul'], 0] as ExpressionSpecification;
     const regionActivityColor = regionActivityColorExpression();
+    const regionActivityLabel = [
+      'step', ['zoom'],
+      ['upcase', ['get', 'tag']],
+      6.2, ['concat', ['upcase', ['get', 'tag']], ' · ', ['get', 'label']],
+    ] as ExpressionSpecification;
     this.map.addLayer({
       id: REGION_ACTIVITY_LAYER_IDS[0],
       type: 'line',
@@ -1519,23 +1524,24 @@ export class LiveMap {
       source: REGION_ATTRIBUTION_SOURCE_ID,
       minzoom: 3,
       layout: {
-        'text-field': [
-          'step', ['zoom'],
-          ['upcase', ['get', 'tag']],
-          6.2, ['concat', ['upcase', ['get', 'tag']], ' · ', ['get', 'label']],
-        ],
+        'text-field': ['case', ['==', regionLongHaul, 1], ['concat', 'DX · ', regionActivityLabel], regionActivityLabel],
         'text-font': LOCAL_FONTS,
-        'text-size': ['interpolate', ['linear'], ['zoom'], 3, 9, 7, 10.2, 12, 12],
+        'text-size': [
+          '+',
+          ['interpolate', ['linear'], ['zoom'], 3, 9, 7, 10.2, 12, 12],
+          ['*', regionActivity, ['+', 2, ['*', regionLongHaul, 3]]],
+        ],
         'text-padding': 2,
+        'text-letter-spacing': 0.04,
         'text-allow-overlap': true,
         'text-ignore-placement': true,
         visibility: regionVisibility,
       },
       paint: {
         'text-color': regionActivityColor,
-        'text-halo-color': regionActivityColor,
-        'text-halo-width': ['+', 1, ['*', regionActivity, ['+', 1.6, ['*', regionSpread, 2.8], ['*', regionLongHaul, 1.2]]]],
-        'text-halo-blur': ['+', 0.25, ['*', regionActivity, ['+', 0.8, ['*', regionLongHaul, 0.7]]]],
+        'text-halo-color': '#02070b',
+        'text-halo-width': ['+', 1.4, ['*', regionActivity, ['+', 1.2, ['*', regionLongHaul, 0.8]]]],
+        'text-halo-blur': 0.35,
         'text-opacity': regionActivity,
       },
     });
