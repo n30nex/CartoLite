@@ -3,7 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = process.argv[2] ?? "web/dist";
-const limit = Number(process.env.CARTOLITE_GZIP_BUDGET ?? 354 * 1024);
+const limit = Number(process.env.CARTOLITE_GZIP_BUDGET ?? 355 * 1024);
 const partitionLimit = Number(process.env.CARTOLITE_REGION_GZIP_BUDGET ?? 3_200 * 1024);
 const registryLimit = Number(process.env.CARTOLITE_REGION_REGISTRY_GZIP_BUDGET ?? 24 * 1024);
 

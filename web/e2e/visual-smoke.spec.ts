@@ -718,6 +718,7 @@ test('pairs cross-region label pulses and highlights long-haul traffic', async (
   await expect(map).toHaveAttribute('data-last-region-traffic', 'long-haul');
   await expect.poll(() => map.getAttribute('data-active-region-labels').then(Number)).toBeGreaterThan(0);
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-last-packet-range', 'long-haul');
+  await page.screenshot({ path: testInfo.outputPath('cartolite-region-dx-departure.png') });
   const arrivalWait = routeDuration([{ routeId: 'ham-pec', from: source, to: destination }])
     + 500
     - (Date.now() - trafficReleasedAt);
