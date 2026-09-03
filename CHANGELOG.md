@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.3 - 2026-09-02
+
+### Corrected
+
+- Move live region-name pulses and their explicit **OUT**, **IN**, and **LOCAL** direction badges entirely to Netgraph. Cross-region events light the sending area at departure and the receiving area at final-hop arrival in the sanitized packet-kind colour; long-distance candidates retain the **DX** prefix and a stronger bounded area halo.
+- Keep the geographic map's optional MeshCore.ca Regions layer static. It no longer resolves node-to-region assignments, creates live label markers, changes polygon feature state, or shows OUT/IN cues. Its existing packet trail may still receive restrained distance-based long-haul emphasis.
+- Reuse Netgraph's already-loaded exact 193-region assignments and existing packet timeline, with no backend field, additional request, history, visitor storage, or public API change.
+- Add browser acceptance coverage proving regional direction cues appear in Netgraph and remain absent from the geographic map.
+
 ## 0.10.2 - 2026-09-02
 
 ### Added

@@ -470,8 +470,7 @@ async function start(): Promise<void> {
         const packet = liveStore.applyPacket(event);
         lastUpdate.textContent = formatUpdate(event.at);
         if (!packet) return;
-        const regionTraffic = liveMap.observeRegionTraffic(packet);
-        liveAnimator.add(packet, { longHaul: regionTraffic?.longHaul ?? potentialLongHaulPacket(packet) });
+        liveAnimator.add(packet, { longHaul: potentialLongHaulPacket(packet) });
         const scheduled = routeSonifier.play(packet);
         if (scheduled > 0) pulseSoundChrome(scheduled);
         pulseTrafficChrome(packet.payloadType);

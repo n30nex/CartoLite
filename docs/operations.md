@@ -1,8 +1,10 @@
 # Operations
 
-## v0.10.2 regional traffic and DX acceptance
+## v0.10.3 regional traffic placement acceptance
 
-Enable Regions and inject a same-region packet, a short cross-region packet, and a cross-region packet whose endpoints are at least 75 km apart. Require the local event to light one label, the cross-region events to light the sender at departure and receiver at final-hop arrival, and every pulse to use its sanitized packet-kind colour. The long-haul event must set `data-last-region-traffic="long-haul"`, identify both exact region codes, show the colour-faithful DX comet and marker, and retain exact straight route geometry. Verify the labels and borders remain fixed through pan, zoom, pitch, and resize; bursts retain a bounded cue count and do not produce a full-map flash or white saturation. Reduced motion must show a stable fading highlight. Hiding Regions must stop regional animation work while leaving the live packet, 45-second residue, synchronized sound, public schema v2, and existing privacy contract unchanged.
+On Netgraph, inject a same-region packet, a short cross-region packet, and a cross-region packet whose endpoints are at least 75 km apart. Require the local event to light one LOCAL area label, the cross-region events to light OUT at departure and IN at final-hop arrival, and every cue to use its sanitized packet-kind colour. The long-haul event must set `data-last-region-traffic="long-haul"`, expose both exact region codes, show the DX prefix and stronger bounded area halo, and retain exact straight topology geometry. Confirm both regional cues stay aligned through pan, zoom, and resize, burst cue growth remains bounded, and reduced motion presents a stable fading highlight.
+
+On the geographic map, enable Regions and inject the same traffic. Require the exact static boundaries and names to remain visible but confirm there are no live region markers, no LOCAL/OUT/IN label badges, and no live polygon feature-state animation. The regular packet trail, 45-second residue, synchronized sound, public schema v2, and privacy contract remain unchanged.
 
 The files under `deploy/` install monitoring and backup mechanics without storing credentials. Do not enable any unit until the exact host identity and root-only secret files are proven.
 

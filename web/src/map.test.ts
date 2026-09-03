@@ -35,8 +35,6 @@ import {
   nodeLabelPriority,
   packetEndpoints,
   packetMatchesFollow,
-  REGION_ACTIVITY_LAYER_IDS,
-  regionActivityColorExpression,
   ROUTE_FILTER_LAYER_IDS,
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
@@ -67,14 +65,6 @@ describe('map glyph labels', () => {
   });
 });
 
-describe('live region activity layers', () => {
-  it('keeps a dedicated boundary and label overlay mapped to every packet color', () => {
-    expect(REGION_ACTIVITY_LAYER_IDS).toEqual(['meshcore-region-live-lines']);
-    const expression = JSON.stringify(regionActivityColorExpression());
-    for (const color of Object.values(PACKET_KIND_COLORS)) expect(expression).toContain(color);
-    expect(expression).toContain('feature-state');
-  });
-});
 
 describe('route layer visibility', () => {
   it('keeps individual routes active at every zoom', () => {
