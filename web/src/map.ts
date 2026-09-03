@@ -1524,13 +1524,9 @@ export class LiveMap {
       source: REGION_ATTRIBUTION_SOURCE_ID,
       minzoom: 3,
       layout: {
-        'text-field': ['case', ['==', regionLongHaul, 1], ['concat', 'DX · ', regionActivityLabel], regionActivityLabel],
+        'text-field': regionActivityLabel,
         'text-font': LOCAL_FONTS,
-        'text-size': [
-          '+',
-          ['interpolate', ['linear'], ['zoom'], 3, 9, 7, 10.2, 12, 12],
-          ['*', regionActivity, ['+', 2, ['*', regionLongHaul, 3]]],
-        ],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 3, 11, 7, 13, 12, 15],
         'text-padding': 2,
         'text-letter-spacing': 0.04,
         'text-allow-overlap': true,
