@@ -276,14 +276,16 @@ describe('PacketAnimator motion preference lifecycle', () => {
     };
 
     const animator = new PacketAnimator(map, canvas);
-    animator.add(packet);
+    animator.add(packet, { longHaul: true });
     const state = animator as unknown as {
-      activeRoutes: Array<{ started: number }>;
+      activeRoutes: Array<{ started: number; longHaul: boolean }>;
       residue: unknown[];
     };
 
     expect(canvas.dataset.motionMode).toBe('animated');
+    expect(canvas.dataset.lastPacketRange).toBe('long-haul');
     expect(state.activeRoutes[0]?.started).toBe(500);
+    expect(state.activeRoutes[0]?.longHaul).toBe(true);
     expect(state.residue).toHaveLength(0);
 
     motionListener.current?.({ matches: true } as MediaQueryListEvent);

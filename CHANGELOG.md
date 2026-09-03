@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.2 - 2026-09-02
+
+### Added
+
+- Animate the exact MeshCore.ca labels and borders for live regional traffic. Same-region packets produce one restrained protocol-coloured pulse; cross-region packets bloom outward from the sending label and answer with an inward pulse at the receiving label when the final hop arrives.
+- Mark cross-region routes of at least 75 km as long-haul DX candidates. Their live packet keeps its packet-kind colour while gaining a brighter, wider comet, stronger endpoint cues, longer region glow, an extra bounded residue sparkle, and a compact moving `DX` marker.
+
+### Performance and accuracy
+
+- Reuse the lazy region worker and its validated 193-polygon dataset for incremental node-to-region assignment. Ordinary node updates resolve only moved or new coordinates, activity uses bounded feature-state cues, and bursts collapse to one strongest frame per active region instead of creating flashing overlays.
+- Keep route geometry, packet timing, audio articulation, public schema v2, and all privacy boundaries unchanged. DX indicates an observable cross-region geographic span, not proof of a particular propagation mechanism; reduced-motion mode replaces travel-like label motion with a stable fading highlight.
+
 ## 0.10.1 - 2026-09-02
 
 ### Improved

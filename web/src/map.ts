@@ -22,7 +22,18 @@ import {
   searchNodes,
   type NodeSearchResult,
 } from './nodeInspector';
-import { MESHCORE_REGION_VERSION, type RegionWorkerOutput } from './regions';
+import {
+  activeRegionFrames,
+  capRegionActivity,
+  planRegionTraffic,
+  type RegionActivityCue,
+  type RegionTrafficPlan,
+} from './regionActivity';
+import {
+  MESHCORE_REGION_VERSION,
+  type RegionAreaAssignment,
+  type RegionWorkerOutput,
+} from './regions';
 import { HistoricalRouteLayer, ROUTE_WEBGL_LAYER_ID } from './routeLayer';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
 import type { MapChanges } from './state';
@@ -66,6 +77,7 @@ const ROUTE_DETAIL_SOURCE_ID = 'route-details';
 const ROUTE_FOCUS_SOURCE_ID = 'route-focus';
 const ROUTE_TRUNK_WINDOW_STATE_ID = 'cartolite-trunk-window';
 export const REGION_LAYER_IDS = ['meshcore-region-lines', 'meshcore-region-labels'] as const;
+export const REGION_ACTIVITY_LAYER_IDS = ['meshcore-region-live-lines', 'meshcore-region-live-labels'] as const;
 export const HEATMAP_LAYER_IDS = PACKET_KINDS.map((kind) => `activity-heat-${kind.toLowerCase()}`);
 export const HEATMAP_LAYER_ID = HEATMAP_LAYER_IDS[0]!;
 export const HILLSHADE_LAYER_ID = 'terrain-hillshade';
@@ -110,6 +122,15 @@ const ROUTE_REGIONAL_MIN_ZOOM = 4.8;
 const ROUTE_REGIONAL_MAX_ZOOM = 6.5;
 const ROUTE_SOURCE_BUILD_BATCH = 256;
 export const ROUTE_LIVE_UPDATE_INTERVAL_MS = 8_000;
+
+export function regionActivityColorExpression(): ExpressionSpecification {
+  return [
+    'match',
+    ['number', ['feature-state', 'activityKind'], -1],
+    ...PACKET_KINDS.flatMap((kind, index) => [index, PACKET_KIND_COLORS[kind]]),
+    PACKET_KIND_COLORS.Other,
+  ] as ExpressionSpecification;
+}
 
 export function routeHydrationDelay(lastStartedAt: number, now: number): number {
   return Math.max(0, ROUTE_LIVE_UPDATE_INTERVAL_MS - Math.max(0, now - lastStartedAt));
@@ -188,6 +209,17 @@ export class LiveMap {
   private terrainLayersReady = false;
   private regionsLoaded = false;
   private regionsLoad?: Promise<void>;
+  private regionWorker?: Worker;
+  private regionMapPending?: { resolve(): void; reject(error: Error): void };
+  private regionAssignments = new Map<string, RegionAreaAssignment['area']>();
+  private regionLocations = new Map<string, string>();
+  private regionResolutionNodes = new Map<number, string[]>();
+  private regionRequestByNode = new Map<string, number>();
+  private nextRegionRequestID = 1;
+  private regionActivityCues: RegionActivityCue[] = [];
+  private pendingRegionPackets: Array<{ packet: PacketView; startedAt: number }> = [];
+  private activeRegionTags = new Set<string>();
+  private regionActivityFrame = 0;
   private selectedNodeID: string | null = null;
   private selectedNodeLabel = '';
   private neighborNodeIDs: string[] = [];
@@ -294,6 +326,7 @@ export class LiveMap {
         heatNodeIDs.add(node.id);
       }
       this.updateNodeFeatures(changes.nodes.map((node) => node.id));
+      if (this.regionWorker) this.requestRegionAssignments(changes.nodes);
     }
     if (changes?.routes?.length) {
       const routeIDs: string[] = [];
@@ -330,6 +363,11 @@ export class LiveMap {
     this.nodesByID = new Map(state.nodes.map((node) => [node.id, node]));
     this.routesByID = new Map(state.routes.map((route) => [route.id, route]));
     this.rebuildRouteIndex();
+    if (this.regionWorker) {
+      this.regionAssignments.clear();
+      this.regionLocations.clear();
+      this.requestRegionAssignments(state.nodes);
+    }
 
     const nodes = nodeCollection(state.nodes, now);
     (this.map.getSource(NODE_SOURCE_ID) as GeoJSONSource).setData(nodes);
@@ -829,7 +867,7 @@ export class LiveMap {
     this.container.dataset.regionsVisible = String(visible);
     if (!this.layersReady) return;
     let applied = false;
-    for (const layerID of REGION_LAYER_IDS) {
+    for (const layerID of [...REGION_LAYER_IDS, ...REGION_ACTIVITY_LAYER_IDS]) {
       if (!this.map.getLayer(layerID)) continue;
       this.map.setLayoutProperty(layerID, 'visibility', visible ? 'visible' : 'none');
       applied = true;
@@ -837,13 +875,37 @@ export class LiveMap {
     if (visible) {
       if (this.regionsLoaded) {
         if (applied) this.markRendering([REGION_ATTRIBUTION_SOURCE_ID]);
+        this.requestRegionActivityFrame();
         return;
       }
       this.container.dataset.renderState = 'rendering';
       this.ensureRegionsData();
       return;
     }
+    if (this.regionActivityFrame !== 0) {
+      window.cancelAnimationFrame(this.regionActivityFrame);
+      this.regionActivityFrame = 0;
+    }
     if (applied) this.markRendering();
+  }
+
+  observeRegionTraffic(packet: PacketView): RegionTrafficPlan | null {
+    if (packet.mode !== 'route' || packet.segments.length === 0) return null;
+    if (!this.regionsVisible && !this.regionsLoaded) return null;
+    const startedAt = performance.now();
+    if (this.layersReady) this.ensureRegionsData();
+    if (this.regionWorker) {
+      const endpoints = [packet.segments[0]!.from, packet.segments[packet.segments.length - 1]!.to];
+      this.requestRegionAssignments(endpoints);
+    }
+    const plan = planRegionTraffic(packet, this.regionAssignments, startedAt);
+    if (plan) {
+      this.addRegionTrafficPlan(plan);
+      return plan;
+    }
+    this.pendingRegionPackets.push({ packet, startedAt });
+    this.pendingRegionPackets = this.pendingRegionPackets.slice(-24);
+    return null;
   }
 
   destroy(): void {
@@ -854,6 +916,12 @@ export class LiveMap {
     if (this.routeHydrationTimer !== undefined) window.clearTimeout(this.routeHydrationTimer);
     if (this.directorTimer !== undefined) window.clearTimeout(this.directorTimer);
     if (this.clusterFlashTimer !== undefined) window.clearTimeout(this.clusterFlashTimer);
+    if (this.regionActivityFrame !== 0) window.cancelAnimationFrame(this.regionActivityFrame);
+    this.regionWorker?.terminate();
+    this.regionWorker = undefined;
+    this.regionMapPending = undefined;
+    this.regionResolutionNodes.clear();
+    this.regionRequestByNode.clear();
     this.closeInspector(false);
     document.removeEventListener('keydown', this.handleKeyDown);
     this.map.off('zoom', this.updateRouteRepresentation);
@@ -1422,6 +1490,57 @@ export class LiveMap {
       }
     });
 
+    const regionActivity = ['number', ['feature-state', 'activity'], 0] as ExpressionSpecification;
+    const regionSpread = ['number', ['feature-state', 'activitySpread'], 0.5] as ExpressionSpecification;
+    const regionLongHaul = ['number', ['feature-state', 'longHaul'], 0] as ExpressionSpecification;
+    const regionActivityColor = regionActivityColorExpression();
+    this.map.addLayer({
+      id: REGION_ACTIVITY_LAYER_IDS[0],
+      type: 'line',
+      source: REGION_ATTRIBUTION_SOURCE_ID,
+      layout: {
+        'line-cap': 'round',
+        'line-join': 'round',
+        visibility: regionVisibility,
+      },
+      paint: {
+        'line-color': regionActivityColor,
+        'line-width': [
+          '+',
+          0.7,
+          ['*', regionActivity, ['+', 2.2, ['*', regionSpread, 2.8], ['*', regionLongHaul, 1.4]]],
+        ],
+        'line-opacity': ['*', regionActivity, ['+', 0.42, ['*', regionLongHaul, 0.2]]],
+        'line-blur': ['+', 0.4, ['*', regionActivity, ['+', 1.4, ['*', regionLongHaul, 1.2]]]],
+      },
+    });
+    this.map.addLayer({
+      id: REGION_ACTIVITY_LAYER_IDS[1],
+      type: 'symbol',
+      source: REGION_ATTRIBUTION_SOURCE_ID,
+      minzoom: 3,
+      layout: {
+        'text-field': [
+          'step', ['zoom'],
+          ['upcase', ['get', 'tag']],
+          6.2, ['concat', ['upcase', ['get', 'tag']], ' · ', ['get', 'label']],
+        ],
+        'text-font': LOCAL_FONTS,
+        'text-size': ['interpolate', ['linear'], ['zoom'], 3, 9, 7, 10.2, 12, 12],
+        'text-padding': 2,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+        visibility: regionVisibility,
+      },
+      paint: {
+        'text-color': regionActivityColor,
+        'text-halo-color': regionActivityColor,
+        'text-halo-width': ['+', 1, ['*', regionActivity, ['+', 1.6, ['*', regionSpread, 2.8], ['*', regionLongHaul, 1.2]]]],
+        'text-halo-blur': ['+', 0.25, ['*', regionActivity, ['+', 0.8, ['*', regionLongHaul, 0.7]]]],
+        'text-opacity': regionActivity,
+      },
+    });
+
     this.applyFocusState();
     applyClusterVisibility(this.map, this.clustersVisible);
 
@@ -1460,7 +1579,15 @@ export class LiveMap {
   }
 
   private ensureRegionsData(): void {
-    if (this.regionsLoaded || this.regionsLoad) return;
+    if (this.regionsLoaded) {
+      if (!this.regionWorker) {
+        this.ensureRegionWorker();
+        this.regionLocations.clear();
+        this.requestRegionAssignments([...this.nodesByID.values()]);
+      }
+      return;
+    }
+    if (this.regionsLoad) return;
     if (!this.map.getSource(REGION_ATTRIBUTION_SOURCE_ID)) return;
     this.regionsLoad = this.loadRegionsData()
       .then(() => {
@@ -1478,35 +1605,9 @@ export class LiveMap {
   }
 
   private loadRegionsData(): Promise<void> {
-    const worker = new Worker(new URL('./regionWorker.ts', import.meta.url), {
-      type: 'module',
-      name: 'cartolite-regions'
-    });
+    const worker = this.ensureRegionWorker();
     return new Promise((resolve, reject) => {
-      let settled = false;
-      const fail = (error: Error): void => {
-        if (settled) return;
-        settled = true;
-        worker.terminate();
-        reject(error);
-      };
-      worker.onerror = (event): void => fail(new Error(event.message || 'regional worker failed'));
-      worker.onmessage = (event: MessageEvent<RegionWorkerOutput>): void => {
-        const message = event.data;
-        if (message.type === 'error') {
-          fail(new Error(message.message));
-          return;
-        }
-        if (message.type !== 'map' || settled) return;
-        const source = this.map.getSource(REGION_ATTRIBUTION_SOURCE_ID) as GeoJSONSource | undefined;
-        if (!source) return fail(new Error('regional source is unavailable'));
-        settled = true;
-        source.setData(message.data);
-        this.container.dataset.regionFeatureCount = String(message.data.features.length);
-        this.container.dataset.regionSourceRevision = MESHCORE_REGION_VERSION;
-        worker.terminate();
-        resolve();
-      };
+      this.regionMapPending = { resolve, reject };
       worker.postMessage({
         type: 'map',
         partitionUrl: regionPartitionURL,
@@ -1514,6 +1615,152 @@ export class LiveMap {
       });
     });
   }
+
+  private ensureRegionWorker(): Worker {
+    if (this.regionWorker) return this.regionWorker;
+    const worker = new Worker(new URL('./regionWorker.ts', import.meta.url), {
+      type: 'module',
+      name: 'cartolite-regions',
+    });
+    worker.onmessage = this.handleRegionWorkerMessage;
+    worker.onerror = (event): void => this.failRegionWorker(new Error(event.message || 'regional worker failed'));
+    this.regionWorker = worker;
+    return worker;
+  }
+
+  private handleRegionWorkerMessage = (event: MessageEvent<RegionWorkerOutput>): void => {
+    const message = event.data;
+    if (message.type === 'error') {
+      if (message.requestId !== undefined) {
+        const nodeIDs = this.regionResolutionNodes.get(message.requestId) ?? [];
+        for (const nodeID of nodeIDs) {
+          if (this.regionRequestByNode.get(nodeID) === message.requestId) {
+            this.regionRequestByNode.delete(nodeID);
+            this.regionLocations.delete(nodeID);
+          }
+        }
+        this.regionResolutionNodes.delete(message.requestId);
+        console.warn('Region assignment failed:', message.message);
+        return;
+      }
+      this.failRegionWorker(new Error(message.message));
+      return;
+    }
+    if (message.type === 'map') {
+      const pending = this.regionMapPending;
+      const source = this.map.getSource(REGION_ATTRIBUTION_SOURCE_ID) as GeoJSONSource | undefined;
+      if (!source) {
+        this.failRegionWorker(new Error('regional source is unavailable'));
+        return;
+      }
+      source.setData(message.data);
+      this.container.dataset.regionFeatureCount = String(message.data.features.length);
+      this.container.dataset.regionSourceRevision = MESHCORE_REGION_VERSION;
+      this.regionMapPending = undefined;
+      pending?.resolve();
+      this.requestRegionAssignments([...this.nodesByID.values()]);
+      return;
+    }
+
+    const nodeIDs = this.regionResolutionNodes.get(message.requestId);
+    if (!nodeIDs) return;
+    this.regionResolutionNodes.delete(message.requestId);
+    const currentIDs = new Set(nodeIDs.filter((nodeID) => this.regionRequestByNode.get(nodeID) === message.requestId));
+    for (const nodeID of currentIDs) {
+      this.regionRequestByNode.delete(nodeID);
+      this.regionAssignments.delete(nodeID);
+    }
+    for (const { nodeID, area } of message.assignments) {
+      if (currentIDs.has(nodeID)) this.regionAssignments.set(nodeID, area);
+    }
+    this.container.dataset.regionAssignmentCount = String(this.regionAssignments.size);
+    this.flushPendingRegionTraffic();
+  };
+
+  private failRegionWorker(error: Error): void {
+    this.regionMapPending?.reject(error);
+    this.regionMapPending = undefined;
+    this.regionWorker?.terminate();
+    this.regionWorker = undefined;
+    this.regionResolutionNodes.clear();
+    this.regionRequestByNode.clear();
+    this.regionLocations.clear();
+  }
+
+  private requestRegionAssignments(nodes: readonly EndpointV2[]): void {
+    const worker = this.regionWorker;
+    if (!worker) return;
+    const changed = nodes.filter((node) => {
+      const location = `${node.lat},${node.lng}`;
+      if (this.regionLocations.get(node.id) === location) return false;
+      this.regionLocations.set(node.id, location);
+      return true;
+    });
+    if (changed.length === 0) return;
+    const requestId = this.nextRegionRequestID++;
+    const nodeIDs = changed.map(({ id }) => id);
+    this.regionResolutionNodes.set(requestId, nodeIDs);
+    for (const nodeID of nodeIDs) this.regionRequestByNode.set(nodeID, requestId);
+    worker.postMessage({
+      type: 'resolve',
+      requestId,
+      partitionUrl: regionPartitionURL,
+      registryUrl: regionRegistryURL,
+      nodes: changed.map(({ id, lat, lng }) => ({ id, lat, lng })),
+    });
+  }
+
+  private addRegionTrafficPlan(plan: RegionTrafficPlan): void {
+    this.regionActivityCues = capRegionActivity([...this.regionActivityCues, ...plan.cues]);
+    this.container.dataset.lastRegionFrom = plan.source.code;
+    this.container.dataset.lastRegionTo = plan.destination.code;
+    this.container.dataset.lastRegionTraffic = plan.crossRegion ? (plan.longHaul ? 'long-haul' : 'cross-region') : 'local';
+    this.container.dataset.lastRegionDistanceKm = plan.distanceKm.toFixed(1);
+    if (this.regionsVisible) this.requestRegionActivityFrame();
+  }
+
+  private flushPendingRegionTraffic(): void {
+    if (this.pendingRegionPackets.length === 0) return;
+    const now = performance.now();
+    const pending = this.pendingRegionPackets;
+    this.pendingRegionPackets = [];
+    for (const item of pending) {
+      const plan = planRegionTraffic(item.packet, this.regionAssignments, item.startedAt);
+      if (plan) {
+        if (plan.cues.some((cue) => cue.startedAt + cue.duration > now)) this.addRegionTrafficPlan(plan);
+      } else if (now - item.startedAt < 9_000) {
+        this.pendingRegionPackets.push(item);
+      }
+    }
+  }
+
+  private requestRegionActivityFrame(): void {
+    if (!this.regionsVisible || this.regionActivityFrame !== 0 || this.regionActivityCues.length === 0) return;
+    this.regionActivityFrame = window.requestAnimationFrame(this.drawRegionActivity);
+  }
+
+  private drawRegionActivity = (now: number): void => {
+    this.regionActivityFrame = 0;
+    const source = this.map.getSource(REGION_ATTRIBUTION_SOURCE_ID);
+    if (!source) return;
+    this.regionActivityCues = this.regionActivityCues.filter((cue) => cue.startedAt + cue.duration > now);
+    const frames = activeRegionFrames(this.regionActivityCues, now, this.reducedMotion);
+    const nextTags = new Set(frames.keys());
+    for (const regionTag of this.activeRegionTags) {
+      if (!nextTags.has(regionTag)) this.map.removeFeatureState({ source: REGION_ATTRIBUTION_SOURCE_ID, id: regionTag });
+    }
+    for (const [regionTag, frame] of frames) {
+      this.map.setFeatureState({ source: REGION_ATTRIBUTION_SOURCE_ID, id: regionTag }, {
+        activity: frame.intensity,
+        activityKind: Math.max(0, PACKET_KINDS.indexOf(frame.kind)),
+        activitySpread: frame.spread,
+        longHaul: frame.longHaul ? 1 : 0,
+      });
+    }
+    this.activeRegionTags = nextTags;
+    this.container.dataset.activeRegionLabels = String(nextTags.size);
+    if (this.regionActivityCues.length > 0) this.requestRegionActivityFrame();
+  };
 
   private markRendering(sourceIDs?: readonly string[]): void {
     const epoch = ++this.renderEpoch;

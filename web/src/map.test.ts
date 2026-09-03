@@ -35,6 +35,8 @@ import {
   nodeLabelPriority,
   packetEndpoints,
   packetMatchesFollow,
+  REGION_ACTIVITY_LAYER_IDS,
+  regionActivityColorExpression,
   ROUTE_FILTER_LAYER_IDS,
   ROUTE_HOVER_LAYER_IDS,
   ROUTE_HIT_LAYER_ID,
@@ -62,6 +64,15 @@ describe('map glyph labels', () => {
     expect(mapGlyphLabel('🐺 Radio Côte-d’Or 📡')).toBe('Radio Côte-d’Or');
     expect(mapGlyphLabel('Краб Node')).toBe('Краб Node');
     expect(mapGlyphLabel('🦀📻')).toBe('MeshCore node');
+  });
+});
+
+describe('live region activity layers', () => {
+  it('keeps a dedicated boundary and label overlay mapped to every packet color', () => {
+    expect(REGION_ACTIVITY_LAYER_IDS).toEqual(['meshcore-region-live-lines', 'meshcore-region-live-labels']);
+    const expression = JSON.stringify(regionActivityColorExpression());
+    for (const color of Object.values(PACKET_KIND_COLORS)) expect(expression).toContain(color);
+    expect(expression).toContain('feature-state');
   });
 });
 

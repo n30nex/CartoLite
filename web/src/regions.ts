@@ -105,7 +105,7 @@ export function regionDataset(partitionValue: unknown, registryValue: unknown): 
       || !Array.isArray(candidate.geometry.coordinates)) {
       throw new Error(`region partition ${tag} is not polygon geometry`);
     }
-    const feature = candidate as unknown as RegionFeature;
+    const feature = { ...candidate, id: tag } as unknown as RegionFeature;
     for (const ring of polygonRings(feature.geometry)) {
       if (ring.length < 4 || !ring.every(validPosition) || !samePosition(ring[0]!, ring[ring.length - 1]!)) {
         throw new Error(`region partition ${tag} contains an invalid ring`);
