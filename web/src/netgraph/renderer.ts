@@ -16,6 +16,14 @@ import {
   segmentTravelWeights,
   type ScreenPoint,
 } from '../packetAnimator';
+import {
+  activeRegionFrames,
+  capRegionActivity,
+  planRegionTraffic,
+  type RegionActivityCue,
+  type RegionPulseFrame,
+  type RegionTrafficPlan,
+} from '../regionActivity';
 import type { MapChanges } from '../state';
 import {
   PACKET_KIND_COLORS,
@@ -58,6 +66,8 @@ interface ActiveRoute {
   duration: number;
   weights: number[];
   completedSegments: number;
+  crossRegion: boolean;
+  longHaul: boolean;
 }
 
 interface ObserverWake {
@@ -106,6 +116,8 @@ export class NetgraphRenderer implements ViewportProjector {
   private adjacentRouteIDs = new Map<string, Set<string>>();
   private coordinateNodeIDs = new Map<string, string>();
   private assignedAreas = new Map<string, NetgraphAreaAnchor>();
+  private regionAreasByTag = new Map<string, NetgraphAreaAnchor>();
+  private regionActivityCues: RegionActivityCue[] = [];
   private topology = new Map<string, string>();
   private layout: NetgraphLayout = buildNetgraphLayout([], []);
   private visibleRoutes: RouteV2[] = [];
@@ -279,6 +291,8 @@ export class NetgraphRenderer implements ViewportProjector {
     const now = performance.now();
     const color = payloadColor(packet.payloadType);
     const signature = packetSignature(packet.payloadType);
+    const regionTraffic = planRegionTraffic(packet, this.assignedAreas, now);
+    if (regionTraffic) this.addRegionTrafficPlan(regionTraffic);
     if (packet.mode === 'observer') {
       if (this.layout.positions.has(packet.observer.id)) {
         this.observerWakes.push({ endpoint: packet.observer, color, signature, started: now });
@@ -292,6 +306,8 @@ export class NetgraphRenderer implements ViewportProjector {
         duration: routeDuration(packet.segments),
         weights: segmentTravelWeights(packet.segments),
         completedSegments: 0,
+        crossRegion: regionTraffic?.crossRegion ?? false,
+        longHaul: regionTraffic?.longHaul ?? false,
       };
       if (this.reducedMotionQuery.matches) {
         for (const segment of packet.segments) this.addResidue(segment.routeId, segment.from.id, segment.to.id, color, signature, now);
@@ -300,6 +316,9 @@ export class NetgraphRenderer implements ViewportProjector {
       }
       this.stage.dataset.lastPacketKind = normalizePacketKind(packet.payloadType);
       this.stage.dataset.lastPacketHops = String(packet.segments.length);
+      this.stage.dataset.lastPacketRange = regionTraffic?.longHaul
+        ? 'long-haul'
+        : regionTraffic?.crossRegion ? 'cross-region' : 'local';
     }
     this.trimResidue();
     this.requestMotionFrame();
@@ -342,6 +361,8 @@ export class NetgraphRenderer implements ViewportProjector {
       this.activeRoutes = [];
       this.observerWakes = [];
       this.residue = [];
+      this.regionActivityCues = [];
+      this.stage.dataset.activeRegionLabels = '0';
       this.clearResidueCleanup();
       if (this.motionFrame) cancelAnimationFrame(this.motionFrame);
       this.motionFrame = 0;
@@ -702,13 +723,118 @@ export class NetgraphRenderer implements ViewportProjector {
     this.activeRoutes = this.activeRoutes.filter((route) => now - route.started <= route.duration + DESTINATION_BLOOM_MS);
     this.observerWakes = this.observerWakes.filter((wake) => now - wake.started <= 6_000);
     this.residue = this.residue.filter((item) => now - item.addedAt <= RESIDUE_MS);
+    this.regionActivityCues = this.regionActivityCues.filter((cue) => now < cue.startedAt + cue.duration);
     this.drawResidue(context, now);
     for (const route of this.activeRoutes) this.drawActiveRoute(context, route, now);
     for (const wake of this.observerWakes) this.drawObserverWake(context, wake, now);
+    const regionFrames = activeRegionFrames(this.regionActivityCues, now, this.reducedMotionQuery.matches);
+    const drawnRegionRoles = this.drawRegionActivity(context, regionFrames);
     this.stage.dataset.activePackets = String(this.activeRoutes.length + this.observerWakes.length);
     this.stage.dataset.residueCount = String(this.residue.length);
-    if (!this.reducedMotionQuery.matches && (this.activeRoutes.length || this.observerWakes.length || this.residue.length)) this.requestMotionFrame();
+    this.stage.dataset.activeRegionLabels = String(drawnRegionRoles.length);
+    this.stage.dataset.activeRegionRoles = drawnRegionRoles.join(',');
+    if (!this.reducedMotionQuery.matches && (
+      this.activeRoutes.length || this.observerWakes.length || this.residue.length || this.regionActivityCues.length
+    )) this.requestMotionFrame();
     else this.scheduleReducedMotionCleanup(now);
+  }
+
+  private addRegionTrafficPlan(plan: RegionTrafficPlan): void {
+    this.regionActivityCues = capRegionActivity([...this.regionActivityCues, ...plan.cues]);
+    this.regionAreasByTag.set(plan.source.code.toLowerCase(), plan.source);
+    this.regionAreasByTag.set(plan.destination.code.toLowerCase(), plan.destination);
+    this.stage.dataset.lastRegionFrom = plan.source.code;
+    this.stage.dataset.lastRegionTo = plan.destination.code;
+    this.stage.dataset.lastRegionTraffic = plan.longHaul ? 'long-haul' : plan.crossRegion ? 'cross-region' : 'local';
+    this.stage.dataset.lastRegionDistanceKm = plan.distanceKm.toFixed(1);
+  }
+
+  private drawRegionActivity(
+    context: CanvasRenderingContext2D,
+    frames: ReadonlyMap<string, RegionPulseFrame>,
+  ): string[] {
+    if (frames.size === 0) return [];
+    const drawnRoles: string[] = [];
+    context.save();
+    context.textBaseline = 'middle';
+    for (const [regionTag, frame] of frames) {
+      const area = this.layout.areas.find((candidate) => candidate.code.toLowerCase() === regionTag);
+      const identity = this.regionAreasByTag.get(regionTag);
+      if (!area || !identity) continue;
+      const point = this.worldToScreen(area.x, area.y);
+      const radius = Math.max(18, area.radius * this.scale);
+      if (
+        point.x + radius < -120 || point.x - radius > this.width + 120
+        || point.y + radius < -120 || point.y - radius > this.height + 120
+      ) continue;
+
+      const color = PACKET_KIND_COLORS[frame.kind];
+      const intensity = clamp(frame.intensity, 0, 1);
+      const ringRadius = radius + 8 + frame.spread * (frame.longHaul ? 28 : 18);
+      const glow = context.createRadialGradient(point.x, point.y, Math.max(2, radius * 0.2), point.x, point.y, ringRadius + 18);
+      glow.addColorStop(0, colorWithAlpha(color, intensity * (frame.longHaul ? 0.18 : 0.11)));
+      glow.addColorStop(0.64, colorWithAlpha(color, intensity * 0.07));
+      glow.addColorStop(1, colorWithAlpha(color, 0));
+      context.beginPath();
+      context.arc(point.x, point.y, ringRadius + 18, 0, Math.PI * 2);
+      context.fillStyle = glow;
+      context.fill();
+
+      context.beginPath();
+      context.arc(point.x, point.y, ringRadius, 0, Math.PI * 2);
+      context.strokeStyle = colorWithAlpha(color, intensity * (frame.longHaul ? 0.92 : 0.68));
+      context.lineWidth = frame.longHaul ? 2.2 : 1.5;
+      context.shadowColor = color;
+      context.shadowBlur = frame.longHaul ? 18 : 11;
+      context.stroke();
+      context.shadowBlur = 0;
+
+      const direction = frame.role === 'send' ? 'OUT' : frame.role === 'receive' ? 'IN' : 'LOCAL';
+      const title = `${frame.longHaul ? 'DX · ' : ''}${identity.code} · ${truncateLabel(identity.name, 30)}`;
+      context.font = '800 11px Inter, ui-sans-serif, system-ui, sans-serif';
+      const titleWidth = context.measureText(title).width;
+      context.font = '850 9px Inter, ui-sans-serif, system-ui, sans-serif';
+      const directionWidth = context.measureText(direction).width + 12;
+      const labelWidth = Math.min(Math.max(110, titleWidth + directionWidth + 24), Math.max(110, this.width - 12));
+      const labelHeight = 30;
+      const x = clamp(point.x - labelWidth / 2, 6, Math.max(6, this.width - labelWidth - 6));
+      let y = point.y - radius - labelHeight - 12;
+      if (y < 60) y = point.y + radius + 12;
+      y = clamp(y, 6, Math.max(6, this.height - labelHeight - 6));
+
+      context.beginPath();
+      context.moveTo(point.x, y < point.y ? y + labelHeight : y);
+      context.lineTo(point.x, y < point.y ? point.y - radius : point.y + radius);
+      context.strokeStyle = colorWithAlpha(color, intensity * 0.72);
+      context.lineWidth = 1;
+      context.stroke();
+
+      roundRect(context, x, y, labelWidth, labelHeight, 8);
+      context.fillStyle = `rgba(3, 13, 18, ${0.82 + intensity * 0.14})`;
+      context.fill();
+      context.strokeStyle = colorWithAlpha(color, 0.42 + intensity * 0.5);
+      context.lineWidth = frame.longHaul ? 1.5 : 1;
+      context.stroke();
+
+      const badgeX = x + labelWidth - directionWidth - 6;
+      roundRect(context, badgeX, y + 6, directionWidth, 18, 6);
+      context.fillStyle = colorWithAlpha(color, 0.14 + intensity * 0.2);
+      context.fill();
+      context.strokeStyle = colorWithAlpha(color, 0.38 + intensity * 0.42);
+      context.stroke();
+
+      context.textAlign = 'left';
+      context.font = '800 11px Inter, ui-sans-serif, system-ui, sans-serif';
+      context.fillStyle = colorWithAlpha(color, 0.72 + intensity * 0.28);
+      context.fillText(title, x + 9, y + labelHeight / 2);
+      context.textAlign = 'center';
+      context.font = '850 9px Inter, ui-sans-serif, system-ui, sans-serif';
+      context.fillStyle = colorWithAlpha(color, 0.84 + intensity * 0.16);
+      context.fillText(direction, badgeX + directionWidth / 2, y + labelHeight / 2 + 0.5);
+      drawnRoles.push(`${regionTag.toUpperCase()}:${direction}`);
+    }
+    context.restore();
+    return drawnRoles;
   }
 
   private drawResidue(context: CanvasRenderingContext2D, now: number): void {
@@ -788,14 +914,14 @@ export class NetgraphRenderer implements ViewportProjector {
     context.beginPath();
     context.moveTo(trail.tail.x, trail.tail.y);
     context.lineTo(head.x, head.y);
-    context.strokeStyle = colorWithAlpha(active.color, 0.16);
-    context.lineWidth = 12;
+    context.strokeStyle = colorWithAlpha(active.color, active.longHaul ? 0.28 : active.crossRegion ? 0.21 : 0.16);
+    context.lineWidth = active.longHaul ? 17 : active.crossRegion ? 14 : 12;
     context.stroke();
     context.beginPath();
     context.moveTo(trail.tail.x, trail.tail.y);
     context.lineTo(head.x, head.y);
     context.strokeStyle = gradient;
-    context.lineWidth = 3.1;
+    context.lineWidth = active.longHaul ? 4.5 : active.crossRegion ? 3.7 : 3.1;
     context.stroke();
     const sparkCount = this.lowPowerQuery.matches ? 2 : 3;
     for (let index = 1; index <= sparkCount; index += 1) {
@@ -807,7 +933,7 @@ export class NetgraphRenderer implements ViewportProjector {
       context.fill();
     }
     context.beginPath();
-    context.arc(head.x, head.y, 7.5, 0, Math.PI * 2);
+    context.arc(head.x, head.y, active.longHaul ? 11 : active.crossRegion ? 9 : 7.5, 0, Math.PI * 2);
     context.fillStyle = colorWithAlpha(active.color, 0.18);
     context.fill();
     context.beginPath();
@@ -928,6 +1054,7 @@ export class NetgraphRenderer implements ViewportProjector {
     const expiries = [
       ...this.residue.map((item) => item.addedAt + RESIDUE_MS),
       ...this.observerWakes.map((wake) => wake.started + 6_000),
+      ...this.regionActivityCues.map((cue) => cue.startedAt + cue.duration),
     ];
     if (expiries.length === 0) return;
     const nextExpiry = Math.min(...expiries);
@@ -966,7 +1093,9 @@ export class NetgraphRenderer implements ViewportProjector {
     this.stage.dataset.viewScale = this.scale.toFixed(4);
     this.stage.dataset.viewCenter = `${this.centerX.toFixed(2)},${this.centerY.toFixed(2)}`;
     this.requestStaticDraw();
-    if (this.activeRoutes.length || this.observerWakes.length || this.residue.length) this.requestMotionFrame();
+    if (this.activeRoutes.length || this.observerWakes.length || this.residue.length || this.regionActivityCues.length) {
+      this.requestMotionFrame();
+    }
   }
 
   private animateView(centerX: number, centerY: number, scale: number): void {

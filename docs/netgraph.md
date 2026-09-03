@@ -13,7 +13,7 @@
 
 ## Live motion and sound
 
-Static topology and transient traffic use separate Canvas2D layers. Subtle geographic-area halos and labels are painted with the static graph and do not animate. A route packet travels hop by hop as a coloured core, tapered glow, sparks, relay handoff, destination shimmer, and 45-second sparkling residue. Both drawing and native Web Audio use the same distance-weighted hop timeline. Each segment crossing the viewport produces exactly one articulation after the visitor enables sound. Observer-only events may wake an existing graph node but never fabricate a link or sound.
+Static topology and transient traffic use separate Canvas2D layers. Subtle geographic-area halos and labels are painted with the static graph. Live regional cues belong only to Netgraph: a local packet briefly marks one area as LOCAL, while cross-region traffic pulses the sending label as OUT at departure and the receiving label as IN at final-hop arrival. Long-distance candidates add a DX prefix and stronger bounded halo without flashing the whole page. A route packet travels hop by hop as a coloured core, tapered glow, sparks, relay handoff, destination shimmer, and 45-second sparkling residue. Both drawing and native Web Audio use the same distance-weighted hop timeline. Each segment crossing the viewport produces exactly one articulation after the visitor enables sound. Observer-only events may wake an existing graph node but never fabricate a link or sound.
 
 ## Interaction and recovery
 

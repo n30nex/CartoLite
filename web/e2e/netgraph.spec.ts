@@ -49,6 +49,9 @@ test('Netgraph renders stable topology, inspection, and synchronized musical hop
   await expect.poll(() => page.locator('#sound-activity').getAttribute('data-scheduled').then(Number), { timeout: 6_000 }).toBe(4);
   expect(await page.evaluate(() => (window as unknown as { __netgraphOscillators: number }).__netgraphOscillators)).toBe(4);
   await expect(stage).toHaveAttribute('data-last-packet-hops', '4');
+  await expect(stage).toHaveAttribute('data-last-region-traffic', 'long-haul');
+  await expect.poll(() => stage.getAttribute('data-active-region-labels').then(Number), { timeout: 8_000 }).toBeGreaterThan(0);
+  await expect(stage).toHaveAttribute('data-active-region-roles', /OUT/);
   await expect.poll(() => canvasHasPixels(page, '#packet-canvas'), { timeout: 5_000 }).toBe(true);
 
   await page.locator('#find-button').click();
@@ -87,6 +90,59 @@ test('Netgraph renders stable topology, inspection, and synchronized musical hop
     expect(overflow).toBe(false);
   }
   expect(consoleErrors).toEqual([]);
+});
+
+test('Netgraph alone renders paired regional OUT and IN cues', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'the cue renderer uses one shared Canvas2D path');
+  const now = Date.now();
+  const source = { id: 'ham-node', label: 'Hamilton sender', role: 'repeater' as const, observer: false, lat: 43.243158, lng: -79.94833, lastSeen: now };
+  const destination = { id: 'pec-node', label: 'Prince Edward receiver', role: 'repeater' as const, observer: false, lat: 44.0, lng: -77.25, lastSeen: now };
+  const state: StateV2 = {
+    schemaVersion: 2,
+    bootId: 'netgraph-region-traffic',
+    seq: 0,
+    serverTime: now,
+    status: { feed: 'connected', activity: 'active', lastPacketAt: now, dropped: 0, version: 'test', gitSha: 'region-traffic' },
+    map: { center: [-78.6, 43.65], zoom: 6.2 },
+    nodes: [source, destination],
+    routes: [{ id: 'ham-pec', fromId: source.id, toId: destination.id, packetCount: 1, lastHeard: now, intensity: 1, lastKind: 'Text', traffic: 1 }],
+  };
+  const packet = {
+    seq: 1,
+    id: 'netgraph-region-dx-packet',
+    at: now,
+    payloadType: 'Text',
+    mode: 'route',
+    segments: [{ routeId: 'ham-pec', fromId: source.id, toId: destination.id }],
+  };
+  await page.route('**/api/state', (route) => route.fulfill({ json: state }));
+  await page.route('**/api/events**', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await route.fulfill({
+      contentType: 'text/event-stream',
+      body: `retry: 60000
+
+event: hello
+data: ${JSON.stringify({ seq: 0, bootId: state.bootId })}
+
+id: 1
+event: packet
+data: ${JSON.stringify(packet)}
+
+`,
+    });
+  });
+
+  await page.goto('/netgraph/');
+  const stage = page.locator('#netgraph-stage');
+  await expect(page.locator('#netgraph-app')).toHaveAttribute('data-loading', 'false', { timeout: 15_000 });
+  await expect(stage).toHaveAttribute('data-region-assignments', '2');
+  await expect(stage).toHaveAttribute('data-last-region-from', 'HAM');
+  await expect(stage).toHaveAttribute('data-last-region-to', 'PEC');
+  await expect(stage).toHaveAttribute('data-last-region-traffic', 'long-haul');
+  await expect.poll(() => stage.getAttribute('data-active-region-labels').then(Number), { timeout: 8_000 }).toBe(2);
+  await expect(stage).toHaveAttribute('data-active-region-roles', 'HAM:OUT,PEC:IN');
+  await page.screenshot({ path: testInfo.outputPath('netgraph-paired-region-cues.png') });
 });
 
 test('the map exposes Netgraph beside Labs', async ({ page }) => {

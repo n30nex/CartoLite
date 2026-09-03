@@ -663,8 +663,8 @@ test('keeps regions camera-locked and restores map controls', async ({ page }, t
   await expect(map).toHaveAttribute('data-region-source-revision', '2026-07-18-mcc-reg-1.1-proposed');
 });
 
-test('pairs cross-region label pulses and highlights long-haul traffic', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop', 'the shared MapLibre feature-state path is viewport independent');
+test('keeps regional OUT and IN labels off the geographic map', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'the map-only placement contract is viewport independent');
   test.setTimeout(45_000);
   const now = Date.now();
   const source = { id: 'ham-node', label: 'Hamilton sender', role: 'repeater' as const, observer: false, lat: 43.243158, lng: -79.94833, lastSeen: now };
@@ -710,21 +710,14 @@ test('pairs cross-region label pulses and highlights long-haul traffic', async (
   await page.goto('/');
   const map = page.locator('#map');
   await expect(map).toHaveAttribute('data-regions-loaded', 'true', { timeout: 20_000 });
-  await expect(map).toHaveAttribute('data-region-assignment-count', '2', { timeout: 20_000 });
   releaseTraffic();
-  await expect(map).toHaveAttribute('data-last-region-from', 'HAM');
-  await expect(map).toHaveAttribute('data-last-region-to', 'PEC');
-  await expect(map).toHaveAttribute('data-last-region-traffic', 'long-haul');
-  await expect.poll(() => map.getAttribute('data-active-region-labels').then(Number)).toBeGreaterThan(0);
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-last-packet-range', 'long-haul');
-  const senderLabel = page.locator('.region-live-label[data-role="send"]');
-  const receiverLabel = page.locator('.region-live-label[data-role="receive"]');
-  await expect(senderLabel).toContainText('DX · HAM · Hamilton');
-  await expect(receiverLabel).toContainText('DX · PEC · Prince Edward County', { timeout: 6_000 });
-  await expect(page.locator('.region-live-label')).toHaveCount(2);
-  await expect(map).toHaveAttribute('data-active-region-labels', '2');
+  await expect(page.locator('.region-live-label')).toHaveCount(0);
+  expect(await map.getAttribute('data-last-region-from')).toBeNull();
+  expect(await map.getAttribute('data-last-region-to')).toBeNull();
+  expect(await map.getAttribute('data-active-region-labels')).toBeNull();
   expect(styleErrors).toEqual([]);
-  await page.screenshot({ path: testInfo.outputPath('cartolite-region-dx.png') });
+  await page.screenshot({ path: testInfo.outputPath('cartolite-map-without-region-pulses.png') });
 });
 
 test('restores remembered sound as Tap to Resume without autoplay', async ({ page }, testInfo) => {
