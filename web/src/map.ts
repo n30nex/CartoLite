@@ -129,7 +129,7 @@ export function regionActivityColorExpression(): ExpressionSpecification {
     ['number', ['feature-state', 'activityKind'], -1],
     ...PACKET_KINDS.flatMap((kind, index) => [index, PACKET_KIND_COLORS[kind]]),
     PACKET_KIND_COLORS.Other,
-  ] as ExpressionSpecification;
+  ] as unknown as ExpressionSpecification;
 }
 
 export function routeHydrationDelay(lastStartedAt: number, now: number): number {

@@ -17,7 +17,11 @@ function endpoint(id: string, lat: number, lng: number): EndpointV2 {
   return { id, label: id, lat, lng };
 }
 
-function packet(from: EndpointV2, to: EndpointV2, payloadType = 'Trace'): RoutePacketView {
+function packet(
+  from: EndpointV2,
+  to: EndpointV2,
+  payloadType: RoutePacketView['payloadType'] = 'Trace',
+): RoutePacketView {
   return {
     seq: 1,
     id: 'packet-1',
@@ -47,7 +51,7 @@ describe('live region traffic planning', () => {
   });
 
   it('times a sending pulse at departure and receiving pulse at arrival', () => {
-    const view = packet(endpoint('ham-node', 43.24, -79.95), endpoint('wat-node', 43.46, -80.52), 'TextMessage');
+    const view = packet(endpoint('ham-node', 43.24, -79.95), endpoint('wat-node', 43.46, -80.52), 'Text');
     const plan = planRegionTraffic(view, regions, 2_000);
 
     expect(plan).toMatchObject({ crossRegion: true, longHaul: false });
