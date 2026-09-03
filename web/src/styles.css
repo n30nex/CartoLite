@@ -379,6 +379,23 @@ button { font: inherit; }
 .tooltip span { color: #92a6b7; font-size: 9px; text-transform: capitalize; }
 .tooltip[hidden] { display: none; }
 
+.region-live-marker { z-index: 5; pointer-events: none; }
+.region-live-label {
+  --region-live-color: #6fffe1;
+  padding: 5px 9px;
+  border: 1px solid var(--region-live-color);
+  border-radius: 999px;
+  color: var(--region-live-color);
+  background: rgba(2, 8, 12, 0.9);
+  box-shadow: 0 0 16px var(--region-live-color), inset 0 0 8px rgba(255, 255, 255, 0.08);
+  font: 700 11px/1.1 Inter, system-ui, sans-serif;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  will-change: opacity, transform;
+}
+.region-live-label[data-role="send"]::after { content: "  OUT"; font-size: 8px; opacity: 0.7; }
+.region-live-label[data-role="receive"]::after { content: "  IN"; font-size: 8px; opacity: 0.7; }
+
 .node-inspector-popup .maplibregl-popup-content {
   overflow: hidden;
   border: 1px solid rgba(123, 205, 209, 0.22);

@@ -71,7 +71,7 @@ const ROUTE_DETAIL_SOURCE_ID = 'route-details';
 const ROUTE_FOCUS_SOURCE_ID = 'route-focus';
 const ROUTE_TRUNK_WINDOW_STATE_ID = 'cartolite-trunk-window';
 export const REGION_LAYER_IDS = ['meshcore-region-lines', 'meshcore-region-labels'] as const;
-export const REGION_ACTIVITY_LAYER_IDS = ['meshcore-region-live-lines', 'meshcore-region-live-labels'] as const;
+export const REGION_ACTIVITY_LAYER_IDS = ['meshcore-region-live-lines'] as const;
 export const HEATMAP_LAYER_IDS = PACKET_KINDS.map((kind) => `activity-heat-${kind.toLowerCase()}`);
 export const HEATMAP_LAYER_ID = HEATMAP_LAYER_IDS[0]!;
 export const HILLSHADE_LAYER_ID = 'terrain-hillshade';
@@ -166,6 +166,11 @@ export interface TooltipSize {
   height: number;
 }
 
+interface RegionActivityMarker {
+  marker: maplibregl.Marker;
+  label: HTMLDivElement;
+}
+
 export class LiveMap {
   readonly map: maplibregl.Map;
   private lastState?: Readonly<StateV2>;
@@ -213,6 +218,8 @@ export class LiveMap {
   private regionActivityCues: RegionActivityCue[] = [];
   private regionActivityRuntime?: typeof import('./regionActivity');
   private regionActivityLoad?: Promise<void>;
+  private regionAreasByTag = new Map<string, RegionAreaAssignment['area']>();
+  private regionActivityMarkers = new Map<string, RegionActivityMarker>();
   private pendingRegionPackets: Array<{ packet: PacketView; startedAt: number }> = [];
   private activeRegionTags = new Set<string>();
   private regionActivityFrame = 0;
@@ -882,6 +889,7 @@ export class LiveMap {
       window.cancelAnimationFrame(this.regionActivityFrame);
       this.regionActivityFrame = 0;
     }
+    this.clearRegionActivityMarkers();
     if (applied) this.markRendering();
   }
 
@@ -916,6 +924,7 @@ export class LiveMap {
     if (this.directorTimer !== undefined) window.clearTimeout(this.directorTimer);
     if (this.clusterFlashTimer !== undefined) window.clearTimeout(this.clusterFlashTimer);
     if (this.regionActivityFrame !== 0) window.cancelAnimationFrame(this.regionActivityFrame);
+    this.clearRegionActivityMarkers();
     this.regionWorker?.terminate();
     this.regionWorker = undefined;
     this.regionMapPending = undefined;
@@ -1493,11 +1502,6 @@ export class LiveMap {
     const regionSpread = ['number', ['feature-state', 'activitySpread'], 0.5] as ExpressionSpecification;
     const regionLongHaul = ['number', ['feature-state', 'longHaul'], 0] as ExpressionSpecification;
     const regionActivityColor = regionActivityColorExpression();
-    const regionActivityLabel = [
-      'step', ['zoom'],
-      ['upcase', ['get', 'tag']],
-      6.2, ['concat', ['upcase', ['get', 'tag']], ' · ', ['get', 'label']],
-    ] as ExpressionSpecification;
     this.map.addLayer({
       id: REGION_ACTIVITY_LAYER_IDS[0],
       type: 'line',
@@ -1518,30 +1522,6 @@ export class LiveMap {
         'line-blur': ['+', 0.4, ['*', regionActivity, ['+', 1.4, ['*', regionLongHaul, 1.2]]]],
       },
     });
-    this.map.addLayer({
-      id: REGION_ACTIVITY_LAYER_IDS[1],
-      type: 'symbol',
-      source: REGION_ATTRIBUTION_SOURCE_ID,
-      minzoom: 3,
-      layout: {
-        'text-field': regionActivityLabel,
-        'text-font': LOCAL_FONTS,
-        'text-size': ['interpolate', ['linear'], ['zoom'], 3, 11, 7, 13, 12, 15],
-        'text-padding': 2,
-        'text-letter-spacing': 0.04,
-        'text-allow-overlap': true,
-        'text-ignore-placement': true,
-        visibility: regionVisibility,
-      },
-      paint: {
-        'text-color': regionActivityColor,
-        'text-halo-color': '#02070b',
-        'text-halo-width': ['+', 1.4, ['*', regionActivity, ['+', 1.2, ['*', regionLongHaul, 0.8]]]],
-        'text-halo-blur': 0.35,
-        'text-opacity': regionActivity,
-      },
-    });
-
     this.applyFocusState();
     applyClusterVisibility(this.map, this.clustersVisible);
 
@@ -1716,6 +1696,8 @@ export class LiveMap {
     const runtime = this.regionActivityRuntime;
     if (!runtime) return;
     this.regionActivityCues = runtime.capRegionActivity([...this.regionActivityCues, ...plan.cues]);
+    this.regionAreasByTag.set(plan.source.code.toLowerCase(), plan.source);
+    this.regionAreasByTag.set(plan.destination.code.toLowerCase(), plan.destination);
     this.container.dataset.lastRegionFrom = plan.source.code;
     this.container.dataset.lastRegionTo = plan.destination.code;
     this.container.dataset.lastRegionTraffic = plan.crossRegion ? (plan.longHaul ? 'long-haul' : 'cross-region') : 'local';
@@ -1763,7 +1745,10 @@ export class LiveMap {
     const frames = runtime.activeRegionFrames(this.regionActivityCues, now, this.reducedMotion);
     const nextTags = new Set(frames.keys());
     for (const regionTag of this.activeRegionTags) {
-      if (!nextTags.has(regionTag)) this.map.removeFeatureState({ source: REGION_ATTRIBUTION_SOURCE_ID, id: regionTag });
+      if (nextTags.has(regionTag)) continue;
+      this.map.removeFeatureState({ source: REGION_ATTRIBUTION_SOURCE_ID, id: regionTag });
+      this.regionActivityMarkers.get(regionTag)?.marker.remove();
+      this.regionActivityMarkers.delete(regionTag);
     }
     for (const [regionTag, frame] of frames) {
       this.map.setFeatureState({ source: REGION_ATTRIBUTION_SOURCE_ID, id: regionTag }, {
@@ -1772,11 +1757,38 @@ export class LiveMap {
         activitySpread: frame.spread,
         longHaul: frame.longHaul ? 1 : 0,
       });
+      const area = this.regionAreasByTag.get(regionTag);
+      if (!area) continue;
+      let item = this.regionActivityMarkers.get(regionTag);
+      if (!item) {
+        const root = document.createElement('div');
+        root.className = 'region-live-marker';
+        const label = document.createElement('div');
+        label.className = 'region-live-label';
+        root.append(label);
+        item = {
+          marker: new maplibregl.Marker({ element: root, anchor: 'center' })
+            .setLngLat([area.lng, area.lat])
+            .addTo(this.map),
+          label,
+        };
+        this.regionActivityMarkers.set(regionTag, item);
+      }
+      item.label.textContent = `${frame.longHaul ? 'DX · ' : ''}${area.code} · ${area.name}`;
+      item.label.dataset.role = frame.role;
+      item.label.style.setProperty('--region-live-color', payloadColor(frame.kind));
+      item.label.style.opacity = String(Math.min(1, 0.18 + frame.intensity * 0.82));
+      item.label.style.transform = `scale(${0.96 + frame.spread * 0.16 + (frame.longHaul ? 0.05 : 0)})`;
     }
     this.activeRegionTags = nextTags;
     this.container.dataset.activeRegionLabels = String(nextTags.size);
     if (this.regionActivityCues.length > 0) this.requestRegionActivityFrame();
   };
+
+  private clearRegionActivityMarkers(): void {
+    for (const { marker } of this.regionActivityMarkers.values()) marker.remove();
+    this.regionActivityMarkers.clear();
+  }
 
   private ensureRegionActivityRuntime(): void {
     if (this.regionActivityRuntime || this.regionActivityLoad) return;

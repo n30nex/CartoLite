@@ -723,6 +723,9 @@ test('pairs cross-region label pulses and highlights long-haul traffic', async (
     - (Date.now() - trafficReleasedAt);
   if (arrivalWait > 0) await page.waitForTimeout(arrivalWait);
   await expect(map).toHaveAttribute('data-active-region-labels', '2');
+  await expect(page.locator('.region-live-label')).toHaveCount(2);
+  await expect(page.locator('.region-live-label[data-role="send"]')).toContainText('DX · HAM · Hamilton');
+  await expect(page.locator('.region-live-label[data-role="receive"]')).toContainText('DX · PEC · Prince Edward County');
   expect(styleErrors).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('cartolite-region-dx.png') });
 });

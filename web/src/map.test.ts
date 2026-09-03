@@ -69,7 +69,7 @@ describe('map glyph labels', () => {
 
 describe('live region activity layers', () => {
   it('keeps a dedicated boundary and label overlay mapped to every packet color', () => {
-    expect(REGION_ACTIVITY_LAYER_IDS).toEqual(['meshcore-region-live-lines', 'meshcore-region-live-labels']);
+    expect(REGION_ACTIVITY_LAYER_IDS).toEqual(['meshcore-region-live-lines']);
     const expression = JSON.stringify(regionActivityColorExpression());
     for (const color of Object.values(PACKET_KIND_COLORS)) expect(expression).toContain(color);
     expect(expression).toContain('feature-state');
