@@ -61,6 +61,8 @@ describe('live region traffic planning', () => {
     expect(plan!.cues[0]).toMatchObject({ regionTag: 'ham', role: 'send', kind: 'Text', startedAt: 2_000 });
     expect(plan!.cues[1]).toMatchObject({ regionTag: 'wat', role: 'receive', kind: 'Text' });
     expect(plan!.cues[1]!.startedAt).toBeGreaterThan(plan!.cues[0]!.startedAt);
+    expect(plan!.cues[0]!.startedAt + plan!.cues[0]!.duration)
+      .toBe(plan!.cues[1]!.startedAt + plan!.cues[1]!.duration);
   });
 
   it('marks only cross-region packets over the observable distance threshold as long haul', () => {
@@ -72,7 +74,9 @@ describe('live region traffic planning', () => {
     expect(potentialLongHaulPacket(view)).toBe(true);
     expect(plan).toMatchObject({ crossRegion: true, longHaul: true });
     expect(plan?.cues).toHaveLength(2);
-    expect(plan?.cues.every((cue) => cue.duration === REGION_DX_PULSE_MS && cue.longHaul)).toBe(true);
+    expect(plan?.cues[0]!.duration).toBeGreaterThan(REGION_DX_PULSE_MS);
+    expect(plan?.cues[1]!.duration).toBe(REGION_DX_PULSE_MS);
+    expect(plan?.cues.every((cue) => cue.longHaul)).toBe(true);
 
     const sameRegion = packet(endpoint('ham-node', 43.24, -79.95), endpoint('ham-far-node', 44.1, -78.7));
     expect(packetEndpointDistanceKm(sameRegion)).toBeGreaterThan(LONG_HAUL_MIN_KM);

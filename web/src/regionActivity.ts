@@ -73,6 +73,8 @@ export function planRegionTraffic(
     };
   }
 
+  const arrivalDelay = routeDuration(route.segments);
+
   return {
     source,
     destination,
@@ -80,12 +82,12 @@ export function planRegionTraffic(
     longHaul,
     distanceKm,
     cues: [
-      { regionTag: sourceTag, kind, role: 'send', startedAt, duration, longHaul },
+      { regionTag: sourceTag, kind, role: 'send', startedAt, duration: duration + arrivalDelay, longHaul },
       {
         regionTag: destinationTag,
         kind,
         role: 'receive',
-        startedAt: startedAt + routeDuration(route.segments),
+        startedAt: startedAt + arrivalDelay,
         duration,
         longHaul,
       },
