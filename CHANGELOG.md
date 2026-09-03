@@ -5,7 +5,7 @@
 ### Added
 
 - Animate the exact MeshCore.ca labels and borders for live regional traffic. Same-region packets produce one restrained protocol-coloured pulse; cross-region packets bloom outward from the sending label, keep it present through transit, and answer with an inward pulse at the receiving label when the final hop arrives.
-- Mark cross-region routes of at least 75 km as long-haul DX candidates. Their live packet keeps its packet-kind colour while gaining a brighter, wider comet, stronger endpoint cues, longer region glow, an extra bounded residue sparkle, a compact moving `DX` marker, and MapLibre-anchored high-contrast region labels marked OUT and IN.
+- Mark cross-region routes of at least 75 km as long-haul DX candidates. Their live packet keeps its packet-kind colour while gaining a brighter, wider comet, stronger endpoint cues, a ten-second paired region glow after arrival, an extra bounded residue sparkle, a compact moving `DX` marker, and MapLibre-anchored high-contrast region labels marked OUT and IN.
 
 ### Performance and accuracy
 

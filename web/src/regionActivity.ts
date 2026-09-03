@@ -9,7 +9,7 @@ import type { PacketView, RoutePacketView } from './types';
 
 export const REGION_LOCAL_PULSE_MS = 3_200;
 export const REGION_CROSS_PULSE_MS = 3_800;
-export const REGION_DX_PULSE_MS = 5_200;
+export const REGION_DX_PULSE_MS = 10_000;
 export const MAX_REGION_ACTIVITY_CUES = 96;
 
 export type RegionPulseRole = 'local' | 'send' | 'receive';
