@@ -33,11 +33,12 @@ test('Netgraph renders stable topology, inspection, and synchronized musical hop
 
   await page.goto('/netgraph/');
   const stage = page.locator('#netgraph-stage');
-  await expect(page.locator('#netgraph-app')).toHaveAttribute('data-loading', 'false');
+  await expect(page.locator('#netgraph-app')).toHaveAttribute('data-loading', 'false', { timeout: 15_000 });
   await expect(stage).toHaveAttribute('data-render-state', 'idle');
   await expect(stage).toHaveAttribute('data-connected-nodes', '4');
   await expect(stage).toHaveAttribute('data-visible-routes', '4');
   await expect(stage).toHaveAttribute('data-areas', /[2-9]/);
+  expect(Number(await stage.getAttribute('data-region-assignments'))).toBeGreaterThan(0);
   await expect(page.locator('#area-count')).not.toHaveText('0');
   await expect(page.locator('#graph-canvas')).toBeVisible();
   await expect.poll(() => canvasHasPixels(page, '#graph-canvas')).toBe(true);

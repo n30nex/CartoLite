@@ -1,5 +1,5 @@
 import type { NodeV2, RouteV2 } from '../types';
-import { nearestNetgraphArea } from './areas';
+import { nearestNetgraphArea, type NetgraphAreaAnchor } from './areas';
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const AREA_GEO_SCALE_X = 92;
@@ -59,7 +59,11 @@ export function routesInWindow(routes: readonly RouteV2[], now: number, window: 
   return routes.filter((route) => route.lastHeard >= cutoff);
 }
 
-export function buildNetgraphLayout(nodes: readonly NodeV2[], routes: readonly RouteV2[]): NetgraphLayout {
+export function buildNetgraphLayout(
+  nodes: readonly NodeV2[],
+  routes: readonly RouteV2[],
+  assignedAreas: ReadonlyMap<string, NetgraphAreaAnchor> = new Map(),
+): NetgraphLayout {
   const nodeByID = new Map(nodes.map((node) => [node.id, node]));
   const nodeIDs = new Set(nodes.map((node) => node.id));
   const sortKeys = new Map(nodes.map((node) => [node.id, `${node.label.toLowerCase()}\u0000${node.id}`]));
@@ -80,7 +84,7 @@ export function buildNetgraphLayout(nodes: readonly NodeV2[], routes: readonly R
   const areaByCode = new Map<string, AreaDraft>();
   for (const id of [...connectedNodeIDs].sort((left, right) => compareSortKey(sortKeys, left, right))) {
     const node = nodeByID.get(id)!;
-    const anchor = nearestNetgraphArea(node.lat, node.lng);
+    const anchor = assignedAreas.get(id) ?? nearestNetgraphArea(node.lat, node.lng);
     let area = areaByCode.get(anchor.code);
     if (!area) {
       area = {
@@ -106,7 +110,7 @@ export function buildNetgraphLayout(nodes: readonly NodeV2[], routes: readonly R
       || compareSortKey(sortKeys, left, right)
     ));
     area.nodeCount = area.ids.length;
-    area.radius = Math.max(104, 44 + 34 * Math.sqrt(area.nodeCount));
+    area.radius = Math.max(132, 58 + 44 * Math.sqrt(area.nodeCount));
   }
   placeAreas(areaDrafts);
 
@@ -156,10 +160,11 @@ export function extendNetgraphLayout(
   previous: Readonly<NetgraphLayout>,
   nodes: readonly NodeV2[],
   routes: readonly RouteV2[],
+  assignedAreas: ReadonlyMap<string, NetgraphAreaAnchor> = new Map(),
 ): NetgraphLayout {
-  if (previous.positions.size === 0) return buildNetgraphLayout(nodes, routes);
+  if (previous.positions.size === 0) return buildNetgraphLayout(nodes, routes, assignedAreas);
 
-  const canonical = buildNetgraphLayout(nodes, routes);
+  const canonical = buildNetgraphLayout(nodes, routes, assignedAreas);
   const positions = new Map<string, NetgraphPosition>();
   const canonicalAreas = new Map(canonical.areas.map((area) => [area.code, area]));
   const previousAreas = new Map(previous.areas.map((area) => [area.code, area]));

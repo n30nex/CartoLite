@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { NodeV2, RouteV2 } from '../types';
-import { EXPECTED_REGION_CODES } from '../regions';
 import { NETGRAPH_AREA_ANCHORS, nearestNetgraphArea } from './areas';
 import { buildNetgraphLayout, extendNetgraphLayout, graphTopologyChanged, routesInWindow, routeTopology } from './layout';
 
@@ -13,17 +12,11 @@ function route(id: string, fromId: string, toId: string, lastHeard = 2_000_000):
 }
 
 describe('netgraph layout', () => {
-  it('includes every MeshMapper region plus metro anchors for gaps in that snapshot', () => {
+  it('keeps distinct fallback metro anchors for nodes outside the Canadian partition', () => {
     const codes = NETGRAPH_AREA_ANCHORS.map(({ code }) => code);
     expect(new Set(codes).size).toBe(codes.length);
-    for (const code of EXPECTED_REGION_CODES) expect(codes).toContain(code);
-    expect(nearestNetgraphArea(43.36, -80.31)).toMatchObject({ code: 'YKF', name: 'Waterloo' });
-    expect(nearestNetgraphArea(43.68, -79.39)).toMatchObject({ code: 'YYZ', name: 'Toronto' });
-    expect(nearestNetgraphArea(43.243158, -79.94833)).toMatchObject({ code: 'YHM', name: 'Hamilton' });
-    expect(nearestNetgraphArea(43.22294, -79.92149)).toMatchObject({ code: 'YHM', name: 'Hamilton' });
     expect(nearestNetgraphArea(47.51, -121.99)).toMatchObject({ code: 'SEA', name: 'Seattle' });
     expect(nearestNetgraphArea(45.5, -122.5)).toMatchObject({ code: 'PDX', name: 'Portland' });
-    expect(NETGRAPH_AREA_ANCHORS.find(({ code }) => code === 'YYY')?.name).toBe('Bas-St-Laurent-Gaspésie');
   });
 
   it('lays out every connected node and excludes only isolated nodes', () => {
@@ -96,18 +89,24 @@ describe('netgraph layout', () => {
       node('toronto', 'Toronto node', 43.68, -79.39),
       node('scarborough', 'Scarborough node', 43.77, -79.25),
     ];
+    const assignedAreas = new Map([
+      ['waterloo', { code: 'WAT', name: 'Waterloo', lat: 43.4643, lng: -80.5204 }],
+      ['cambridge', { code: 'WAT', name: 'Waterloo', lat: 43.4643, lng: -80.5204 }],
+      ['toronto', { code: 'TOR', name: 'Toronto', lat: 43.6532, lng: -79.3832 }],
+      ['scarborough', { code: 'TOR', name: 'Toronto', lat: 43.6532, lng: -79.3832 }],
+    ]);
     const layout = buildNetgraphLayout(nodes, [
       route('waterloo-local', 'waterloo', 'cambridge'),
       route('toronto-local', 'toronto', 'scarborough'),
       route('ducting', 'cambridge', 'toronto'),
-    ]);
+    ], assignedAreas);
 
     expect(layout.componentCount).toBe(1);
-    expect(layout.areas.map(({ code }) => code)).toEqual(['YKF', 'YYZ']);
-    expect(layout.positions.get('cambridge')?.areaCode).toBe('YKF');
-    expect(layout.positions.get('toronto')?.areaCode).toBe('YYZ');
-    const waterloo = layout.areas.find(({ code }) => code === 'YKF')!;
-    const toronto = layout.areas.find(({ code }) => code === 'YYZ')!;
+    expect(layout.areas.map(({ code }) => code)).toEqual(['TOR', 'WAT']);
+    expect(layout.positions.get('cambridge')?.areaCode).toBe('WAT');
+    expect(layout.positions.get('toronto')?.areaCode).toBe('TOR');
+    const waterloo = layout.areas.find(({ code }) => code === 'WAT')!;
+    const toronto = layout.areas.find(({ code }) => code === 'TOR')!;
     expect(Math.hypot(waterloo.x - toronto.x, waterloo.y - toronto.y))
       .toBeGreaterThanOrEqual(waterloo.radius + toronto.radius + 85);
   });

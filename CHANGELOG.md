@@ -4,10 +4,11 @@
 
 ### Improved
 
-- Segment Netgraph nodes with a lightweight nearest-metro catalogue built from CartoLite's MeshMapper region centres plus geographic gaps visible in the public topology. Waterloo, Hamilton, Toronto, Montreal, Vancouver, Seattle, Portland, and the other named areas now retain separate clusters even when an intermittent long-distance route briefly joins their topology.
-- Spread area centres across a geography-shaped, screen-filling layout, give dense clusters substantially more room between nodes, and draw restrained area halos with IATA-style codes, city names, and node counts. Reset now fits those labelled areas instead of packing every connected component around one origin, while individual node names wait until detail zoom, hover, or selection.
+- Use the published MeshCore.ca national partition and registry as CartoLite's single Canadian region source. The main map now draws all 193 leaf regions, while Netgraph resolves each Canadian node against the exact same polygons instead of guessing from the nearest centre. TuxCat and HamGurnett now resolve to Hamilton; Cambridge, Kitchener, and Waterloo resolve to Waterloo.
+- Spread area centres across a geography-shaped, screen-filling layout, increase dense-cluster node spacing again, and draw restrained area halos with canonical on-air tags, region names, and node counts. Reset now fits those labelled areas instead of packing every connected component around one origin, while individual node names wait until detail zoom, hover, or selection.
 - Keep every historical and live route. Inter-area history is rendered as a quieter dashed link so it remains visible without visually merging local meshes; live packet cores, trails, handoffs, residue, and musical hops remain unchanged and travel across the full link.
 - Preserve established node coordinates during live updates, keep all area assignment in the browser, and leave public API schema v2 and its privacy boundary unchanged.
+- Keep the larger region partition and registry content-hashed, same-origin, worker-validated, and lazy. Netgraph loads them once when it starts; the map fetches them only when Regions is enabled. No location lookup, query, or node data is sent to MeshCore.ca.
 
 ## 0.10.0 - 2026-09-02
 

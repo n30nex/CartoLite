@@ -5,6 +5,7 @@ import { buildNodeInspectorModel, createNodeInspectorContent, relativeTime, role
 import { activityLabel, LiveStore } from '../state';
 import { normalizePacketKind } from '../trafficVisuals';
 import type { NodeV2, PacketView } from '../types';
+import { NetgraphRegionResolver } from './areas';
 import { type NetgraphWindow } from './layout';
 import { NetgraphRenderer } from './renderer';
 
@@ -79,6 +80,7 @@ async function start(): Promise<void> {
   let sonifier: RouteSonifier | undefined;
   let store: LiveStore | undefined;
   let feed: LiveFeed | undefined;
+  let areaResolver: NetgraphRegionResolver | undefined;
   let selectedNodeID: string | null = null;
   let streamConnected = false;
   let minuteTimer: number | undefined;
@@ -94,12 +96,15 @@ async function start(): Promise<void> {
       },
     });
     renderer = graph;
+    const regionResolver = new NetgraphRegionResolver();
+    areaResolver = regionResolver;
     const routeSonifier = new RouteSonifier(graph, stage);
     sonifier = routeSonifier;
     configureSound(routeSonifier);
     graph.setRouteWindow(settings.routeWindow);
 
     const initial = await fetchState();
+    graph.setAreaAssignments(await regionResolver.resolve(initial.nodes));
     const liveStore = new LiveStore(initial);
     store = liveStore;
 
@@ -190,6 +195,7 @@ async function start(): Promise<void> {
       },
       async recover() {
         const snapshot = await fetchState();
+        graph.setAreaAssignments(await regionResolver.resolve(snapshot.nodes));
         liveStore.replace(snapshot);
         return snapshot;
       },
@@ -256,6 +262,7 @@ async function start(): Promise<void> {
       liveStore.destroy();
       routeSonifier.destroy();
       graph.destroy();
+      regionResolver.destroy();
       releaseScreenAwake();
     }, { once: true });
   } catch (error) {
@@ -264,6 +271,7 @@ async function start(): Promise<void> {
     store?.destroy();
     sonifier?.destroy();
     renderer?.destroy();
+    areaResolver?.destroy();
     releaseScreenAwake();
     statusElement.dataset.state = 'offline';
     statusText.textContent = 'Unavailable';

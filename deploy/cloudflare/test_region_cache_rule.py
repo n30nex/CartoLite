@@ -8,8 +8,9 @@ class RegionCacheRuleTests(unittest.TestCase):
         expression = RULE["expression"]
         self.assertEqual(RULE["ref"], RULE_REF)
         self.assertIn('http.host eq "carto.canadaverse.org"', expression)
-        self.assertIn('/assets/meshmapper-canada-regions-', expression)
+        self.assertIn('/assets/meshcore-canada-region', expression)
         self.assertIn('.geojson', expression)
+        self.assertIn('.json', expression)
         for protected in ('/api/', '/healthz', '/readyz'):
             self.assertIn(protected, expression)
         self.assertTrue(RULE["action_parameters"]["cache"])

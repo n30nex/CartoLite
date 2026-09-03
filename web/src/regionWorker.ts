@@ -1,31 +1,58 @@
-import { regionMapData, type RegionWorkerOutput } from './regions';
-
-interface RegionWorkerRequest {
-  url: string;
-}
+import {
+  regionDataset,
+  resolveRegionAreas,
+  type RegionDataset,
+  type RegionWorkerOutput,
+  type RegionWorkerRequest,
+} from './regions';
 
 interface RegionWorkerScope {
   onmessage: ((event: MessageEvent<RegionWorkerRequest>) => void) | null;
   postMessage(message: RegionWorkerOutput): void;
-  close(): void;
 }
 
 const scope = globalThis as unknown as RegionWorkerScope;
+let cachedURLs = '';
+let cachedDataset: Promise<RegionDataset> | undefined;
 
 scope.onmessage = (event): void => {
-  void loadRegions(event.data.url);
+  void handleRequest(event.data);
 };
 
-async function loadRegions(url: string): Promise<void> {
+async function handleRequest(request: RegionWorkerRequest): Promise<void> {
   try {
-    const response = await fetch(url, { credentials: 'same-origin' });
-    if (!response.ok) throw new Error(`regional asset returned HTTP ${response.status}`);
-    scope.postMessage({ type: 'data', data: regionMapData(await response.json()) });
-    scope.close();
+    const dataset = await loadDataset(request.partitionUrl, request.registryUrl);
+    if (request.type === 'map') {
+      scope.postMessage({ type: 'map', data: dataset.mapData });
+      return;
+    }
+    scope.postMessage({
+      type: 'resolved',
+      requestId: request.requestId,
+      assignments: resolveRegionAreas(dataset, request.nodes),
+    });
   } catch (error) {
     scope.postMessage({
       type: 'error',
-      message: error instanceof Error ? error.message : 'regional asset processing failed'
+      requestId: request.type === 'resolve' ? request.requestId : undefined,
+      message: error instanceof Error ? error.message : 'regional asset processing failed',
     });
   }
+}
+
+function loadDataset(partitionUrl: string, registryUrl: string): Promise<RegionDataset> {
+  const urls = `${partitionUrl}\n${registryUrl}`;
+  if (cachedDataset && cachedURLs === urls) return cachedDataset;
+  cachedURLs = urls;
+  cachedDataset = Promise.all([
+    checkedJSON(partitionUrl, 'region partition'),
+    checkedJSON(registryUrl, 'region registry'),
+  ]).then(([partition, registry]) => regionDataset(partition, registry));
+  return cachedDataset;
+}
+
+async function checkedJSON(url: string, label: string): Promise<unknown> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
+  return response.json();
 }

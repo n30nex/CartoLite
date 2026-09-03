@@ -8,9 +8,12 @@ import type {
   Feature,
   FeatureCollection,
   LineString,
+  MultiPolygon,
+  Polygon,
   Point
 } from 'geojson';
-import canadaRegionsURL from './assets/meshmapper-canada-regions.geojson?url';
+import regionPartitionURL from './assets/meshcore-canada-region-partition.geojson?url';
+import regionRegistryURL from './assets/meshcore-canada-regions.json?url';
 import { cartoVectorRequestURL, cartoVectorStyle } from './basemap';
 import {
   buildNodeInspectorModel,
@@ -19,7 +22,7 @@ import {
   searchNodes,
   type NodeSearchResult,
 } from './nodeInspector';
-import type { RegionWorkerOutput } from './regions';
+import { MESHCORE_REGION_VERSION, type RegionWorkerOutput } from './regions';
 import { HistoricalRouteLayer, ROUTE_WEBGL_LAYER_ID } from './routeLayer';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
 import type { MapChanges } from './state';
@@ -51,17 +54,18 @@ export type RouteRepresentation = 'national-trunks' | 'regional-trunks' | 'indiv
 
 const EMPTY_POINTS: FeatureCollection<Point> = { type: 'FeatureCollection', features: [] };
 const EMPTY_LINES: FeatureCollection<LineString> = { type: 'FeatureCollection', features: [] };
+const EMPTY_REGIONS: FeatureCollection<Polygon | MultiPolygon> = { type: 'FeatureCollection', features: [] };
 const ACTIVITY_HEAT_SOURCE_ID = 'activity-heat-source';
 const NODE_SOURCE_ID = 'nodes';
 const NODE_CLUSTER_SOURCE_ID = 'node-clusters';
 const TERRAIN_SOURCE_ID = 'mapterhorn-dem';
 const TERRAIN_TILEJSON_URL = 'https://tiles.mapterhorn.com/tilejson.json';
-const REGION_ATTRIBUTION_SOURCE_ID = 'meshmapper-canada-regions';
+const REGION_ATTRIBUTION_SOURCE_ID = 'meshcore-canada-regions';
 const ROUTE_TRUNK_SOURCE_ID = 'route-trunks';
 const ROUTE_DETAIL_SOURCE_ID = 'route-details';
 const ROUTE_FOCUS_SOURCE_ID = 'route-focus';
 const ROUTE_TRUNK_WINDOW_STATE_ID = 'cartolite-trunk-window';
-export const REGION_LAYER_IDS = ['meshmapper-region-lines', 'meshmapper-region-labels'] as const;
+export const REGION_LAYER_IDS = ['meshcore-region-lines', 'meshcore-region-labels'] as const;
 export const HEATMAP_LAYER_IDS = PACKET_KINDS.map((kind) => `activity-heat-${kind.toLowerCase()}`);
 export const HEATMAP_LAYER_ID = HEATMAP_LAYER_IDS[0]!;
 export const HILLSHADE_LAYER_ID = 'terrain-hillshade';
@@ -72,7 +76,7 @@ export const ROUTE_FILTER_LAYER_IDS = [ROUTE_HIT_LAYER_ID] as const;
 export const SELECTED_NODE_LAYER_ID = 'selected-node';
 export const SELECTED_NODE_OUTER_LAYER_ID = 'selected-node-outer';
 export const NEIGHBOR_NODE_LAYER_ID = 'neighbor-nodes';
-export const MESHMAP_ATTRIBUTION = 'Canadian regions &copy; <a href="https://meshmapper.net/">MeshMapper</a>, used with permission';
+export const MESHCORE_REGION_ATTRIBUTION = 'Regions &copy; <a href="https://meshcore.ca/config/map/">MeshCore Canada</a> · Contains information licensed under the <a href="https://www.statcan.gc.ca/en/reference/licence">Statistics Canada Open Licence</a>';
 export const ROUTE_HOVER_LAYER_IDS = ['route-hover-glow', 'route-hover-core'] as const;
 const ROUTE_NATIONAL_LAYER_IDS = ['route-national-glow', 'route-national-core'] as const;
 const ROUTE_REGIONAL_LAYER_IDS = ['route-regional-glow', 'route-regional-core'] as const;
@@ -258,7 +262,7 @@ export class LiveMap {
     this.updateRouteRepresentation();
     this.map.addControl(new maplibregl.AttributionControl({
       compact: true,
-      customAttribution: MESHMAP_ATTRIBUTION
+      customAttribution: MESHCORE_REGION_ATTRIBUTION
     }), 'bottom-right');
     this.map.on('load', () => this.installLayers());
     this.map.on('zoom', this.updateRouteRepresentation);
@@ -1017,10 +1021,10 @@ export class LiveMap {
     if (this.hillshadeVisible || this.terrain3D) this.ensureTerrainLayers();
     this.map.addSource(REGION_ATTRIBUTION_SOURCE_ID, {
       type: 'geojson',
-      data: EMPTY_POINTS,
+      data: EMPTY_REGIONS,
       maxzoom: 12,
       tolerance: 0,
-      attribution: MESHMAP_ATTRIBUTION
+      attribution: MESHCORE_REGION_ATTRIBUTION
     });
 
     this.map.addSource(ACTIVITY_HEAT_SOURCE_ID, { type: 'geojson', data: EMPTY_POINTS, maxzoom: 14 });
@@ -1048,7 +1052,6 @@ export class LiveMap {
       id: REGION_LAYER_IDS[0],
       type: 'line',
       source: REGION_ATTRIBUTION_SOURCE_ID,
-      filter: ['==', ['get', 'kind'], 'boundary'],
       layout: {
         'line-cap': 'round',
         'line-join': 'round',
@@ -1066,9 +1069,12 @@ export class LiveMap {
       type: 'symbol',
       source: REGION_ATTRIBUTION_SOURCE_ID,
       minzoom: 5,
-      filter: ['==', ['get', 'kind'], 'label'],
       layout: {
-        'text-field': ['get', 'code'],
+        'text-field': [
+          'step', ['zoom'],
+          ['upcase', ['get', 'tag']],
+          7, ['concat', ['upcase', ['get', 'tag']], ' · ', ['get', 'label']]
+        ],
         'text-font': LOCAL_FONTS,
         'text-size': ['interpolate', ['linear'], ['zoom'], 5, 8, 9, 9.2, 13, 10.5],
         'text-padding': 8,
@@ -1491,17 +1497,21 @@ export class LiveMap {
           fail(new Error(message.message));
           return;
         }
-        if (message.type !== 'data' || settled) return;
+        if (message.type !== 'map' || settled) return;
         const source = this.map.getSource(REGION_ATTRIBUTION_SOURCE_ID) as GeoJSONSource | undefined;
         if (!source) return fail(new Error('regional source is unavailable'));
         settled = true;
         source.setData(message.data);
         this.container.dataset.regionFeatureCount = String(message.data.features.length);
-        this.container.dataset.regionSourceRevision = '1';
+        this.container.dataset.regionSourceRevision = MESHCORE_REGION_VERSION;
         worker.terminate();
         resolve();
       };
-      worker.postMessage({ url: canadaRegionsURL });
+      worker.postMessage({
+        type: 'map',
+        partitionUrl: regionPartitionURL,
+        registryUrl: regionRegistryURL,
+      });
     });
   }
 
