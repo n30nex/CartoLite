@@ -10,6 +10,7 @@
 ### Performance and accuracy
 
 - Reuse the lazy region worker and its validated 193-polygon dataset for incremental node-to-region assignment. Ordinary node updates resolve only moved or new coordinates, activity uses bounded feature-state cues, and bursts collapse to one strongest frame per active region instead of creating flashing overlays.
+- Retain at most 24 recent regional cues for 12 seconds during initial lazy loading, so a packet arriving as the page starts still receives its exact label handoff once assignment is ready rather than disappearing silently.
 - Pin GeoJSON working-tree and archive line endings to LF so the committed MeshCore.ca byte checksum remains reproducible on Windows and Linux manual build hosts.
 - Keep regional traffic logic in a lazy chunk and raise the aggregate multipage compressed-asset cap by only 4 KiB; the initial map JavaScript remains slightly smaller than the first implementation while the optional effect stays off the path until Regions is used.
 - Keep route geometry, packet timing, audio articulation, public schema v2, and all privacy boundaries unchanged. DX indicates an observable cross-region geographic span, not proof of a particular propagation mechanism; reduced-motion mode replaces travel-like label motion with a stable fading highlight.

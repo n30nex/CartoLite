@@ -887,8 +887,11 @@ export class LiveMap {
 
   observeRegionTraffic(packet: PacketView): RegionTrafficPlan | null {
     if (packet.mode !== 'route' || packet.segments.length === 0) return null;
-    if (!this.regionsVisible && !this.regionsLoaded) return null;
     const startedAt = performance.now();
+    if (!this.regionsVisible && !this.regionsLoaded) {
+      this.queuePendingRegionPacket(packet, startedAt);
+      return null;
+    }
     if (this.layersReady) this.ensureRegionsData();
     this.ensureRegionActivityRuntime();
     if (this.regionWorker) {
@@ -900,8 +903,7 @@ export class LiveMap {
       this.addRegionTrafficPlan(plan);
       return plan;
     }
-    this.pendingRegionPackets.push({ packet, startedAt });
-    this.pendingRegionPackets = this.pendingRegionPackets.slice(-24);
+    this.queuePendingRegionPacket(packet, startedAt);
     return null;
   }
 
@@ -1726,13 +1728,22 @@ export class LiveMap {
     const pending = this.pendingRegionPackets;
     this.pendingRegionPackets = [];
     for (const item of pending) {
-      const plan = runtime.planRegionTraffic(item.packet, this.regionAssignments, item.startedAt);
+      if (now - item.startedAt >= 12_000) continue;
+      let plan = runtime.planRegionTraffic(item.packet, this.regionAssignments, item.startedAt);
       if (plan) {
-        if (plan.cues.some((cue) => cue.startedAt + cue.duration > now)) this.addRegionTrafficPlan(plan);
-      } else if (now - item.startedAt < 9_000) {
+        if (plan.cues[0]!.startedAt + plan.cues[0]!.duration <= now) {
+          plan = runtime.planRegionTraffic(item.packet, this.regionAssignments, now);
+        }
+        if (plan) this.addRegionTrafficPlan(plan);
+      } else {
         this.pendingRegionPackets.push(item);
       }
     }
+  }
+
+  private queuePendingRegionPacket(packet: PacketView, startedAt: number): void {
+    this.pendingRegionPackets.push({ packet, startedAt });
+    this.pendingRegionPackets = this.pendingRegionPackets.slice(-24);
   }
 
   private requestRegionActivityFrame(): void {
