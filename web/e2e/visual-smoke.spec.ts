@@ -711,22 +711,18 @@ test('pairs cross-region label pulses and highlights long-haul traffic', async (
   const map = page.locator('#map');
   await expect(map).toHaveAttribute('data-regions-loaded', 'true', { timeout: 20_000 });
   await expect(map).toHaveAttribute('data-region-assignment-count', '2', { timeout: 20_000 });
-  const trafficReleasedAt = Date.now();
   releaseTraffic();
   await expect(map).toHaveAttribute('data-last-region-from', 'HAM');
   await expect(map).toHaveAttribute('data-last-region-to', 'PEC');
   await expect(map).toHaveAttribute('data-last-region-traffic', 'long-haul');
   await expect.poll(() => map.getAttribute('data-active-region-labels').then(Number)).toBeGreaterThan(0);
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-last-packet-range', 'long-haul');
-  await page.screenshot({ path: testInfo.outputPath('cartolite-region-dx-departure.png') });
-  const arrivalWait = routeDuration([{ routeId: 'ham-pec', from: source, to: destination }])
-    + 500
-    - (Date.now() - trafficReleasedAt);
-  if (arrivalWait > 0) await page.waitForTimeout(arrivalWait);
-  await expect(map).toHaveAttribute('data-active-region-labels', '2');
+  const senderLabel = page.locator('.region-live-label[data-role="send"]');
+  const receiverLabel = page.locator('.region-live-label[data-role="receive"]');
+  await expect(senderLabel).toContainText('DX · HAM · Hamilton');
+  await expect(receiverLabel).toContainText('DX · PEC · Prince Edward County', { timeout: 6_000 });
   await expect(page.locator('.region-live-label')).toHaveCount(2);
-  await expect(page.locator('.region-live-label[data-role="send"]')).toContainText('DX · HAM · Hamilton');
-  await expect(page.locator('.region-live-label[data-role="receive"]')).toContainText('DX · PEC · Prince Edward County');
+  await expect(map).toHaveAttribute('data-active-region-labels', '2');
   expect(styleErrors).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('cartolite-region-dx.png') });
 });
