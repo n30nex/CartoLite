@@ -9,8 +9,7 @@ import {
   type RouteRepresentation,
   type RouteWindow
 } from './map';
-import { PacketAnimator } from './packetAnimator';
-import { potentialLongHaulPacket } from './regionActivity';
+import { PacketAnimator, potentialLongHaulPacket } from './packetAnimator';
 import {
   loadSavedView,
   loadUiPreferences,

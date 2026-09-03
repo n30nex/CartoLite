@@ -3,15 +3,17 @@ import type { EndpointV2, RoutePacketView } from './types';
 import {
   activeRegionFrames,
   capRegionActivity,
-  LONG_HAUL_MIN_KM,
   MAX_REGION_ACTIVITY_CUES,
-  packetEndpointDistanceKm,
   planRegionTraffic,
-  potentialLongHaulPacket,
   REGION_DX_PULSE_MS,
   regionPulseFrame,
   type RegionActivityCue,
 } from './regionActivity';
+import {
+  LONG_HAUL_MIN_KM,
+  packetEndpointDistanceKm,
+  potentialLongHaulPacket,
+} from './packetAnimator';
 
 function endpoint(id: string, lat: number, lng: number): EndpointV2 {
   return { id, label: id, lat, lng };

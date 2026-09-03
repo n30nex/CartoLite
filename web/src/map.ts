@@ -22,13 +22,7 @@ import {
   searchNodes,
   type NodeSearchResult,
 } from './nodeInspector';
-import {
-  activeRegionFrames,
-  capRegionActivity,
-  planRegionTraffic,
-  type RegionActivityCue,
-  type RegionTrafficPlan,
-} from './regionActivity';
+import type { RegionActivityCue, RegionTrafficPlan } from './regionActivity';
 import {
   MESHCORE_REGION_VERSION,
   type RegionAreaAssignment,
@@ -217,6 +211,8 @@ export class LiveMap {
   private regionRequestByNode = new Map<string, number>();
   private nextRegionRequestID = 1;
   private regionActivityCues: RegionActivityCue[] = [];
+  private regionActivityRuntime?: typeof import('./regionActivity');
+  private regionActivityLoad?: Promise<void>;
   private pendingRegionPackets: Array<{ packet: PacketView; startedAt: number }> = [];
   private activeRegionTags = new Set<string>();
   private regionActivityFrame = 0;
@@ -894,11 +890,12 @@ export class LiveMap {
     if (!this.regionsVisible && !this.regionsLoaded) return null;
     const startedAt = performance.now();
     if (this.layersReady) this.ensureRegionsData();
+    this.ensureRegionActivityRuntime();
     if (this.regionWorker) {
       const endpoints = [packet.segments[0]!.from, packet.segments[packet.segments.length - 1]!.to];
       this.requestRegionAssignments(endpoints);
     }
-    const plan = planRegionTraffic(packet, this.regionAssignments, startedAt);
+    const plan = this.regionActivityRuntime?.planRegionTraffic(packet, this.regionAssignments, startedAt) ?? null;
     if (plan) {
       this.addRegionTrafficPlan(plan);
       return plan;
@@ -1579,6 +1576,7 @@ export class LiveMap {
   }
 
   private ensureRegionsData(): void {
+    this.ensureRegionActivityRuntime();
     if (this.regionsLoaded) {
       if (!this.regionWorker) {
         this.ensureRegionWorker();
@@ -1711,7 +1709,9 @@ export class LiveMap {
   }
 
   private addRegionTrafficPlan(plan: RegionTrafficPlan): void {
-    this.regionActivityCues = capRegionActivity([...this.regionActivityCues, ...plan.cues]);
+    const runtime = this.regionActivityRuntime;
+    if (!runtime) return;
+    this.regionActivityCues = runtime.capRegionActivity([...this.regionActivityCues, ...plan.cues]);
     this.container.dataset.lastRegionFrom = plan.source.code;
     this.container.dataset.lastRegionTo = plan.destination.code;
     this.container.dataset.lastRegionTraffic = plan.crossRegion ? (plan.longHaul ? 'long-haul' : 'cross-region') : 'local';
@@ -1720,12 +1720,13 @@ export class LiveMap {
   }
 
   private flushPendingRegionTraffic(): void {
-    if (this.pendingRegionPackets.length === 0) return;
+    const runtime = this.regionActivityRuntime;
+    if (!runtime || this.pendingRegionPackets.length === 0) return;
     const now = performance.now();
     const pending = this.pendingRegionPackets;
     this.pendingRegionPackets = [];
     for (const item of pending) {
-      const plan = planRegionTraffic(item.packet, this.regionAssignments, item.startedAt);
+      const plan = runtime.planRegionTraffic(item.packet, this.regionAssignments, item.startedAt);
       if (plan) {
         if (plan.cues.some((cue) => cue.startedAt + cue.duration > now)) this.addRegionTrafficPlan(plan);
       } else if (now - item.startedAt < 9_000) {
@@ -1744,7 +1745,9 @@ export class LiveMap {
     const source = this.map.getSource(REGION_ATTRIBUTION_SOURCE_ID);
     if (!source) return;
     this.regionActivityCues = this.regionActivityCues.filter((cue) => cue.startedAt + cue.duration > now);
-    const frames = activeRegionFrames(this.regionActivityCues, now, this.reducedMotion);
+    const runtime = this.regionActivityRuntime;
+    if (!runtime) return;
+    const frames = runtime.activeRegionFrames(this.regionActivityCues, now, this.reducedMotion);
     const nextTags = new Set(frames.keys());
     for (const regionTag of this.activeRegionTags) {
       if (!nextTags.has(regionTag)) this.map.removeFeatureState({ source: REGION_ATTRIBUTION_SOURCE_ID, id: regionTag });
@@ -1761,6 +1764,22 @@ export class LiveMap {
     this.container.dataset.activeRegionLabels = String(nextTags.size);
     if (this.regionActivityCues.length > 0) this.requestRegionActivityFrame();
   };
+
+  private ensureRegionActivityRuntime(): void {
+    if (this.regionActivityRuntime || this.regionActivityLoad) return;
+    this.regionActivityLoad = import('./regionActivity')
+      .then((runtime) => {
+        this.regionActivityRuntime = runtime;
+        this.flushPendingRegionTraffic();
+        this.requestRegionActivityFrame();
+      })
+      .catch((error: unknown) => {
+        console.warn('Region activity could not start:', error instanceof Error ? error.message : error);
+      })
+      .finally(() => {
+        this.regionActivityLoad = undefined;
+      });
+  }
 
   private markRendering(sourceIDs?: readonly string[]): void {
     const epoch = ++this.renderEpoch;

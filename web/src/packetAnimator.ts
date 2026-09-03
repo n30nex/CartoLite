@@ -27,6 +27,7 @@ export const LOW_POWER_MAX_RESIDUE = 240;
 export const NODE_WAKE_MS = 6_000;
 export const MAX_NODE_WAKES = 160;
 export const LOW_POWER_MAX_NODE_WAKES = 72;
+export const LONG_HAUL_MIN_KM = 75;
 
 const EARTH_RADIUS_KM = 6371.0088;
 const MIN_SEGMENT_KM = 0.025;
@@ -138,6 +139,17 @@ export function geographicDistanceKm(from: EndpointV2, to: EndpointV2): number {
   const sinLongitude = Math.sin(longitudeDelta / 2);
   const haversine = sinLatitude * sinLatitude + Math.cos(latitudeA) * Math.cos(latitudeB) * sinLongitude * sinLongitude;
   return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(Math.max(0, 1 - haversine)));
+}
+
+export function packetEndpointDistanceKm(packet: PacketView): number {
+  if (packet.mode !== 'route' || packet.segments.length === 0) return 0;
+  const first = packet.segments[0]!;
+  const last = packet.segments[packet.segments.length - 1]!;
+  return geographicDistanceKm(first.from, last.to);
+}
+
+export function potentialLongHaulPacket(packet: PacketView): boolean {
+  return packetEndpointDistanceKm(packet) >= LONG_HAUL_MIN_KM;
 }
 
 export function segmentTravelWeights(segments: readonly RouteSegmentView[]): number[] {

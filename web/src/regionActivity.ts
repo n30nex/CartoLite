@@ -1,9 +1,12 @@
-import { geographicDistanceKm, routeDuration } from './packetAnimator';
+import {
+  geographicDistanceKm,
+  LONG_HAUL_MIN_KM,
+  routeDuration,
+} from './packetAnimator';
 import type { RegionAreaAssignment } from './regions';
 import { normalizePacketKind, type PacketKind } from './trafficVisuals';
 import type { PacketView, RoutePacketView } from './types';
 
-export const LONG_HAUL_MIN_KM = 75;
 export const REGION_LOCAL_PULSE_MS = 3_200;
 export const REGION_CROSS_PULSE_MS = 3_800;
 export const REGION_DX_PULSE_MS = 5_200;
@@ -36,17 +39,6 @@ export interface RegionPulseFrame {
   intensity: number;
   spread: number;
   longHaul: boolean;
-}
-
-export function packetEndpointDistanceKm(packet: PacketView): number {
-  if (packet.mode !== 'route' || packet.segments.length === 0) return 0;
-  const first = packet.segments[0]!;
-  const last = packet.segments[packet.segments.length - 1]!;
-  return geographicDistanceKm(first.from, last.to);
-}
-
-export function potentialLongHaulPacket(packet: PacketView): boolean {
-  return packetEndpointDistanceKm(packet) >= LONG_HAUL_MIN_KM;
 }
 
 export function planRegionTraffic(
