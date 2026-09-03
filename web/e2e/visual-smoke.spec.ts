@@ -695,24 +695,29 @@ test('pairs cross-region label pulses and highlights long-haul traffic', async (
     view: { center: state.map.center, zoom: state.map.zoom },
   });
   await page.route('**/api/state', (route) => route.fulfill({ json: state }));
-  await page.route('**/api/events**', (route) => route.fulfill({
-    status: 200,
-    contentType: 'text/event-stream',
-    body: `retry: 60000\n\nevent: hello\ndata: ${JSON.stringify({ seq: 0, bootId: state.bootId })}\n\nid: 1\nevent: packet\ndata: ${JSON.stringify(packet)}\n\n`,
-  }));
+  let releaseTraffic!: () => void;
+  const trafficReady = new Promise<void>((resolve) => { releaseTraffic = resolve; });
+  await page.route('**/api/events**', async (route) => {
+    await trafficReady;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: `retry: 60000\n\nevent: hello\ndata: ${JSON.stringify({ seq: 0, bootId: state.bootId })}\n\nid: 1\nevent: packet\ndata: ${JSON.stringify(packet)}\n\n`,
+    });
+  });
 
   const styleErrors = captureMapStyleErrors(page);
   await page.goto('/');
   const map = page.locator('#map');
   await expect(map).toHaveAttribute('data-regions-loaded', 'true', { timeout: 20_000 });
   await expect(map).toHaveAttribute('data-region-assignment-count', '2', { timeout: 20_000 });
+  releaseTraffic();
   await expect(map).toHaveAttribute('data-last-region-from', 'HAM');
   await expect(map).toHaveAttribute('data-last-region-to', 'PEC');
   await expect(map).toHaveAttribute('data-last-region-traffic', 'long-haul');
   await expect.poll(() => map.getAttribute('data-active-region-labels').then(Number)).toBeGreaterThan(0);
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-last-packet-range', 'long-haul');
-  await page.waitForTimeout(routeDuration([{ routeId: 'ham-pec', from: source, to: destination }]) + 180);
-  await expect(map).toHaveAttribute('data-active-region-labels', '2');
+  await expect.poll(() => map.getAttribute('data-active-region-labels')).toBe('2');
   expect(styleErrors).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('cartolite-region-dx.png') });
 });
