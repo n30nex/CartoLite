@@ -237,8 +237,8 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'true');
   await expect(page.locator('.maplibregl-ctrl-attrib-inner')).toContainText('MeshCore Canada');
-  await expect(page.locator('#map')).toHaveAttribute('data-region-feature-count', '68');
-  await expect(page.locator('#map')).toHaveAttribute('data-region-source-revision', '1');
+  await expect(page.locator('#map')).toHaveAttribute('data-region-feature-count', '193');
+  await expect(page.locator('#map')).toHaveAttribute('data-region-source-revision', '2026-07-18-mcc-reg-1.1-proposed');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
   expect(regionAssetRequests).toHaveLength(1);
   await heatmapButton.click();
@@ -250,7 +250,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(regionsButton).toHaveAttribute('title', 'Show regions');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-visible', 'false');
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true');
-  await expect(page.locator('#map')).toHaveAttribute('data-region-source-revision', '1');
+  await expect(page.locator('#map')).toHaveAttribute('data-region-source-revision', '2026-07-18-mcc-reg-1.1-proposed');
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await heatmapButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'false');
@@ -661,6 +661,70 @@ test('keeps regions camera-locked and restores map controls', async ({ page }, t
   await expect(regionsButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#route-window')).toHaveValue('24h');
   await expect(map).toHaveAttribute('data-region-source-revision', '2026-07-18-mcc-reg-1.1-proposed');
+});
+
+test('pairs cross-region label pulses and highlights long-haul traffic', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'the shared MapLibre feature-state path is viewport independent');
+  test.setTimeout(45_000);
+  const now = Date.now();
+  const source = { id: 'ham-node', label: 'Hamilton sender', role: 'repeater' as const, observer: false, lat: 43.243158, lng: -79.94833, lastSeen: now };
+  const destination = { id: 'pec-node', label: 'Prince Edward receiver', role: 'repeater' as const, observer: false, lat: 44.0, lng: -77.25, lastSeen: now };
+  const state: StateV2 = {
+    schemaVersion: 2,
+    bootId: 'region-traffic-smoke',
+    seq: 0,
+    serverTime: now,
+    status: { feed: 'connected', activity: 'active', lastPacketAt: now, dropped: 0, version: 'test', gitSha: 'region-traffic' },
+    map: { center: [-78.6, 43.65], zoom: 6.2 },
+    nodes: [source, destination],
+    routes: [{ id: 'ham-pec', fromId: source.id, toId: destination.id, packetCount: 1, lastHeard: now, intensity: 1, lastKind: 'Text', traffic: 1 }],
+  };
+  const packet = {
+    seq: 1,
+    id: 'region-dx-packet',
+    at: now,
+    payloadType: 'Text',
+    mode: 'route',
+    segments: [{ routeId: 'ham-pec', fromId: source.id, toId: destination.id }],
+  };
+  await page.addInitScript(({ preferences, view }) => {
+    localStorage.setItem('cartolite:ui:v1', JSON.stringify(preferences));
+    localStorage.setItem('cartolite:view:v3:desktop', JSON.stringify(view));
+  }, {
+    preferences: { routes: false, heatmap: false, regions: true, clusters: false, hillshade: false, terrain3D: false, routeWindow: '24h', legendExpanded: true },
+    view: { center: state.map.center, zoom: state.map.zoom },
+  });
+  await page.route('**/api/state', (route) => route.fulfill({ json: state }));
+  let releaseTraffic!: () => void;
+  const trafficReady = new Promise<void>((resolve) => { releaseTraffic = resolve; });
+  await page.route('**/api/events**', async (route) => {
+    await trafficReady;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: `retry: 60000\n\nevent: hello\ndata: ${JSON.stringify({ seq: 0, bootId: state.bootId })}\n\nid: 1\nevent: packet\ndata: ${JSON.stringify(packet)}\n\n`,
+    });
+  });
+
+  const styleErrors = captureMapStyleErrors(page);
+  await page.goto('/');
+  const map = page.locator('#map');
+  await expect(map).toHaveAttribute('data-regions-loaded', 'true', { timeout: 20_000 });
+  await expect(map).toHaveAttribute('data-region-assignment-count', '2', { timeout: 20_000 });
+  releaseTraffic();
+  await expect(map).toHaveAttribute('data-last-region-from', 'HAM');
+  await expect(map).toHaveAttribute('data-last-region-to', 'PEC');
+  await expect(map).toHaveAttribute('data-last-region-traffic', 'long-haul');
+  await expect.poll(() => map.getAttribute('data-active-region-labels').then(Number)).toBeGreaterThan(0);
+  await expect(page.locator('#packet-canvas')).toHaveAttribute('data-last-packet-range', 'long-haul');
+  const senderLabel = page.locator('.region-live-label[data-role="send"]');
+  const receiverLabel = page.locator('.region-live-label[data-role="receive"]');
+  await expect(senderLabel).toContainText('DX · HAM · Hamilton');
+  await expect(receiverLabel).toContainText('DX · PEC · Prince Edward County', { timeout: 6_000 });
+  await expect(page.locator('.region-live-label')).toHaveCount(2);
+  await expect(map).toHaveAttribute('data-active-region-labels', '2');
+  expect(styleErrors).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('cartolite-region-dx.png') });
 });
 
 test('restores remembered sound as Tap to Resume without autoplay', async ({ page }, testInfo) => {

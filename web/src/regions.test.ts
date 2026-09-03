@@ -59,6 +59,7 @@ describe('MeshCore Canada region partition', () => {
     expect(vertexCount).toBe(381_683);
     expect(allRingsClosed).toBe(true);
     expect(allCoordinatesFinite).toBe(true);
+    expect(data.features.every((feature) => feature.id === feature.properties.tag)).toBe(true);
   }, 10_000);
 
   it('resolves Hamilton and Waterloo nodes from the authoritative partition', () => {

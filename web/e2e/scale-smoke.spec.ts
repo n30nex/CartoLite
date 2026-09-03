@@ -138,8 +138,8 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await regionsButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true', { timeout: 10_000 });
   await expect(page.locator('#map')).toHaveAttribute('data-region-renderer', 'maplibre');
-  await expect(page.locator('#map')).toHaveAttribute('data-region-feature-count', '68');
-  await expect(page.locator('#map')).toHaveAttribute('data-region-source-revision', '1');
+  await expect(page.locator('#map')).toHaveAttribute('data-region-feature-count', '193');
+  await expect(page.locator('#map')).toHaveAttribute('data-region-source-revision', '2026-07-18-mcc-reg-1.1-proposed');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
   expect(Date.now() - regionStarted, 'regional overlay should become interactive inside its load budget').toBeLessThan(10_000);
   expect(await maximumLongTask(page), 'enabling Regions must keep the software-rendered frame below 750 ms').toBeLessThan(750);
