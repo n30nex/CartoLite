@@ -711,13 +711,18 @@ test('pairs cross-region label pulses and highlights long-haul traffic', async (
   const map = page.locator('#map');
   await expect(map).toHaveAttribute('data-regions-loaded', 'true', { timeout: 20_000 });
   await expect(map).toHaveAttribute('data-region-assignment-count', '2', { timeout: 20_000 });
+  const trafficReleasedAt = Date.now();
   releaseTraffic();
   await expect(map).toHaveAttribute('data-last-region-from', 'HAM');
   await expect(map).toHaveAttribute('data-last-region-to', 'PEC');
   await expect(map).toHaveAttribute('data-last-region-traffic', 'long-haul');
   await expect.poll(() => map.getAttribute('data-active-region-labels').then(Number)).toBeGreaterThan(0);
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-last-packet-range', 'long-haul');
-  await expect.poll(() => map.getAttribute('data-active-region-labels')).toBe('2');
+  const arrivalWait = routeDuration([{ routeId: 'ham-pec', from: source, to: destination }])
+    + 500
+    - (Date.now() - trafficReleasedAt);
+  if (arrivalWait > 0) await page.waitForTimeout(arrivalWait);
+  await expect(map).toHaveAttribute('data-active-region-labels', '2');
   expect(styleErrors).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('cartolite-region-dx.png') });
 });
