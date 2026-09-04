@@ -75,6 +75,14 @@ button { font: inherit; }
   transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
 }
 
+@media (pointer: coarse), (max-width: 700px) {
+  .glass {
+    background: linear-gradient(145deg, #08141a, #02090e);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 .topbar {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));

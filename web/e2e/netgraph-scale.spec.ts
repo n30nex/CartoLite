@@ -35,8 +35,7 @@ const CROSS_BORDER_TEST_AREAS = [
 
 const SCALE_AREAS = [...CANADIAN_TEST_AREAS, ...CROSS_BORDER_TEST_AREAS];
 
-test('Netgraph keeps all 4,000 nodes and 7,000 links responsive', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop', 'the scale timing gate runs once on desktop');
+function scaleState(): StateV2 {
   const now = Date.now();
   const nodes = Array.from({ length: 4_000 }, (_, index) => {
     const area = SCALE_AREAS[index % SCALE_AREAS.length]!;
@@ -71,6 +70,12 @@ test('Netgraph keeps all 4,000 nodes and 7,000 links responsive', async ({ page 
     nodes,
     routes,
   };
+  return state;
+}
+
+test('Netgraph keeps all 4,000 nodes and 7,000 links responsive', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'the scale timing gate runs once on desktop');
+  const state = scaleState();
   await page.route('**/api/state', (route) => route.fulfill({ json: state }));
   await page.route('**/api/events**', (route) => route.fulfill({
     contentType: 'text/event-stream',
@@ -79,6 +84,7 @@ test('Netgraph keeps all 4,000 nodes and 7,000 links responsive', async ({ page 
 
   await page.goto('/netgraph/');
   const stage = page.locator('#netgraph-stage');
+  await expect(stage).toHaveAttribute('data-connected-nodes', '4000', { timeout: 15_000 });
   await expect(stage).toHaveAttribute('data-render-state', 'idle', { timeout: 15_000 });
   await expect(stage).toHaveAttribute('data-connected-nodes', '4000');
   await expect(stage).toHaveAttribute('data-visible-routes', '7000');
@@ -100,4 +106,63 @@ test('Netgraph keeps all 4,000 nodes and 7,000 links responsive', async ({ page 
   await expect(page.locator('#node-inspector-sheet')).toBeVisible();
   expect(Number(await stage.getAttribute('data-node-search-apply-ms'))).toBeLessThan(100);
   expect(Number(await stage.getAttribute('data-node-selection-apply-ms'))).toBeLessThan(100);
+});
+
+test('Netgraph does not repaint 4,000 nodes for last-heard updates', async ({ page }) => {
+  const state = scaleState();
+  await page.route('**/api/state', (route) => route.fulfill({ json: state }));
+  await page.addInitScript(() => {
+    const probe = window as unknown as { feed: EventTarget; graphPaints: number; inkPaints: number };
+    probe.graphPaints = 0;
+    probe.inkPaints = 0;
+    window.EventSource = class extends EventTarget {
+      onopen?: () => void;
+      constructor() {
+        super();
+        probe.feed = this;
+        setTimeout(() => this.onopen?.(), 0);
+      }
+      close(): void { /* Controlled synthetic stream. */ }
+    } as unknown as typeof EventSource;
+    const clear = CanvasRenderingContext2D.prototype.clearRect;
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      if (this.canvas.id === 'graph-canvas') probe.graphPaints += 1;
+      if (this.canvas.id === 'packet-canvas') probe.inkPaints += 1;
+      return clear.apply(this, args);
+    };
+  });
+  await page.goto('/netgraph/');
+  const stage = page.locator('#netgraph-stage');
+  await expect(stage).toHaveAttribute('data-connected-nodes', '4000', { timeout: 15_000 });
+  await expect(stage).toHaveAttribute('data-render-state', 'idle', { timeout: 15_000 });
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  const paints = await page.evaluate(() => (window as unknown as { graphPaints: number }).graphPaints);
+  await page.evaluate((nodes) => {
+    const probe = window as unknown as { feed: EventTarget };
+    nodes.slice(0, 100).forEach((node, index) => probe.feed.dispatchEvent(new MessageEvent('node', {
+      data: JSON.stringify({ seq: index + 1, node: { ...node, lastSeen: Date.now() } }),
+    })));
+  }, state.nodes);
+  await page.waitForTimeout(150);
+  expect(await page.evaluate(() => (window as unknown as { graphPaints: number }).graphPaints)).toBe(paints);
+  await expect(stage).toHaveAttribute('data-visible-routes', '7000');
+  await expect(stage).toHaveAttribute('data-connected-nodes', '4000');
+
+  // Changed labels still invalidate the cached node ink and reach inspection.
+  await page.evaluate((node) => (window as unknown as { feed: EventTarget }).feed.dispatchEvent(new MessageEvent('node', {
+    data: JSON.stringify({ seq: 101, node: { ...node, label: 'Updated scale repeater' } }),
+  })), state.nodes[0]!);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { graphPaints: number }).graphPaints)).toBeGreaterThan(paints);
+  await page.locator('#find-button').click();
+  await page.locator('#node-search').fill('Updated scale repeater');
+  await page.locator('.node-search-result').first().click();
+  await expect(page.locator('#node-inspector-sheet')).toContainText('Updated scale repeater');
+
+  // Mobile backing stores have a bounded pixel budget, including landscape.
+  const raster = await page.locator('#packet-canvas').evaluate((canvas) => ({
+    width: (canvas as HTMLCanvasElement).width, cssWidth: canvas.clientWidth,
+    coarse: matchMedia('(max-width: 700px), (pointer: coarse)').matches,
+  }));
+  expect(raster.width).toBeLessThanOrEqual(Math.ceil(raster.cssWidth * (raster.coarse ? 1.25 : 1.5)));
+  expect(await page.evaluate(() => (window as unknown as { inkPaints: number }).inkPaints)).toBe(0);
 });

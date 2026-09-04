@@ -59,6 +59,15 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
   backdrop-filter: blur(14px) saturate(1.18);
 }
 
+/* Live canvases need not be blurred again underneath every Android control. */
+@media (pointer: coarse), (max-width: 700px) {
+  .glass {
+    background: linear-gradient(145deg, #08141a, #02090e);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 .topbar {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));

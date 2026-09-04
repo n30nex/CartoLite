@@ -1,5 +1,11 @@
 # Operations
 
+## v0.10.4 Netgraph performance acceptance
+
+Use synthetic 4,000-node/7,000-route state, phone portrait and landscape viewports, and a controlled live stream. Record steady-state frame intervals separately from initial layout; use the same browser and CPU throttle for before/after comparisons. Confirm last-heard updates do not repaint the graph, changed labels appear in Finder and inspection, all links remain available, packet cores and sparkles continue smoothly, and no continuous animation remains when idle. Check desktop selection and zoom, reduced-motion expiry, paired OUT/IN timing, and one oscillator per visible hop with the existing browser/audio suites. APK performance claims require physical-device measurements; browser emulation alone is not an Android hardware result.
+
+This release changes shared web assets only. Existing APK installations load the fix on their next page load; do not replace the signed APK or change its native version for this release.
+
 ## v0.10.3 regional traffic placement acceptance
 
 On Netgraph, inject a same-region packet, a short cross-region packet, and a cross-region packet whose endpoints are at least 75 km apart. Require the local event to light one LOCAL area label, the cross-region events to light OUT at departure and IN at final-hop arrival, and every cue to use its sanitized packet-kind colour. The long-haul event must set `data-last-region-traffic="long-haul"`, expose both exact region codes, show the DX prefix and stronger bounded area halo, and retain exact straight topology geometry. Confirm both regional cues stay aligned through pan, zoom, and resize, burst cue growth remains bounded, and reduced motion presents a stable fading highlight.
