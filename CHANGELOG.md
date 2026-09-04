@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.5 - 2026-09-04
+
+### Touch navigation
+
+- Fix Netgraph pinch zoom and two-finger panning in Android Chrome and the APK. Keep the point between the fingers anchored, continue dragging smoothly after a finger lifts, and clear cancelled or interrupted gestures without accidentally selecting nodes.
+- Add accessible 44-pixel Zoom in/out buttons without crowding the phone toolbar. Preserve desktop mouse, wheel, and trackpad navigation.
+- Default Netgraph links to the last 15 minutes, while respecting an explicitly saved route-window choice. Other windows still show every matching route.
+- Add native browser touch regression coverage for pinch-in/out, combined pan, finger handoff, cancellation, selection preservation, and zoom buttons in portrait and landscape. No APK reinstall or native package change is required.
+
 ## 0.10.4 - 2026-09-04
 
 ### Performance and animation
