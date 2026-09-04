@@ -567,8 +567,6 @@ function pulseTrafficChrome(payloadType: string | undefined): void {
   appElement.classList.add('traffic-awake');
   if (now - lastTrafficPulseAt >= 620) {
     lastTrafficPulseAt = now;
-    topbar.classList.remove('traffic-pulse');
-    void topbar.offsetWidth;
     topbar.classList.add('traffic-pulse');
     window.setTimeout(() => topbar.classList.remove('traffic-pulse'), 720);
   }

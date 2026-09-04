@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.4 - 2026-09-04
+
+### Performance and animation
+
+- Update Netgraph node and route indexes incrementally. Last-heard and packet-count updates no longer rebuild the complete topology or repaint unchanged historical ink; inspector data remains current.
+- Cache node ink and slowly fading route residue, reuse projected endpoints and region text widths, and batch node shapes in small groups. Keep every node, historical link, live hop, and musical articulation.
+- Bound mobile canvas resolution to 1.25 pixels per CSS pixel (1.5 on desktop), skip off-screen animation loops, and replace large live region gradients and shadow blurs with lightweight coloured rings. OUT/IN and regional label pulses remain exclusive to Netgraph.
+- Refine live packets with a tapered comet, cached soft head glow, smooth travelling sparkles, and clearer relay handoffs. Repeated decorative residue refreshes instead of stacking to white; the 45-second lifetime stays unchanged.
+- Remove forced layout on every packet from both map and Netgraph traffic meters. Use opaque mobile controls instead of repeatedly blurring live canvases underneath them.
+- Add 4,000-node regression coverage for incremental updates, cached-label invalidation, idle animation, and phone/landscape pixel budgets. Existing APK installs receive this frontend update when reopening the app; no native package or signing change is required.
+
 ## 0.10.3 - 2026-09-02
 
 ### Corrected

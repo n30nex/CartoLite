@@ -17,6 +17,10 @@ Static topology and transient traffic use separate Canvas2D layers. Subtle geogr
 
 ## Interaction and recovery
 
+Node and route indexes update incrementally. Changes to counts or last-heard timestamps do not repaint unchanged historical ink; route styles, window changes, node labels, selection, and camera movement invalidate only the necessary caches. Node shapes use small batches, node ink uses a separate cache, and completed route glow refreshes at most every 125 ms unless its contents or projection change. The moving packet, handoffs, and sparkles still use animation-frame cadence. Repeated same-kind residue refreshes rather than stacking, without coalescing live packets or sound. Off-screen effects wake on expiry or when the camera returns, and reduced motion also wakes for a delayed receiving-region cue.
+
+The mobile canvas pixel ratio is capped at 1.25 (desktop 1.5), matching the map's animation budget. Mobile controls avoid backdrop blur over live canvases. Large per-frame blurred region fills have been replaced by coloured outline rings, while label colour, OUT/IN timing, and long-haul emphasis are preserved.
+
 Drag to pan, use the wheel or trackpad to zoom, double-click to move closer, and use Reset to fit all components. Finder and selection never send or persist queries. The page stores only its route-window choice under `cartolite:netgraph:v1`; audio continues to use `cartolite:sound:v2`.
 
 The content-hashed partition and registry are bundled with CartoLite, fetched from the same origin, and never receive a node, query, or visitor identifier. They load once before the first layout and are reused by the worker for recovery snapshots, so classification cannot visibly jump after the graph appears.

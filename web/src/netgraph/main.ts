@@ -149,9 +149,10 @@ async function start(): Promise<void> {
 
     const updateStatus = (): void => {
       const display = activityLabel(liveStore.snapshot, streamConnected);
-      statusElement.dataset.state = display.state;
-      statusText.textContent = display.text;
-      statusElement.title = `${liveStore.snapshot.nodes.length.toLocaleString()} nodes · ${liveStore.snapshot.routes.length.toLocaleString()} routes`;
+      if (statusElement.dataset.state !== display.state) statusElement.dataset.state = display.state;
+      if (statusText.textContent !== display.text) statusText.textContent = display.text;
+      const title = `${liveStore.snapshot.nodes.length.toLocaleString()} nodes · ${liveStore.snapshot.routes.length.toLocaleString()} routes`;
+      if (statusElement.title !== title) statusElement.title = title;
     };
 
     const updateSummary = (): void => {
@@ -164,7 +165,7 @@ async function start(): Promise<void> {
 
     liveStore.subscribe((state, changes) => {
       graph.render(state, changes);
-      updateSummary();
+      if (changes?.reset || changes?.routes?.length) updateSummary();
       updateStatus();
       if (!selectedNodeID || !changes) return;
       const selectedNodeChanged = changes.nodes?.some((node) => node.id === selectedNodeID) ?? false;
@@ -402,8 +403,6 @@ function pulseTraffic(packet: PacketView): void {
   const level = recentTraffic.length >= 16 ? 5 : recentTraffic.length >= 10 ? 4 : recentTraffic.length >= 6 ? 3 : recentTraffic.length >= 3 ? 2 : 1;
   trafficMeter.dataset.level = String(level);
   app.dataset.trafficKind = normalizePacketKind(packet.payloadType).toLowerCase();
-  topbar.classList.remove('traffic-pulse');
-  void topbar.offsetWidth;
   topbar.classList.add('traffic-pulse');
   if (trafficTimer !== undefined) window.clearTimeout(trafficTimer);
   trafficTimer = window.setTimeout(() => {
