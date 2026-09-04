@@ -198,6 +198,17 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .graph-summary strong { color: #eaffff; font-size: 12px; font-variant-numeric: tabular-nums; }
 .graph-summary span { color: #708793; font-size: 8px; letter-spacing: 0.04em; text-transform: uppercase; }
 
+.zoom-controls {
+  position: absolute;
+  top: max(134px, calc(env(safe-area-inset-top) + 134px));
+  left: max(12px, env(safe-area-inset-left));
+  display: grid;
+  border-radius: 11px;
+  overflow: hidden;
+}
+.zoom-controls .control-button { width: 44px; height: 44px; padding: 0; font-size: 23px; touch-action: manipulation; }
+.zoom-controls .control-button + .control-button { border-top: 1px solid rgba(151, 220, 224, 0.16); }
+
 .legend {
   position: absolute;
   right: max(12px, env(safe-area-inset-right));
@@ -267,6 +278,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
   .brand > span:last-child, .workspace-link > span:last-child, #status-text { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .view-title > span:last-child { font-size: 9px; }
   .controls { top: max(62px, calc(env(safe-area-inset-top) + 62px)); right: 8px; }
+  .zoom-controls { top: max(116px, calc(env(safe-area-inset-top) + 116px)); left: max(8px, env(safe-area-inset-left)); }
   .controls .control-button > span:not([aria-hidden="true"]), .route-window > span { display: none; }
   .control-button { padding-inline: 9px; }
   .control-button small { display: none; }

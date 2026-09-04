@@ -36,6 +36,9 @@ test('Netgraph renders stable topology, inspection, and synchronized musical hop
   await expect(page.locator('#netgraph-app')).toHaveAttribute('data-loading', 'false', { timeout: 15_000 });
   await expect(stage).toHaveAttribute('data-render-state', 'idle');
   await expect(stage).toHaveAttribute('data-connected-nodes', '4');
+  await expect(page.locator('#route-window')).toHaveValue('15m');
+  await expect(stage).toHaveAttribute('data-visible-routes', '3');
+  await page.locator('#route-window').selectOption('24h');
   await expect(stage).toHaveAttribute('data-visible-routes', '4');
   await expect(stage).toHaveAttribute('data-areas', /[2-9]/);
   expect(Number(await stage.getAttribute('data-region-assignments'))).toBeGreaterThan(0);
@@ -90,6 +93,109 @@ test('Netgraph renders stable topology, inspection, and synchronized musical hop
     expect(overflow).toBe(false);
   }
   expect(consoleErrors).toEqual([]);
+});
+
+test('Netgraph defaults to 15 minutes and preserves an explicit window choice', async ({ page }) => {
+  await page.route('**/api/state', (route) => route.fulfill({ json: netgraphState(Date.now()) }));
+  await page.route('**/api/events**', (route) => route.fulfill({ contentType: 'text/event-stream', body: ': waiting\n\n' }));
+  await page.goto('/netgraph/');
+  await expect(page.locator('#netgraph-stage')).toHaveAttribute('data-visible-routes', '3');
+  await expect(page.locator('#route-window')).toHaveValue('15m');
+  await page.locator('#route-window').selectOption('1h');
+  await page.reload();
+  await expect(page.locator('#route-window')).toHaveValue('1h');
+  await expect(page.locator('#netgraph-stage')).toHaveAttribute('data-visible-routes', '4');
+  await page.evaluate(() => localStorage.setItem('cartolite:netgraph:v1', '{invalid'));
+  await page.reload();
+  await expect(page.locator('#route-window')).toHaveValue('15m');
+  await expect(page.locator('#netgraph-stage')).toHaveAttribute('data-visible-routes', '3');
+});
+
+test('native touch pinches, pans, lifts and cancels without jumping or losing selection', async ({ page, context }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  // Camera easing is covered above; exact positions here make jump regressions measurable.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.route('**/api/state', (route) => route.fulfill({ json: netgraphState(Date.now()) }));
+  await page.route('**/api/events**', (route) => route.fulfill({ contentType: 'text/event-stream', body: ': waiting\n\n' }));
+  await page.goto('/netgraph/');
+  const stage = page.locator('#netgraph-stage');
+  await expect(page.locator('#netgraph-app')).toHaveAttribute('data-loading', 'false');
+  await page.locator('#find-button').click();
+  await page.locator('#node-search').fill('Alpha');
+  await page.locator('.node-search-result').first().click();
+  await expect(stage).toHaveAttribute('data-selected-node-id', 'a');
+  const view = () => stage.evaluate((element) => ({
+    scale: Number(element.dataset.viewScale),
+    center: element.dataset.viewCenter!.split(',').map(Number),
+  }));
+  const session = await context.newCDPSession(page);
+  const touch = async (type: 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel', points: { id: number; x: number; y: number }[]) => {
+    await session.send('Input.dispatchTouchEvent', { type, touchPoints: points });
+    // Chromium coalesces native pointer moves until the next animation frame.
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  };
+  const { width, height } = page.viewportSize()!;
+  const x = Math.round(width * 0.3);
+  const y = Math.min(250, Math.round(height * 0.4));
+  let first = { id: 1, x: x - 30, y };
+  let second = { id: 2, x: x + 30, y };
+  const before = await view();
+  await touch('touchStart', [first]);
+  await touch('touchStart', [first, second]);
+  first = { ...first, x: x - 60 };
+  second = { ...second, x: x + 60 };
+  await touch('touchMove', [first, second]);
+  const pinched = await view();
+  expect(pinched.scale).toBeCloseTo(before.scale * 2, 3);
+  // The geographic point under the pinch midpoint stays under those fingers.
+  expect(pinched.center[0]! + (x - width / 2) / pinched.scale)
+    .toBeCloseTo(before.center[0]! + (x - width / 2) / before.scale, 1);
+  expect(pinched.center[1]! + (y - height / 2) / pinched.scale)
+    .toBeCloseTo(before.center[1]! + (y - height / 2) / before.scale, 1);
+  first = { ...first, x: first.x + 20, y: y + 15 };
+  second = { ...second, x: second.x + 20, y: y + 15 };
+  await touch('touchMove', [first, second]);
+  const panned = await view();
+  expect(panned.scale).toBe(pinched.scale);
+  expect(panned.center[0]).toBeCloseTo(pinched.center[0]! - 20 / pinched.scale, 1);
+  expect(panned.center[1]).toBeCloseTo(pinched.center[1]! - 15 / pinched.scale, 1);
+  await touch('touchEnd', [second]); // Release only the second contact.
+  expect(await view()).toEqual(panned);
+  first = { ...first, x: first.x + 18 };
+  await touch('touchMove', [first]);
+  expect((await view()).center[0]).toBeCloseTo(panned.center[0]! - 18 / panned.scale, 1);
+  await touch('touchEnd', []);
+  await expect(stage).not.toHaveClass(/is-dragging/);
+  await expect(stage).toHaveAttribute('data-selected-node-id', 'a');
+
+  // Pinch back out, then cancel: the next one-finger gesture must start fresh.
+  first = { id: 1, x: x - 60, y };
+  second = { id: 2, x: x + 60, y };
+  await touch('touchStart', [first, second]);
+  await touch('touchMove', [{ ...first, x: x - 30 }, { ...second, x: x + 30 }]);
+  expect((await view()).scale).toBeCloseTo(before.scale, 3);
+  await touch('touchCancel', []);
+  await expect(stage).not.toHaveClass(/is-dragging/);
+  const cancelled = await view();
+  await touch('touchStart', [{ id: 3, x, y }]);
+  await touch('touchMove', [{ id: 3, x: x + 24, y }]);
+  expect((await view()).center[0]).toBeCloseTo(cancelled.center[0]! - 24 / cancelled.scale, 1);
+  await touch('touchEnd', []);
+  await expect(stage).toHaveAttribute('data-selected-node-id', 'a');
+
+  const zoomStart = (await view()).scale;
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  expect((await view()).scale).toBeCloseTo(zoomStart * 1.5, 3);
+  await page.getByRole('button', { name: 'Zoom out', exact: true }).click();
+  expect((await view()).scale).toBeCloseTo(zoomStart, 3);
+  const buttons = await page.locator('.zoom-controls button').evaluateAll((elements) => elements.map((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height, visible: document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === element };
+  }));
+  for (const button of buttons) expect(button).toEqual({ width: 44, height: 44, visible: true });
+  expect(errors).toEqual([]);
+  await session.detach();
 });
 
 test('Netgraph alone renders paired regional OUT and IN cues', async ({ page }, testInfo) => {

@@ -134,7 +134,7 @@ export class NetgraphRenderer implements ViewportProjector {
   private visibleRoutes: RouteV2[] = [];
   private visibleRouteIDs = new Set<string>();
   private screenNodes: ScreenNode[] = [];
-  private routeWindow: NetgraphWindow = '24h';
+  private routeWindow: NetgraphWindow = '15m';
   private selectedNodeID: string | null = null;
   private hoveredNodeID: string | null = null;
   private activeRoutes: ActiveRoute[] = [];
@@ -152,11 +152,11 @@ export class NetgraphRenderer implements ViewportProjector {
   private scale = 1;
   private initializedView = false;
   private paused = false;
-  private dragging = false;
   private dragMoved = false;
-  private pointerID?: number;
+  private readonly pointers = new Map<number, ScreenPoint>();
   private pointerStart = { x: 0, y: 0 };
   private viewStart = { x: 0, y: 0 };
+  private pinchStart?: { distance: number; scale: number; anchor: ScreenPoint; offset: ScreenPoint };
 
   constructor(
     private readonly stage: HTMLElement,
@@ -182,6 +182,7 @@ export class NetgraphRenderer implements ViewportProjector {
     this.stage.addEventListener('pointermove', this.handlePointerMove);
     this.stage.addEventListener('pointerup', this.handlePointerUp);
     this.stage.addEventListener('pointercancel', this.handlePointerCancel);
+    this.stage.addEventListener('lostpointercapture', this.handlePointerCancel);
     this.stage.addEventListener('wheel', this.handleWheel, { passive: false });
     this.stage.addEventListener('dblclick', this.handleDoubleClick);
     this.reducedMotionQuery.addEventListener('change', this.handleMotionPreference);
@@ -417,6 +418,8 @@ export class NetgraphRenderer implements ViewportProjector {
   setPaused(paused: boolean): void {
     this.paused = paused;
     if (paused) {
+      this.clearPointers();
+      this.cancelViewAnimation();
       this.activeRoutes = [];
       this.observerWakes = [];
       this.residue = [];
@@ -440,10 +443,12 @@ export class NetgraphRenderer implements ViewportProjector {
   }
 
   destroy(): void {
+    this.clearPointers();
     this.stage.removeEventListener('pointerdown', this.handlePointerDown);
     this.stage.removeEventListener('pointermove', this.handlePointerMove);
     this.stage.removeEventListener('pointerup', this.handlePointerUp);
     this.stage.removeEventListener('pointercancel', this.handlePointerCancel);
+    this.stage.removeEventListener('lostpointercapture', this.handlePointerCancel);
     this.stage.removeEventListener('wheel', this.handleWheel);
     this.stage.removeEventListener('dblclick', this.handleDoubleClick);
     this.reducedMotionQuery.removeEventListener('change', this.handleMotionPreference);
@@ -467,6 +472,7 @@ export class NetgraphRenderer implements ViewportProjector {
     this.sizeCanvas(this.residueCanvas, this.residueContext);
     this.sizeCanvas(this.nodesCanvas, this.nodesContext);
     if (!this.initializedView && this.layout.positions.size > 0) this.home(false);
+    this.rebaseGesture();
     this.viewChanged();
   }
 
@@ -1312,24 +1318,32 @@ export class NetgraphRenderer implements ViewportProjector {
   }
 
   private handlePointerDown = (event: PointerEvent): void => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || this.paused) return;
     this.cancelViewAnimation();
-    this.dragging = true;
-    this.dragMoved = false;
-    this.pointerID = event.pointerId;
-    this.pointerStart = { x: event.clientX, y: event.clientY };
-    this.viewStart = { x: this.centerX, y: this.centerY };
+    this.dragMoved = this.pointers.size > 0;
+    this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    this.rebaseGesture();
     this.stage.setPointerCapture(event.pointerId);
     this.stage.classList.add('is-dragging');
   };
 
   private handlePointerMove = (event: PointerEvent): void => {
-    if (this.dragging && event.pointerId === this.pointerID) {
-      const deltaX = event.clientX - this.pointerStart.x;
-      const deltaY = event.clientY - this.pointerStart.y;
-      if (Math.hypot(deltaX, deltaY) > 4) this.dragMoved = true;
-      this.centerX = this.viewStart.x - deltaX / this.scale;
-      this.centerY = this.viewStart.y - deltaY / this.scale;
+    if (this.pointers.has(event.pointerId)) {
+      this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const [first, second] = this.pointers.values();
+      if (first && second && this.pinchStart) {
+        const { distance, scale, anchor, offset } = this.pinchStart;
+        this.scale = clamp(scale * Math.hypot(second.x - first.x, second.y - first.y) / distance, 0.035, 8);
+        this.centerX = anchor.x - ((first.x + second.x) / 2 - offset.x - this.width / 2) / this.scale;
+        this.centerY = anchor.y - ((first.y + second.y) / 2 - offset.y - this.height / 2) / this.scale;
+        this.dragMoved = true;
+      } else {
+        const deltaX = event.clientX - this.pointerStart.x;
+        const deltaY = event.clientY - this.pointerStart.y;
+        if (Math.hypot(deltaX, deltaY) > 4) this.dragMoved = true;
+        this.centerX = this.viewStart.x - deltaX / this.scale;
+        this.centerY = this.viewStart.y - deltaY / this.scale;
+      }
       this.viewChanged();
       return;
     }
@@ -1348,24 +1362,56 @@ export class NetgraphRenderer implements ViewportProjector {
   };
 
   private handlePointerUp = (event: PointerEvent): void => {
-    if (!this.dragging || event.pointerId !== this.pointerID) return;
+    if (!this.pointers.has(event.pointerId)) return;
+    const select = this.pointers.size === 1 && !this.dragMoved;
+    this.finishPointer(event.pointerId);
+    if (!select) return;
     const rect = this.stage.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    this.finishDrag(event.pointerId);
-    if (this.dragMoved) return;
     this.callbacks.onNodeSelect(this.nearestNode(x, y)?.node.id ?? null);
   };
 
   private handlePointerCancel = (event: PointerEvent): void => {
-    if (event.pointerId === this.pointerID) this.finishDrag(event.pointerId);
+    if (!this.pointers.has(event.pointerId)) return;
+    this.dragMoved = true;
+    this.finishPointer(event.pointerId);
   };
 
-  private finishDrag(pointerID: number): void {
-    this.dragging = false;
-    this.pointerID = undefined;
-    this.stage.classList.remove('is-dragging');
+  private finishPointer(pointerID: number): void {
+    this.pointers.delete(pointerID);
     if (this.stage.hasPointerCapture(pointerID)) this.stage.releasePointerCapture(pointerID);
+    // Re-anchor the remaining finger so a pinch can become a drag without a jump.
+    this.rebaseGesture();
+    this.stage.classList.toggle('is-dragging', this.pointers.size > 0);
+  }
+
+  private rebaseGesture(): void {
+    this.pinchStart = undefined;
+    const [first, second] = this.pointers.values();
+    if (!first) return;
+    this.pointerStart = first;
+    this.viewStart = { x: this.centerX, y: this.centerY };
+    if (!second) return;
+    const rect = this.stage.getBoundingClientRect();
+    this.pinchStart = {
+      distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+      scale: this.scale,
+      anchor: this.screenToWorld((first.x + second.x) / 2 - rect.left, (first.y + second.y) / 2 - rect.top),
+      offset: { x: rect.left, y: rect.top },
+    };
+  }
+
+  private clearPointers(): void {
+    const ids = [...this.pointers.keys()];
+    this.pointers.clear();
+    this.pinchStart = undefined;
+    this.stage.classList.remove('is-dragging');
+    for (const id of ids) if (this.stage.hasPointerCapture(id)) this.stage.releasePointerCapture(id);
+  }
+
+  zoomBy(factor: number): void {
+    this.animateView(this.centerX, this.centerY, clamp(this.scale * factor, 0.035, 8));
   }
 
   private handleWheel = (event: WheelEvent): void => {

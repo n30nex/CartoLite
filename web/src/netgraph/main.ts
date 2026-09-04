@@ -35,6 +35,8 @@ const soundVolume = required<HTMLInputElement>('sound-volume');
 const soundVolumeOutput = required<HTMLOutputElement>('sound-volume-output');
 const soundActivity = required<HTMLElement>('sound-activity');
 const resetButton = required<HTMLButtonElement>('reset-button');
+const zoomInButton = required<HTMLButtonElement>('zoom-in-button');
+const zoomOutButton = required<HTMLButtonElement>('zoom-out-button');
 const connectedCount = required<HTMLElement>('connected-count');
 const routeCount = required<HTMLElement>('route-count');
 const areaCount = required<HTMLElement>('area-count');
@@ -215,6 +217,8 @@ async function start(): Promise<void> {
       renderInspector();
     });
     resetButton.addEventListener('click', () => graph.home());
+    zoomInButton.addEventListener('click', () => graph.zoomBy(1.5));
+    zoomOutButton.addEventListener('click', () => graph.zoomBy(1 / 1.5));
     wireSearch(graph, (nodeID) => selectNode(nodeID, true));
 
     let wasHidden = document.hidden;
@@ -443,7 +447,7 @@ function loadSettings(): { routeWindow: NetgraphWindow } {
   } catch {
     // Storage is optional.
   }
-  return { routeWindow: '24h' };
+  return { routeWindow: '15m' };
 }
 
 function saveSettings(window: NetgraphWindow): void {
