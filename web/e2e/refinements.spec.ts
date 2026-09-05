@@ -53,7 +53,7 @@ for (const path of ['/', '/netgraph/']) {
 
     if (await layers.isVisible()) await layers.click();
     await page.locator('#find-button').click();
-    await input.fill('Charlie');
+    await input.fill('Audit ');
     await expect(input).not.toHaveAttribute('aria-activedescendant', /.+/);
     await input.press('ArrowUp');
     await expect(page.locator('[role="option"][aria-selected="true"]')).toContainText('Audit Charlie');

@@ -85,7 +85,7 @@ button { font: inherit; }
 
 .toolbar {
   position: absolute;
-  z-index: 5;
+  z-index: 8;
   top: max(12px, env(safe-area-inset-top));
   left: max(12px, env(safe-area-inset-left));
   right: max(12px, env(safe-area-inset-right));
