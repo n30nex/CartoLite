@@ -189,6 +189,7 @@ export class LiveMap {
   private hillshadeVisible = false;
   private terrain3D = false;
   private terrainLayersReady = false;
+  private terrainRoutesVisible = false;
   private regionsLoaded = false;
   private regionsLoad?: Promise<void>;
   private regionWorker?: Worker;
@@ -927,6 +928,9 @@ export class LiveMap {
   private updateTerrainRoutes(refreshData = false): void {
     if (!this.map.getLayer(ROUTE_TERRAIN_LAYER_ID)) return;
     const visible = this.terrain3D && this.routesVisible;
+    this.container.dataset.routeSurface = this.terrain3D ? 'terrain' : 'flat';
+    if (!visible && !this.terrainRoutesVisible) return;
+    this.terrainRoutesVisible = visible;
     this.historicalRouteLayer.setVisible(this.routesVisible && !this.terrain3D);
     this.map.setLayoutProperty(ROUTE_TERRAIN_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
     this.map.setFilter(ROUTE_TERRAIN_LAYER_ID, ['<=', ['get', 'windowBand'], routeWindowBand(this.effectiveRouteAgeMS())]);
@@ -935,7 +939,6 @@ export class LiveMap {
         visible ? this.routeCollections?.individual ?? EMPTY_LINES : EMPTY_LINES
       );
     }
-    this.container.dataset.routeSurface = this.terrain3D ? 'terrain' : 'flat';
   }
 
   private updateRouteRepresentation = (): void => {

@@ -33,7 +33,7 @@ The map already has strong protocol colours, directional cores, relay handoffs, 
 2. Use bounded terrain samples for live trails, spark placement, partial reduced-motion traces, and the 45-second residue. Keep the flat-map fast path. Reproject after pan, zoom, rotation, pitch, and DEM updates without restarting a packet's clock.
    Historical routes also drape over terrain in 3D, preserving the same confirmed endpoints and age-window filter.
 3. Project expanding node/observer/arrival rings onto the local ground plane. Add modest perspective sizing to packet heads and trails in 3D, while retaining readable protocol colours.
-4. Give live Netgraph segments touching the selected node a bounded emphasis. Other hops remain visible and audible; there is no invented traffic or layout motion.
+4. Give live Netgraph packets passing through the selected node a bounded emphasis. Other hops remain visible and audible; there is no invented traffic or layout motion.
 
 ## Further ideas
 
@@ -48,4 +48,4 @@ The map already has strong protocol colours, directional cores, relay handoffs, 
 
 Use synthetic relief and packet fixtures in GitHub Actions to verify projection, caching/invalidation, auto-Topo state, perspective footprints, reduced motion, hop/audio preservation, and camera interaction. Compare flat and tilted mountain views visually. Run the existing complete browser, privacy, scale, and image gates. Preserve the current image/configuration/checkpoint, deploy only the published exact-commit image, then verify the public views and a five-minute stability window.
 
-Size decision: Actions measured 363,905 gzip bytes across all JavaScript/CSS assets after sharing deterministic colour/hash helpers and removing the redundant residue projection cache. This is 385 bytes above the former 355 KiB ceiling. Allocate 1 KiB for terrain projection in this minor release (356 KiB total); retain the enforced gate and all data-asset budgets. The old artificial-curve helpers are removed because terrain projection replaces their remaining uses.
+Size decision: allocate 1 KiB for terrain projection in this minor release (356 KiB total JavaScript/CSS); retain the enforced gate and all data-asset budgets. Share deterministic colour/hash helpers, remove the redundant residue projection cache and retired empty trunk layers, and remove artificial-curve helpers superseded by terrain projection to offset the new renderer's cost.

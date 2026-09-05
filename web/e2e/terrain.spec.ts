@@ -1,13 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { StateV2 } from '../src/types';
 
+// Continuous trace screencasts stall software-rendered terrain readback. Keep
+// the explicit scene images below and the normal failure screenshot instead.
+test.use({ trace: 'off' });
+
 test('3D enables Topo and projects live and reduced-motion traffic over synthetic relief', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'terrain camera and relief acceptance runs on desktop');
   test.slow();
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
-    if (message.type() === 'error' && /layers\.|terrain|hillshade/i.test(message.text())) errors.push(message.text());
+    if (message.type() === 'error') errors.push(message.text());
   });
   const tiles = await installFixture(page);
   await page.goto('/');
@@ -129,7 +133,7 @@ async function installFixture(page: Page): Promise<{ count: number }> {
     };
   }, state.map);
   const tiles = { count: 0 };
-  await page.route('https://tiles.mapterhorn.com/tilejson.json', (route) => route.fulfill({ json: {
+  await page.route('https://tiles.mapterhorn.com/tilejson.json', (route) => route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: {
     tilejson: '3.0.0', tiles: ['https://tiles.mapterhorn.com/synthetic/{z}/{x}/{y}.png'], minzoom: 0, maxzoom: 14, attribution: 'Synthetic relief fixture',
   } }));
   await page.route('https://tiles.mapterhorn.com/synthetic/**', async (route) => {
@@ -152,7 +156,7 @@ async function installFixture(page: Page): Promise<{ count: number }> {
       return canvas.toDataURL().split(',')[1]!;
     }, match.slice(1).map(Number));
     tiles.count += 1;
-    await route.fulfill({ contentType: 'image/png', body: Buffer.from(png, 'base64') });
+    await route.fulfill({ headers: { 'access-control-allow-origin': '*' }, contentType: 'image/png', body: Buffer.from(png, 'base64') });
   });
   return tiles;
 }
