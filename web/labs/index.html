@@ -59,7 +59,10 @@
         <p class="truth-note">Labs uses the same sanitized live state and event stream as CartoLite. It never receives message contents, keys, raw paths, or MQTT credentials.</p>
       </dialog>
 
-      <p id="labs-fatal" class="labs-fatal glass" role="alert" hidden></p>
+      <p id="labs-fatal" class="labs-fatal glass" role="alert" hidden>
+        Unable to load Labs. Check your connection, then try again.<br />
+        <a class="labs-back" href="">Try again</a>
+      </p>
     </main>
     <script type="module" src="/src/labs/main.ts"></script>
   </body>

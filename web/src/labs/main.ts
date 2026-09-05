@@ -1,6 +1,5 @@
 import './styles.css';
 import { fetchState, LiveFeed } from '../api';
-import { showStartupError } from '../startupError';
 import { RouteSonifier, type SoundScene, type SoundStatus } from '../audio';
 import { activityLabel, LiveStore } from '../state';
 import type { PacketEventV2, StateV2 } from '../types';
@@ -408,7 +407,8 @@ function releaseWakeLock(): void {
 function showFatal(error: unknown): void {
   status.dataset.state = 'offline';
   statusText.textContent = 'Unavailable';
-  showStartupError(fatal, 'Labs', error);
+  console.warn('Labs could not start:', error);
+  fatal.hidden = false;
   app.dataset.loading = 'false';
   picker.disabled = false;
 }

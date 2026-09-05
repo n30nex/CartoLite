@@ -71,13 +71,13 @@ for (const path of ['/', '/netgraph/', '/labs/']) {
       contentType: 'text/event-stream', body: 'retry: 60000\n\n: waiting\n\n',
     }));
     await page.goto(path);
-    const retry = page.getByRole('button', { name: 'Try again', exact: true });
+    const retry = page.getByRole('link', { name: 'Try again', exact: true });
     await expect(retry).toBeVisible();
     await expect(page.getByRole('alert')).toContainText('Check your connection');
     await retry.click();
     if (path === '/') await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
     else await expect(page.locator(path === '/labs/' ? '#labs-app' : '#netgraph-app')).toHaveAttribute('data-loading', 'false');
-    await expect(retry).toHaveCount(0);
+    await expect(retry).toBeHidden();
     expect(requests).toBe(2);
   });
 }

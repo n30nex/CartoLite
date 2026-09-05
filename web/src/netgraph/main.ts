@@ -4,7 +4,6 @@ import { RouteSonifier, type SoundScene, type SoundStatus } from '../audio';
 import { buildNodeInspectorModel, createNodeInspectorContent, relativeTime, roleLabel, searchNodes } from '../nodeInspector';
 import { activityLabel, LiveStore } from '../state';
 import { wireNodeSearch } from '../nodeSearch';
-import { showStartupError } from '../startupError';
 import { normalizePacketKind } from '../trafficVisuals';
 import type { NodeV2, PacketView } from '../types';
 import { NetgraphRegionResolver } from './areas';
@@ -282,7 +281,8 @@ async function start(): Promise<void> {
     releaseScreenAwake();
     statusElement.dataset.state = 'offline';
     statusText.textContent = 'Unavailable';
-    showStartupError(fatal, 'Netgraph', error);
+    console.warn('Netgraph could not start:', error);
+    fatal.hidden = false;
   }
 }
 

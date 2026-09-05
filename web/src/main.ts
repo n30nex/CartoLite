@@ -21,7 +21,6 @@ import {
 } from './preferences';
 import { activityLabel, LiveStore } from './state';
 import { wireNodeSearch } from './nodeSearch';
-import { showStartupError } from './startupError';
 import { normalizePacketKind, PACKET_KIND_COLORS, ROUTE_LEGEND_ITEMS } from './trafficVisuals';
 import type { PacketView } from './types';
 
@@ -495,7 +494,8 @@ async function start(): Promise<void> {
     mapView?.destroy();
     statusElement.dataset.state = 'offline';
     statusText.textContent = 'Unavailable';
-    showStartupError(fatal, 'the map', error);
+    console.warn('CartoLite could not start:', error);
+    fatal.hidden = false;
   }
 }
 
