@@ -172,6 +172,7 @@ jobs:
           CARTOLITE_BASE_URL: http://127.0.0.1:39476
         shell: bash
         run: |
+          PLAYWRIGHT_HTML_OUTPUT_DIR=terrain-playwright-report npm run test:e2e -- --grep @terrain --output terrain-test-results
           publisher_pid=""
           cleanup() {
             if [[ -n "$publisher_pid" ]]; then
@@ -188,7 +189,7 @@ jobs:
             done
           ) &
           publisher_pid="$!"
-          npm run test:e2e
+          npm run test:e2e -- --grep-invert @terrain
       - name: Trivy HIGH/CRITICAL gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -207,6 +208,8 @@ jobs:
             artifacts/integration/
             web/test-results/
             web/playwright-report/
+            web/terrain-test-results/
+            web/terrain-playwright-report/
           if-no-files-found: ignore
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

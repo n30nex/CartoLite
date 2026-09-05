@@ -7,7 +7,7 @@ import type { StateV2 } from '../src/types';
 test.use({ trace: 'off' });
 test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: 'wait' }); });
 
-test('3D enables Topo and projects live and reduced-motion traffic over synthetic relief', async ({ page }, testInfo) => {
+test('3D enables Topo and projects live and reduced-motion traffic over synthetic relief', { tag: '@terrain' }, async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'terrain camera and relief acceptance runs on desktop');
   test.slow();
   const errors: string[] = [];
@@ -73,7 +73,7 @@ test('3D enables Topo and projects live and reduced-motion traffic over syntheti
   expect(errors).toEqual([]);
 });
 
-test('Netgraph emphasizes traffic through an inspected node without losing hops', async ({ page }, testInfo) => {
+test('Netgraph emphasizes traffic through an inspected node without losing hops', { tag: '@terrain' }, async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'selection emphasis is shared across viewports');
   await installFixture(page);
   await page.goto('/netgraph/');
