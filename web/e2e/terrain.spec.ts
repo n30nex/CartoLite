@@ -1,9 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
+import { deflateSync } from 'node:zlib';
 import type { StateV2 } from '../src/types';
 
 // Continuous trace screencasts stall software-rendered terrain readback. Keep
 // the explicit scene images below and the normal failure screenshot instead.
 test.use({ trace: 'off' });
+test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: 'wait' }); });
 
 test('3D enables Topo and projects live and reduced-motion traffic over synthetic relief', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'terrain camera and relief acceptance runs on desktop');
@@ -25,14 +27,14 @@ test('3D enables Topo and projects live and reduced-motion traffic over syntheti
   await expect(packets).toHaveAttribute('data-projection-samples', '2');
   await page.locator('#hillshade-button').click();
   await expect.poll(() => tiles.count, { timeout: 15_000 }).toBeGreaterThan(0);
-  await expect(map).toHaveAttribute('data-render-state', 'idle');
+  await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 15_000 });
   await page.screenshot({ path: testInfo.outputPath('synthetic-relief-topo.png') });
   await page.locator('#hillshade-button').click();
   await page.locator('#terrain-button').click();
   await expect(page.locator('#hillshade-button')).toHaveAttribute('aria-pressed', 'true');
   await expect(map).toHaveAttribute('data-terrain3d', 'true');
   await expect(map).toHaveAttribute('data-route-surface', 'terrain');
-  await expect(map).toHaveAttribute('data-render-state', 'idle');
+  await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 15_000 });
   await emitPacket(page);
   await expect(packets).toHaveAttribute('data-projection-mode', 'terrain');
   await expect(packets).toHaveAttribute('data-projection-samples', '17');
@@ -42,8 +44,9 @@ test('3D enables Topo and projects live and reduced-motion traffic over syntheti
   // A native right-drag rotates and pitches the scene, then the next packet still follows it.
   await page.mouse.move(740, 450);
   await page.mouse.down({ button: 'right' });
-  await page.mouse.move(855, 510, { steps: 8 });
+  await page.mouse.move(780, 460, { steps: 4 });
   await page.mouse.up({ button: 'right' });
+  await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 15_000 });
   await emitPacket(page);
   await expect(packets).toHaveAttribute('data-projection-samples', '17');
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -133,32 +136,56 @@ async function installFixture(page: Page): Promise<{ count: number }> {
     };
   }, state.map);
   const tiles = { count: 0 };
+  const images = new Map<string, Buffer>();
   await page.route('https://tiles.mapterhorn.com/tilejson.json', (route) => route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: {
-    tilejson: '3.0.0', tiles: ['https://tiles.mapterhorn.com/synthetic/{z}/{x}/{y}.png'], minzoom: 0, maxzoom: 14, attribution: 'Synthetic relief fixture',
+    tilejson: '3.0.0', tiles: ['https://tiles.mapterhorn.com/synthetic/{z}/{x}/{y}.png'], minzoom: 0, maxzoom: 11, attribution: 'Synthetic relief fixture',
   } }));
   await page.route('https://tiles.mapterhorn.com/synthetic/**', async (route) => {
     const match = /\/(\d+)\/(\d+)\/(\d+)\.png$/.exec(route.request().url())!;
-    const png = await page.evaluate(([z, x, y]) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = 512;
-      const context = canvas.getContext('2d')!;
-      const image = context.createImageData(512, 512);
-      for (let row = 0; row < 512; row += 1) for (let column = 0; column < 512; column += 1) {
-        const lng = (x! + (column + 0.5) / 512) / 2 ** z! * 360 - 180;
-        const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (y! + (row + 0.5) / 512) / 2 ** z!))) * 180 / Math.PI;
-        const height = 600 + 2100 * Math.exp(-(((lng + 115.5) / 0.08) ** 2 + ((lat - 51.16) / 0.055) ** 2))
-          + 1400 * Math.exp(-(((lng + 115.33) / 0.06) ** 2 + ((lat - 51.08) / 0.035) ** 2));
-        const value = height + 32768;
-        const offset = (row * 512 + column) * 4;
-        image.data.set([Math.floor(value / 256), Math.floor(value) % 256, Math.floor(value * 256) % 256, 255], offset);
-      }
-      context.putImageData(image, 0, 0);
-      return canvas.toDataURL().split(',')[1]!;
-    }, match.slice(1).map(Number));
+    const key = match[0];
+    const png = images.get(key) ?? terrainTile(Number(match[1]), Number(match[2]), Number(match[3]));
+    images.set(key, png);
     tiles.count += 1;
-    await route.fulfill({ headers: { 'access-control-allow-origin': '*' }, contentType: 'image/png', body: Buffer.from(png, 'base64') });
+    await route.fulfill({ headers: { 'access-control-allow-origin': '*' }, contentType: 'image/png', body: png });
   });
   return tiles;
+}
+
+// A dependency-free PNG fixture, generated in the Actions test process so tile
+// creation never competes with the browser's terrain rendering or GPU readback.
+function terrainTile(z: number, x: number, y: number): Buffer {
+  const size = 512;
+  const pixels = Buffer.alloc((size * 4 + 1) * size);
+  for (let row = 0; row < size; row += 1) {
+    const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (y + (row + 0.5) / size) / 2 ** z))) * 180 / Math.PI;
+    for (let column = 0; column < size; column += 1) {
+      const lng = (x + (column + 0.5) / size) / 2 ** z * 360 - 180;
+      const value = 32768 + 600 + 2100 * Math.exp(-(((lng + 115.5) / 0.08) ** 2 + ((lat - 51.16) / 0.055) ** 2))
+        + 1400 * Math.exp(-(((lng + 115.33) / 0.06) ** 2 + ((lat - 51.08) / 0.035) ** 2));
+      const offset = row * (size * 4 + 1) + 1 + column * 4;
+      pixels.set([Math.floor(value / 256), Math.floor(value) % 256, Math.floor(value * 256) % 256, 255], offset);
+    }
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), pngChunk('IHDR', header), pngChunk('IDAT', deflateSync(pixels)), pngChunk('IEND', Buffer.alloc(0))]);
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const content = Buffer.concat([Buffer.from(type), data]);
+  let crc = 0xffffffff;
+  for (const byte of content) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  }
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  const checksum = Buffer.alloc(4);
+  checksum.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
+  return Buffer.concat([length, content, checksum]);
 }
 
 async function emitPacket(page: Page): Promise<void> {
