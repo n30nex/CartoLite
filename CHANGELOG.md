@@ -4,10 +4,10 @@
 
 ### Recovery and navigation refinement
 
-- Let the map toolbar wrap naturally when navigation and controls cannot fit on one row. Keep live status text visible on phones and bound the expanded layers menu below wrapped controls.
+- Let the map toolbar wrap naturally when navigation and controls cannot fit on one row. Restore phone layer labels, keep live status text visible, and bound the expanded layers menu below wrapped controls.
 - Add consistent keyboard Finder navigation to Map and Netgraph: Up/Down highlights results while preserving typing focus, Enter selects the highlighted node, and Escape closes Finder and returns focus to its button. Expose the selected result to assistive technology and reuse one rendering path for both views.
 - Retry permanently closed event streams with bounded backoff. Keep browser-managed transient reconnects and resume cursors, recover malformed resets, and cancel stalled state requests after 15 seconds so recovery cannot hang indefinitely.
-- Give Map, Netgraph, and Labs a plain-language startup failure message and a working Try again button. Preserve the current URL and browser preferences when retrying.
+- Give Map, Netgraph, and Labs a plain-language startup failure message and a native Try again link. Preserve the current URL and browser preferences when retrying.
 - Add targeted recovery and browser regressions for all three views, keyboard selection, and phone-to-laptop toolbar widths. See [audit findings](docs/audit-2026-09-05.md).
 
 ## 0.10.6 - 2026-09-04

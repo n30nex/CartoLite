@@ -4,6 +4,9 @@ import { NEIGHBOR_ROUTE_RECENT_MS } from '../src/routeFocus';
 import type { StateV2 } from '../src/types';
 
 test('renders the live route map and privacy-safe state', async ({ page }, testInfo) => {
+  // This full journey includes terrain downloads, camera transitions, audio,
+  // and region loading. Keep each assertion's own deadline unchanged.
+  test.slow();
   const mobile = isMobileProject(testInfo.project.name);
   await instrumentAudioContext(page);
   const mapStyleErrors = captureMapStyleErrors(page);

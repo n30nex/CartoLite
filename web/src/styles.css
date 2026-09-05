@@ -545,7 +545,7 @@ button { font: inherit; }
   border-radius: 12px;
 }
 :root[data-view-class="mobile"] .layers-panel .control-button { width: 100%; justify-content: flex-start; gap: 9px; border-right: 0; border-bottom: 1px solid rgba(139, 205, 214, 0.12); padding-inline: 13px; }
-:root[data-view-class="mobile"] .layers-panel .control-button > span { display: inline; }
+:root[data-view-class="mobile"] .layers-panel .control-button > span:last-child { display: inline; }
 :root[data-view-class="mobile"] .find-control { display: grid; width: 100%; }
 :root[data-view-class="mobile"] .find-panel { position: static; width: 100%; padding: 9px; border: 0; border-radius: 0; box-shadow: none; backdrop-filter: none; }
 :root[data-view-class="mobile"] .node-search-results { max-height: 220px; }

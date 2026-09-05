@@ -98,4 +98,8 @@ test('map navigation and controls remain separate across laptop and narrow phone
     }), { message: `Toolbar should not overlap at ${width}px` }).toBe(true);
     await expect(page.locator('#status-text')).toBeVisible();
   }
+  await page.locator('#layers-summary').click();
+  for (const id of ['routes', 'heatmap', 'clusters', 'regions', 'hillshade', 'terrain']) {
+    await expect(page.locator(`#${id}-button > span`).last()).toBeVisible();
+  }
 });
