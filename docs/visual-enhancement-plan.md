@@ -11,6 +11,7 @@ The map already has strong protocol colours, directional cores, relay handoffs, 
 - MapLibre 5.19.0's `Map.project()` already incorporates terrain elevation and the camera. Sample the confirmed geographic segment before projection instead of interpolating only its screen endpoints. Cache these paths and invalidate them on camera or terrain-data changes. [Versioned Map implementation](https://github.com/maplibre/maplibre-gl-js/blob/v5.19.0/src/ui/map.ts), [Mercator projection](https://github.com/maplibre/maplibre-gl-js/blob/v5.19.0/src/geo/projection/mercator_transform.ts).
 - Multidirectional hillshade is supported in the installed version. Use stronger, restrained highlight/shadow contrast and map-anchored illumination so rotating the camera does not rotate the sun. Separate hillshade and terrain DEM sources follow MapLibre's quality recommendation. [Multidirectional example](https://github.com/maplibre/maplibre-gl-js/blob/v5.19.0/test/examples/add-a-multidirectional-hillshade-layer.html), [terrain example](https://github.com/maplibre/maplibre-gl-js/blob/v5.19.0/test/examples/3d-terrain.html).
 - Elevation comes from the existing DEM surface, not antenna metadata. The renderer remains an illustration of confirmed hops, not a radio coverage, line-of-sight, or propagation model. [Mapterhorn data](https://mapterhorn.com/).
+- MapLibre drapes native line layers over terrain; the existing custom 2D historical layer is excluded from that path. Use a native line layer for history only while 3D is active and retain the compact custom renderer for flat views. Remove four retired trunk layers that always had an empty source. [Versioned terrain draping implementation](https://github.com/maplibre/maplibre-gl-js/blob/v5.19.0/src/render/render_to_texture.ts).
 - Keep reduced motion meaningful: static, terrain-aligned cues replace travel rather than making the feature disappear. Avoid automatic orbiting and full-screen flashes. [W3C animation guidance](https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html).
 
 ## Available data and visual opportunities
@@ -30,6 +31,7 @@ The map already has strong protocol colours, directional cores, relay handoffs, 
 
 1. Strengthen Topo with multidirectional shading. Enabling 3D also enables and saves Topo if it was off. Disabling 3D leaves the visitor's Topo choice available.
 2. Use bounded terrain samples for live trails, spark placement, partial reduced-motion traces, and the 45-second residue. Keep the flat-map fast path. Reproject after pan, zoom, rotation, pitch, and DEM updates without restarting a packet's clock.
+   Historical routes also drape over terrain in 3D, preserving the same confirmed endpoints and age-window filter.
 3. Project expanding node/observer/arrival rings onto the local ground plane. Add modest perspective sizing to packet heads and trails in 3D, while retaining readable protocol colours.
 4. Give live Netgraph segments touching the selected node a bounded emphasis. Other hops remain visible and audible; there is no invented traffic or layout motion.
 

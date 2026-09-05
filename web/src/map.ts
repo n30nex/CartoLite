@@ -68,6 +68,7 @@ const TERRAIN_TILEJSON_URL = 'https://tiles.mapterhorn.com/tilejson.json';
 const REGION_ATTRIBUTION_SOURCE_ID = 'meshcore-canada-regions';
 const ROUTE_TRUNK_SOURCE_ID = 'route-trunks';
 const ROUTE_DETAIL_SOURCE_ID = 'route-details';
+const ROUTE_TERRAIN_LAYER_ID = 'route-terrain';
 const ROUTE_FOCUS_SOURCE_ID = 'route-focus';
 const ROUTE_TRUNK_WINDOW_STATE_ID = 'cartolite-trunk-window';
 export const REGION_LAYER_IDS = ['meshcore-region-lines', 'meshcore-region-labels'] as const;
@@ -110,9 +111,6 @@ export const HEAT_RENDER_BUDGET = 600;
 const ROUTE_REPRESENTATION_EXACT = 'exact';
 const ROUTE_REPRESENTATION_NATIONAL = 'national';
 const ROUTE_REPRESENTATION_REGIONAL = 'regional';
-const ROUTE_NATIONAL_MAX_ZOOM = 4.8;
-const ROUTE_REGIONAL_MIN_ZOOM = 4.8;
-const ROUTE_REGIONAL_MAX_ZOOM = 6.5;
 const ROUTE_SOURCE_BUILD_BATCH = 256;
 export const ROUTE_LIVE_UPDATE_INTERVAL_MS = 8_000;
 
@@ -439,6 +437,7 @@ export class LiveMap {
         []
       );
       this.historicalRouteLayer.setRoutes(collections.individual.features);
+      this.updateTerrainRoutes(true);
       const detailChanged = true;
       this.routeDetailFeatures.clear();
       for (const feature of collections.individual.features) {
@@ -736,13 +735,14 @@ export class LiveMap {
     const started = performance.now();
     this.routesVisible = visible;
     this.container.dataset.routesVisible = String(visible);
-    this.historicalRouteLayer.setVisible(visible);
+    this.historicalRouteLayer.setVisible(visible && !this.terrain3D);
     if (!this.layersReady) {
       this.container.dataset.routeToggleApplyMs = (performance.now() - started).toFixed(1);
       return;
     }
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
     const needsHydration = visible && this.routeDataDirty && Boolean(detailSource);
+    this.updateTerrainRoutes(true);
     const maxAge = this.effectiveRouteAgeMS();
     if (visible && detailSource) {
       const suffix = routeWindowSuffix(maxAge);
@@ -802,6 +802,7 @@ export class LiveMap {
     if (!this.layersReady) return;
     if (enabled) this.ensureTerrainLayers();
     this.map.setTerrain(enabled ? { source: TERRAIN_SOURCE_ID, exaggeration: 1.35 } : null);
+    this.updateTerrainRoutes(true);
     this.setTerrainGestures(enabled);
     const camera = this.cameraOrientation();
     this.container.dataset.cameraPitch = String(camera.pitch);
@@ -923,6 +924,20 @@ export class LiveMap {
     return this.terrain3D ? { bearing: -12, pitch: 52 } : { bearing: 0, pitch: 0 };
   }
 
+  private updateTerrainRoutes(refreshData = false): void {
+    if (!this.map.getLayer(ROUTE_TERRAIN_LAYER_ID)) return;
+    const visible = this.terrain3D && this.routesVisible;
+    this.historicalRouteLayer.setVisible(this.routesVisible && !this.terrain3D);
+    this.map.setLayoutProperty(ROUTE_TERRAIN_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
+    this.map.setFilter(ROUTE_TERRAIN_LAYER_ID, ['<=', ['get', 'windowBand'], routeWindowBand(this.effectiveRouteAgeMS())]);
+    if (refreshData) {
+      (this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource).setData(
+        visible ? this.routeCollections?.individual ?? EMPTY_LINES : EMPTY_LINES
+      );
+    }
+    this.container.dataset.routeSurface = this.terrain3D ? 'terrain' : 'flat';
+  }
+
   private updateRouteRepresentation = (): void => {
     const representation = routeRepresentationForZoom(this.map.getZoom());
     if (this.container.dataset.routeRepresentation === representation) return;
@@ -1006,6 +1021,7 @@ export class LiveMap {
       this.historicalRouteLayer.setMaximumBand(routeWindowBand(maxAge));
     }
     this.updateRouteWindowDiagnostics(this.routeClock || now, maxAge);
+    this.updateTerrainRoutes();
     return trunkChanged;
   }
 
@@ -1107,69 +1123,17 @@ export class LiveMap {
     this.map.addSource(ROUTE_FOCUS_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 16 });
     this.map.setGlobalStateProperty(ROUTE_TRUNK_WINDOW_STATE_ID, '24h');
     this.applyRouteTimeState(Date.now(), true);
-    const representation = routeRepresentationForZoom(this.map.getZoom());
-    const nationalVisibility = this.routesVisible && representation === 'national-trunks' ? 'visible' : 'none';
-    const regionalVisibility = this.routesVisible && representation === 'regional-trunks' ? 'visible' : 'none';
     const exactVisibility = this.routesVisible ? 'visible' : 'none';
-    this.map.addLayer({
-      id: ROUTE_VISUAL_LAYER_IDS[0],
-      type: 'line',
-      source: ROUTE_TRUNK_SOURCE_ID,
-      maxzoom: ROUTE_NATIONAL_MAX_ZOOM,
-      filter: routeTrunkFilter(ROUTE_REPRESENTATION_NATIONAL),
-      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: nationalVisibility },
-      paint: {
-        'line-color': activeRouteTrunkColorExpression(),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 3, ['*', activeRouteTrunkMetricExpression('glowWidth'), 0.58], 4.8, ['*', activeRouteTrunkMetricExpression('glowWidth'), 0.5]],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, ['*', activeRouteTrunkMetricExpression('opacity'), 0.24], 4.8, ['*', activeRouteTrunkMetricExpression('opacity'), 0.2]],
-        'line-blur': ['interpolate', ['linear'], ['zoom'], 3, 2.1, 4.8, 1.5]
-      }
-    });
-    this.map.addLayer({
-      id: ROUTE_VISUAL_LAYER_IDS[1],
-      type: 'line',
-      source: ROUTE_TRUNK_SOURCE_ID,
-      maxzoom: ROUTE_NATIONAL_MAX_ZOOM,
-      filter: routeTrunkFilter(ROUTE_REPRESENTATION_NATIONAL),
-      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: nationalVisibility },
-      paint: {
-        'line-color': activeRouteTrunkColorExpression(),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 3, ['*', activeRouteTrunkMetricExpression('width'), 0.6], 4.8, ['*', activeRouteTrunkMetricExpression('width'), 0.78]],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, ['*', activeRouteTrunkMetricExpression('opacity'), 0.56], 4.8, ['*', activeRouteTrunkMetricExpression('opacity'), 0.48]]
-      }
-    });
-    this.map.addLayer({
-      id: ROUTE_VISUAL_LAYER_IDS[2],
-      type: 'line',
-      source: ROUTE_TRUNK_SOURCE_ID,
-      minzoom: ROUTE_REGIONAL_MIN_ZOOM,
-      maxzoom: ROUTE_REGIONAL_MAX_ZOOM,
-      filter: routeTrunkFilter(ROUTE_REPRESENTATION_REGIONAL),
-      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: regionalVisibility },
-      paint: {
-        'line-color': activeRouteTrunkColorExpression(),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4.8, ['*', activeRouteTrunkMetricExpression('glowWidth'), 0.5], 6.5, ['*', activeRouteTrunkMetricExpression('glowWidth'), 0.64]],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.8, ['*', activeRouteTrunkMetricExpression('opacity'), 0.22], 6.5, ['*', activeRouteTrunkMetricExpression('opacity'), 0.26]],
-        'line-blur': ['interpolate', ['linear'], ['zoom'], 4.8, 1.5, 6.5, 1.9]
-      }
-    });
-    this.map.addLayer({
-      id: ROUTE_VISUAL_LAYER_IDS[3],
-      type: 'line',
-      source: ROUTE_TRUNK_SOURCE_ID,
-      minzoom: ROUTE_REGIONAL_MIN_ZOOM,
-      maxzoom: ROUTE_REGIONAL_MAX_ZOOM,
-      filter: routeTrunkFilter(ROUTE_REPRESENTATION_REGIONAL),
-      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: regionalVisibility },
-      paint: {
-        'line-color': activeRouteTrunkColorExpression(),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4.8, ['*', activeRouteTrunkMetricExpression('width'), 0.74], 6.5, activeRouteTrunkMetricExpression('width')],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.8, ['*', activeRouteTrunkMetricExpression('opacity'), 0.56], 6.5, ['*', activeRouteTrunkMetricExpression('opacity'), 0.68]]
-      }
-    });
-    this.historicalRouteLayer.setVisible(this.routesVisible);
+    this.historicalRouteLayer.setVisible(this.routesVisible && !this.terrain3D);
     this.historicalRouteLayer.setMaximumBand(routeWindowBand(this.effectiveRouteAgeMS()));
     this.map.addLayer(this.historicalRouteLayer);
+    this.map.addLayer({
+      id: ROUTE_TERRAIN_LAYER_ID,
+      type: 'line',
+      source: ROUTE_DETAIL_SOURCE_ID,
+      layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': routeColorExpression(), 'line-width': ['get', 'width'], 'line-opacity': ['*', ['get', 'opacity'], 0.55] }
+    });
     this.map.addLayer({
       id: ROUTE_FOCUS_LAYER_IDS[0],
       type: 'line',
@@ -1935,7 +1899,7 @@ export class LiveMap {
       if (this.map.getLayer(ROUTE_WEBGL_LAYER_ID)) this.map.removeLayer(ROUTE_WEBGL_LAYER_ID);
       const layer = new HistoricalRouteLayer();
       layer.setRoutes([...this.routeDetailFeatures.values()]);
-      layer.setVisible(this.routesVisible);
+      layer.setVisible(this.routesVisible && !this.terrain3D);
       layer.setMaximumBand(routeWindowBand(this.effectiveRouteAgeMS()));
       this.historicalRouteLayer = layer;
       const before = this.map.getLayer(ROUTE_FOCUS_LAYER_IDS[0]) ? ROUTE_FOCUS_LAYER_IDS[0] : undefined;
@@ -2272,29 +2236,6 @@ export function heatmapColorExpression(color: string): ExpressionSpecification {
     0.35, colorWithAlpha(color, 0.3),
     0.65, colorWithAlpha(color, 0.56),
     1, colorWithAlpha(color, 0.82)
-  ];
-}
-
-function activeRouteTrunkMetricExpression(
-  metric: 'routeCount' | 'width' | 'glowWidth' | 'opacity' | 'color'
-): ExpressionSpecification {
-  return [
-    'match',
-    ['global-state', ROUTE_TRUNK_WINDOW_STATE_ID],
-    '15m', ['get', `${metric}15m`],
-    '1h', ['get', `${metric}1h`],
-    '6h', ['get', `${metric}6h`],
-    ['get', `${metric}24h`]
-  ];
-}
-
-function activeRouteTrunkColorExpression(): ExpressionSpecification {
-  return [
-    'interpolate', ['linear'], activeRouteTrunkMetricExpression('routeCount'),
-    1, '#50aaa5',
-    8, '#63d7c4',
-    32, '#f3c96a',
-    128, '#f08aa8'
   ];
 }
 

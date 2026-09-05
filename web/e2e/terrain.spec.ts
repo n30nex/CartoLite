@@ -27,6 +27,7 @@ test('3D enables Topo and projects live and reduced-motion traffic over syntheti
   await page.locator('#terrain-button').click();
   await expect(page.locator('#hillshade-button')).toHaveAttribute('aria-pressed', 'true');
   await expect(map).toHaveAttribute('data-terrain3d', 'true');
+  await expect(map).toHaveAttribute('data-route-surface', 'terrain');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
   await emitPacket(page);
   await expect(packets).toHaveAttribute('data-projection-mode', 'terrain');
@@ -51,6 +52,7 @@ test('3D enables Topo and projects live and reduced-motion traffic over syntheti
   await page.screenshot({ path: testInfo.outputPath('synthetic-relief-rotated-static.png') });
   await page.locator('#terrain-button').click();
   await expect(map).toHaveAttribute('data-terrain3d', 'false');
+  await expect(map).toHaveAttribute('data-route-surface', 'flat');
   await expect(page.locator('#hillshade-button')).toHaveAttribute('aria-pressed', 'true');
 
   // Repair the older saved combination on startup as well as on a user click.
