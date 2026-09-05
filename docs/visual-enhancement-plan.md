@@ -45,3 +45,5 @@ The map already has strong protocol colours, directional cores, relay handoffs, 
 ## Validation and delivery
 
 Use synthetic relief and packet fixtures in GitHub Actions to verify projection, caching/invalidation, auto-Topo state, perspective footprints, reduced motion, hop/audio preservation, and camera interaction. Compare flat and tilted mountain views visually. Run the existing complete browser, privacy, scale, and image gates. Preserve the current image/configuration/checkpoint, deploy only the published exact-commit image, then verify the public views and a five-minute stability window.
+
+Size decision: Actions measured 363,905 gzip bytes across all JavaScript/CSS assets after sharing deterministic colour/hash helpers and removing the redundant residue projection cache. This is 385 bytes above the former 355 KiB ceiling. Allocate 1 KiB for terrain projection in this minor release (356 KiB total); retain the enforced gate and all data-asset budgets. The old artificial-curve helpers are removed because terrain projection replaces their remaining uses.

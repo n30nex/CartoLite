@@ -79,18 +79,6 @@ interface NodeWake {
 
 export type ScreenPoint = SurfacePoint;
 
-export interface QuadraticRoute {
-  from: ScreenPoint;
-  control: ScreenPoint;
-  to: ScreenPoint;
-}
-
-export interface QuadraticSlice {
-  control: ScreenPoint;
-  head: ScreenPoint;
-  tangent: ScreenPoint;
-}
-
 export interface PacketTrail {
   tail: ScreenPoint;
   head: ScreenPoint;
@@ -170,44 +158,6 @@ export function interpolateScreenPoint(from: ScreenPoint, to: ScreenPoint, progr
   return {
     x: from.x + (to.x - from.x) * amount,
     y: from.y + (to.y - from.y) * amount,
-  };
-}
-
-export function routeCurve(from: ScreenPoint, to: ScreenPoint, seed: string, strength = 1): QuadraticRoute {
-  const deltaX = to.x - from.x;
-  const deltaY = to.y - from.y;
-  const distance = Math.hypot(deltaX, deltaY);
-  const midpoint = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
-  if (distance <= 0.01) return { from, control: midpoint, to };
-  const side = stableVisualHash(seed) % 2 === 0 ? 1 : -1;
-  const bend = Math.min(68, distance * 0.16) * clamp(strength);
-  return {
-    from,
-    control: {
-      x: midpoint.x - deltaY / distance * bend * side,
-      y: midpoint.y + deltaX / distance * bend * side,
-    },
-    to,
-  };
-}
-
-export function quadraticPoint(route: QuadraticRoute, progress: number): ScreenPoint {
-  const amount = clamp(progress);
-  const inverse = 1 - amount;
-  return {
-    x: inverse * inverse * route.from.x + 2 * inverse * amount * route.control.x + amount * amount * route.to.x,
-    y: inverse * inverse * route.from.y + 2 * inverse * amount * route.control.y + amount * amount * route.to.y,
-  };
-}
-
-export function quadraticSlice(route: QuadraticRoute, progress: number): QuadraticSlice {
-  const amount = clamp(progress);
-  const first = interpolateScreenPoint(route.from, route.control, amount);
-  const second = interpolateScreenPoint(route.control, route.to, amount);
-  return {
-    control: first,
-    head: interpolateScreenPoint(first, second, amount),
-    tangent: { x: second.x - first.x, y: second.y - first.y },
   };
 }
 
