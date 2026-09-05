@@ -16,6 +16,7 @@ describe('terrain-aware packet geometry', () => {
     expect(projection.projectSegment(segment)).toEqual([{ x: 0, y: 51 }, { x: 100, y: 51 }]);
     expect(project).toHaveBeenCalledTimes(2);
     terrain = true;
+    projection.reset();
     const path = projection.projectSegment(segment);
     expect(path).toHaveLength(17);
     expect(surfacePathPoint(path, 0.5)).toMatchObject({ x: 50, y: 21 });

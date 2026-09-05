@@ -341,4 +341,3 @@ function compareSortKey(sortKeys: ReadonlyMap<string, string>, leftID: string, r
   const right = sortKeys.get(rightID) ?? rightID;
   return left < right ? -1 : left > right ? 1 : 0;
 }
-

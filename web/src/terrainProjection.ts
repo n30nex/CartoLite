@@ -57,19 +57,18 @@ export class TerrainProjector {
 
   projectSegment(segment: RouteSegmentView): readonly SurfacePoint[] {
     const { from, to } = segment;
-    if (!this.enabled()) return [this.projectEndpoint(from), this.projectEndpoint(to)];
     const key = `${from.lng}:${from.lat}:${to.lng}:${to.lat}`;
     const cached = this.paths.get(key);
     if (cached) return cached;
     const first = this.projectEndpoint(from);
     const last = this.projectEndpoint(to);
-    const points = Array.from({ length: 17 }, (_, index): SurfacePoint => {
+    const points = this.enabled() ? Array.from({ length: 17 }, (_, index): SurfacePoint => {
       const t = index / 16;
       if (index === 0) return first;
       if (index === 16) return last;
       const point = this.project(geographicSegmentPoint(from, to, t));
       return { ...point, scale: (first.scale ?? 1) + ((last.scale ?? 1) - (first.scale ?? 1)) * t };
-    });
+    }) : [first, last];
     if (this.paths.size >= 1024) this.paths.delete(this.paths.keys().next().value!);
     this.paths.set(key, points);
     return points;

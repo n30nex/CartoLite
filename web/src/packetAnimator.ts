@@ -79,10 +79,6 @@ interface NodeWake {
 
 export type ScreenPoint = SurfacePoint;
 
-interface ProjectedResidue {
-  points: readonly ScreenPoint[];
-}
-
 export interface QuadraticRoute {
   from: ScreenPoint;
   control: ScreenPoint;
@@ -344,7 +340,6 @@ export class PacketAnimator {
   private activeObservers: ActiveObserver[] = [];
   private residue: Residue[] = [];
   private nodeWakes: NodeWake[] = [];
-  private projectedResidue = new Map<Residue, ProjectedResidue>();
   private frameId = 0;
   private residueTimer?: number;
   private paused = false;
@@ -440,7 +435,7 @@ export class PacketAnimator {
       this.activeObservers = [];
       this.residue = [];
       this.nodeWakes = [];
-      this.projectedResidue.clear();
+      this.projection.reset();
       this.residueContentDirty = true;
       window.cancelAnimationFrame(this.frameId);
       if (this.residueTimer !== undefined) window.clearTimeout(this.residueTimer);
@@ -625,7 +620,7 @@ export class PacketAnimator {
     }
   }
 
-  private drawResidue(context: CanvasRenderingContext2D, item: Residue, projected: ProjectedResidue, now: number): void {
+  private drawResidue(context: CanvasRenderingContext2D, item: Residue, now: number): void {
     const style = residueStyle(now - item.addedAt);
     const rangeBoost = item.longHaul ? 1.28 : 1;
     const bloomOpacity = this.reducedMotion ? style.life * 0.12 : style.bloomOpacity;
@@ -633,7 +628,7 @@ export class PacketAnimator {
     const bloomWidth = this.reducedMotion ? 5.2 : style.bloomWidth;
     const coreWidth = this.reducedMotion ? 1.8 : style.coreWidth;
     const coreColor = this.reducedMotion ? item.color : blendWithWhite(item.color, style.hot * 0.16);
-    traceSurfacePath(context, projected.points);
+    traceSurfacePath(context, this.projection.projectSegment(item.segment));
     context.strokeStyle = withAlpha(item.color, Math.min(0.7, bloomOpacity * rangeBoost));
     context.lineWidth = bloomWidth * rangeBoost;
     context.stroke();
@@ -649,15 +644,14 @@ export class PacketAnimator {
     const count = quality === 'full' ? 3 : quality === 'balanced' ? 2 : 1;
     const limit = quality === 'full' ? 160 : quality === 'balanced' ? 120 : 96;
     for (const item of this.residue.slice(-limit)) {
-      const projected = this.projectedResidue.get(item);
-      if (!projected) continue;
+      const path = this.projection.projectSegment(item.segment);
       const style = residueStyle(now - item.addedAt);
       if (style.life <= 0.025) continue;
       const age = Math.max(0, now - item.addedAt);
       const sparkleCount = Math.min(4, count + (item.longHaul ? 1 : 0));
       for (let index = 0; index < sparkleCount; index += 1) {
         const progress = residueSparkleProgress(item.segment.routeId, age, index);
-        const point = surfacePathPoint(projected.points, progress);
+        const point = surfacePathPoint(path, progress);
         const twinkle = 0.32 + 0.68 * Math.abs(Math.sin(age / 240 + index * 2.1));
         const radius = quality === 'low' ? 0.85 : 0.9 + index * 0.12;
         this.context.fillStyle = withAlpha(item.color, style.life * twinkle * 0.82);
@@ -694,24 +688,12 @@ export class PacketAnimator {
       this.qualityMode() === 'low' ? RESIDUE_REDRAW_MS * 2 : RESIDUE_REDRAW_MS,
     )) return;
 
-    if (this.residueProjectionDirty) this.projectedResidue.clear();
-    const live = new Set(this.residue);
-    for (const item of this.projectedResidue.keys()) {
-      if (!live.has(item)) this.projectedResidue.delete(item);
-    }
-    for (const item of this.residue) {
-      if (!this.projectedResidue.has(item)) {
-        this.projectedResidue.set(item, { points: this.projection.projectSegment(item.segment) });
-      }
-    }
-
     this.clearResidueCanvas();
     this.residueContext.save();
     this.residueContext.globalCompositeOperation = 'source-over';
     this.residueContext.lineCap = 'round';
     for (const item of this.residue) {
-      const projected = this.projectedResidue.get(item);
-      if (projected) this.drawResidue(this.residueContext, item, projected, now);
+      this.drawResidue(this.residueContext, item, now);
     }
     if (this.reducedMotion) {
       for (const item of this.nodeWakes) this.drawNodeWake(this.residueContext, item, now);
@@ -1182,4 +1164,3 @@ function blendWithWhite(color: string, amount: number): string {
   });
   return `#${channels.join('')}`;
 }
-
