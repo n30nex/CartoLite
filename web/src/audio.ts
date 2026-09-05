@@ -1,3 +1,4 @@
+import { stableHash } from './trafficVisuals';
 import { routeDuration, segmentNearViewport, segmentTravelWeights } from './packetAnimator';
 import type { EndpointV2, PacketView } from './types';
 import type { PacketKind } from './trafficVisuals';
@@ -518,14 +519,6 @@ function audioContextConstructor(): AudioContextConstructor | undefined {
   return window.AudioContext ?? (window as WebKitAudioWindow).webkitAudioContext;
 }
 
-function stableHash(value: string): number {
-  let hash = 2_166_136_261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16_777_619);
-  }
-  return hash >>> 0;
-}
 
 function segmentIntersectsViewport(
   from: { x: number; y: number },

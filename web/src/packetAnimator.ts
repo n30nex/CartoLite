@@ -1,3 +1,4 @@
+import { stableHash as stableVisualHash, colorWithAlpha as withAlpha } from './trafficVisuals';
 import type maplibregl from 'maplibre-gl';
 import type { EndpointV2, ObserverPacketEventV2, PacketView, RoutePacketView, RouteSegmentView } from './types';
 import { TerrainProjector, surfaceArc, surfacePathPoint, surfaceTrail, traceSurfacePath, type SurfacePoint } from './terrainProjection';
@@ -1161,14 +1162,6 @@ function degreesToRadians(value: number): number {
   return (value * Math.PI) / 180;
 }
 
-function stableVisualHash(value: string): number {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
 
 function clamp(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -1190,10 +1183,3 @@ function blendWithWhite(color: string, amount: number): string {
   return `#${channels.join('')}`;
 }
 
-function withAlpha(color: string, alpha: number): string {
-  const value = color.startsWith('#') ? color.slice(1) : 'ffffff';
-  const red = Number.parseInt(value.slice(0, 2), 16);
-  const green = Number.parseInt(value.slice(2, 4), 16);
-  const blue = Number.parseInt(value.slice(4, 6), 16);
-  return `rgba(${red},${green},${blue},${clamp(alpha)})`;
-}

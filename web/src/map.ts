@@ -13,6 +13,7 @@ import type {
   Point
 } from 'geojson';
 import regionPartitionURL from './assets/meshcore-canada-region-partition.geojson?url';
+import { colorWithAlpha as alphaColor } from './trafficVisuals';
 import regionRegistryURL from './assets/meshcore-canada-regions.json?url';
 import { cartoVectorRequestURL, cartoVectorStyle } from './basemap';
 import {
@@ -2898,11 +2899,7 @@ function clamp(value: number, minimum: number, maximum: number): number {
 }
 
 function colorWithAlpha(color: string, alpha: number): string {
-  const value = /^#[0-9a-f]{6}$/i.test(color) ? color.slice(1) : '9caebd';
-  const red = Number.parseInt(value.slice(0, 2), 16);
-  const green = Number.parseInt(value.slice(2, 4), 16);
-  const blue = Number.parseInt(value.slice(4, 6), 16);
-  return `rgba(${red},${green},${blue},${clamp(alpha, 0, 1)})`;
+  return alphaColor(/^#[0-9a-f]{6}$/i.test(color) ? color : '#9caebd', alpha);
 }
 
 function smoothstep(edge0: number, edge1: number, value: number): number {

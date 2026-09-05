@@ -44,7 +44,10 @@ test('3D enables Topo and projects live and reduced-motion traffic over syntheti
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await emitPacket(page);
   await expect(packets).toHaveAttribute('data-motion-mode', 'static');
-  await expect.poll(() => packets.getAttribute('data-residue-count').then(Number)).toBeGreaterThan(0);
+  await expect.poll(() => packets.evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    return canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data.some((value, index) => index % 4 === 3 && value > 0);
+  })).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('synthetic-relief-rotated-static.png') });
   await page.locator('#terrain-button').click();
   await expect(map).toHaveAttribute('data-terrain3d', 'false');

@@ -1,3 +1,5 @@
+import { stableHash } from '../trafficVisuals';
+export { stableHash } from '../trafficVisuals';
 import type { SoundCharacter, ViewportProjector } from '../audio';
 import type { EndpointV2, NodeV2, PacketView, StateV2 } from '../types';
 import { normalizePacketKind, type PacketKind } from '../trafficVisuals';
@@ -199,14 +201,6 @@ export function projectCanada(lng: number, lat: number, width: number, height: n
   return { x: x * Math.max(1, width), y: y * Math.max(1, height) };
 }
 
-export function stableHash(value: string): number {
-  let hash = 2_166_136_261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16_777_619);
-  }
-  return hash >>> 0;
-}
 
 export function stableNodeSample(nodes: readonly NodeV2[], limit: number): NodeV2[] {
   return [...nodes]

@@ -1,3 +1,4 @@
+import { colorWithAlpha } from '../trafficVisuals';
 import type { ViewportProjector } from '../audio';
 import {
   DESTINATION_BLOOM_MS,
@@ -1540,13 +1541,6 @@ function coordinateKey(lng: number, lat: number): string {
   return `${lng.toFixed(6)},${lat.toFixed(6)}`;
 }
 
-function colorWithAlpha(color: string, alpha: number): string {
-  const value = color.startsWith('#') ? color.slice(1) : color;
-  const red = Number.parseInt(value.slice(0, 2), 16);
-  const green = Number.parseInt(value.slice(2, 4), 16);
-  const blue = Number.parseInt(value.slice(4, 6), 16);
-  return `rgba(${red}, ${green}, ${blue}, ${clamp(alpha, 0, 1)})`;
-}
 
 function truncateLabel(label: string, length: number): string {
   return label.length <= length ? label : `${label.slice(0, Math.max(1, length - 1))}…`;
