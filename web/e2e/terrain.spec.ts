@@ -49,13 +49,26 @@ test('3D enables Topo and projects live and reduced-motion traffic over syntheti
   await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 15_000 });
   await emitPacket(page);
   await expect(packets).toHaveAttribute('data-projection-samples', '17');
+  const wakesBeforeStatic = Number(await packets.getAttribute('data-wakes-scheduled'));
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await emitPacket(page);
   await expect(packets).toHaveAttribute('data-motion-mode', 'static');
-  await expect.poll(() => packets.evaluate((element) => {
+  await expect.poll(() => packets.getAttribute('data-wakes-scheduled').then(Number)).toBeGreaterThan(wakesBeforeStatic);
+  const beforeRead = await packets.evaluate((element) => {
     const canvas = element as HTMLCanvasElement;
-    return canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data.some((value, index) => index % 4 === 3 && value > 0);
-  })).toBe(true);
+    return { width: canvas.width, height: canvas.height, hidden: document.hidden, mode: { ...canvas.dataset }, context: canvas.getContext('2d')!.getContextAttributes() };
+  });
+  await testInfo.attach('static-before-read', { body: JSON.stringify(beforeRead), contentType: 'application/json' });
+  const pixels = await packets.evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    const started = performance.now();
+    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+    let painted = 0;
+    for (let index = 3; index < data.length; index += 4) if (data[index]! > 0) painted += 1;
+    return { painted, elapsedMS: performance.now() - started };
+  });
+  await testInfo.attach('static-pixels', { body: JSON.stringify(pixels), contentType: 'application/json' });
+  expect(pixels.painted, JSON.stringify(beforeRead)).toBeGreaterThan(0);
   await page.screenshot({ path: testInfo.outputPath('synthetic-relief-rotated-static.png') });
   await page.locator('#terrain-button').click();
   await expect(map).toHaveAttribute('data-terrain3d', 'false');
