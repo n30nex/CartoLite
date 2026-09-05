@@ -89,7 +89,10 @@
       <div id="tooltip" class="tooltip glass" role="tooltip" hidden></div>
       <aside id="node-inspector-sheet" class="node-inspector-sheet glass" aria-label="Selected node details" hidden></aside>
       <p id="empty-state" class="empty-state glass" hidden>No connected routes in this time window.</p>
-      <p id="fatal" class="fatal glass" role="alert" hidden></p>
+      <p id="fatal" class="fatal glass" role="alert" hidden>
+        Unable to load Netgraph. Check your connection, then try again.<br />
+        <a class="control-button" href="">Try again</a>
+      </p>
     </main>
     <script type="module" src="/src/netgraph/main.ts"></script>
   </body>

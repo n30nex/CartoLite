@@ -3,6 +3,7 @@ import { fetchState, LiveFeed } from '../api';
 import { RouteSonifier, type SoundScene, type SoundStatus } from '../audio';
 import { buildNodeInspectorModel, createNodeInspectorContent, relativeTime, roleLabel, searchNodes } from '../nodeInspector';
 import { activityLabel, LiveStore } from '../state';
+import { wireNodeSearch } from '../nodeSearch';
 import { normalizePacketKind } from '../trafficVisuals';
 import type { NodeV2, PacketView } from '../types';
 import { NetgraphRegionResolver } from './areas';
@@ -280,40 +281,26 @@ async function start(): Promise<void> {
     releaseScreenAwake();
     statusElement.dataset.state = 'offline';
     statusText.textContent = 'Unavailable';
-    fatal.textContent = error instanceof Error ? error.message : 'CartoLite Netgraph could not start';
+    console.warn('Netgraph could not start:', error);
     fatal.hidden = false;
   }
 }
 
 function wireSearch(renderer: NetgraphRenderer, select: (nodeID: string) => void): void {
-  const renderResults = (): void => {
-    const started = performance.now();
-    const results = searchNodes(renderer.connectedNodes(), nodeSearch.value);
-    nodeSearchResults.replaceChildren();
-    if (nodeSearch.value.trim() && results.length === 0) {
-      const empty = document.createElement('p');
-      empty.textContent = 'No matching connected labels';
-      nodeSearchResults.append(empty);
-    }
-    for (const { node } of results) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'node-search-result';
-      button.setAttribute('role', 'option');
-      button.dataset.nodeId = node.id;
-      const label = document.createElement('strong');
-      label.textContent = node.label;
-      const context = document.createElement('span');
-      context.textContent = `${roleLabel(node.role)} · ${relativeTime(node.lastSeen)}`;
-      button.append(label, context);
-      button.addEventListener('click', () => {
-        select(node.id);
-        closeFindPanel();
-      });
-      nodeSearchResults.append(button);
-    }
-    stage.dataset.nodeSearchApplyMs = (performance.now() - started).toFixed(1);
-  };
+  const renderResults = wireNodeSearch({
+    input: nodeSearch,
+    results: nodeSearchResults,
+    metrics: stage,
+    search: (query) => searchNodes(renderer.connectedNodes(), query),
+    select(nodeID) {
+      select(nodeID);
+      closeFindPanel();
+    },
+    dismiss() {
+      closeFindPanel();
+      findButton.focus();
+    },
+  });
 
   findButton.addEventListener('click', () => {
     const opening = findPanel.hidden;
@@ -323,15 +310,6 @@ function wireSearch(renderer: NetgraphRenderer, select: (nodeID: string) => void
     closeSoundPanel();
     renderResults();
     requestAnimationFrame(() => nodeSearch.focus());
-  });
-  nodeSearch.addEventListener('input', renderResults);
-  nodeSearch.addEventListener('keydown', (event) => {
-    const first = nodeSearchResults.querySelector<HTMLButtonElement>('button');
-    if ((event.key === 'ArrowDown' || event.key === 'Enter') && first) {
-      event.preventDefault();
-      if (event.key === 'Enter') first.click();
-      else first.focus();
-    }
   });
 }
 
@@ -433,6 +411,8 @@ function pulseSound(notes: number): void {
 function closeFindPanel(): void {
   findPanel.hidden = true;
   findButton.setAttribute('aria-expanded', 'false');
+  nodeSearch.setAttribute('aria-expanded', 'false');
+  nodeSearch.removeAttribute('aria-activedescendant');
 }
 
 function closeSoundPanel(): void {

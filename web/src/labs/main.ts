@@ -407,7 +407,7 @@ function releaseWakeLock(): void {
 function showFatal(error: unknown): void {
   status.dataset.state = 'offline';
   statusText.textContent = 'Unavailable';
-  fatal.textContent = error instanceof Error ? error.message : 'CartoLite Labs could not start';
+  console.warn('Labs could not start:', error);
   fatal.hidden = false;
   app.dataset.loading = 'false';
   picker.disabled = false;

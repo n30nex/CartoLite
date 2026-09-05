@@ -107,6 +107,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .traffic-meter i:nth-child(3) { max-height: 12px; }
 
 .controls {
+  z-index: 8;
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
   right: max(12px, env(safe-area-inset-right));
@@ -168,7 +169,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .node-search-result { display: grid; min-height: 50px; gap: 2px; border: 0; border-top: 1px solid rgba(139, 205, 214, 0.1); padding: 7px 8px; color: #eaffff; background: transparent; text-align: left; cursor: pointer; }
 .node-search-result strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .node-search-result span { color: #8298a5; font-size: 9px; text-transform: capitalize; }
-.node-search-result:hover, .node-search-result:focus-visible { background: rgba(41, 184, 169, 0.13); outline-offset: -2px; }
+.node-search-result:hover, .node-search-result:focus-visible, .node-search-result[aria-selected="true"] { background: rgba(41, 184, 169, 0.13); outline-offset: -2px; }
 
 .sound-panel { right: 0; width: 250px; gap: 11px; padding: 13px; }
 .sound-panel header { display: flex; align-items: center; justify-content: space-between; color: #efffff; font-size: 12px; }
@@ -304,8 +305,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 @media (orientation: landscape) and (max-height: 520px) {
   .graph-summary { display: none; }
   .legend { right: 8px; bottom: 8px; left: auto; max-width: 58vw; }
-  .node-inspector-sheet { top: 62px; right: 8px; bottom: 8px; left: auto; width: min(440px, 48vw); max-height: none; }
-  .node-inspector { grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1.2fr); grid-template-rows: auto minmax(0, 1fr); max-height: calc(100vh - 70px); }
+  .node-inspector-sheet { top: max(116px, calc(env(safe-area-inset-top) + 116px)); right: 8px; bottom: 8px; left: auto; width: min(440px, 48vw); max-height: none; }
+  .node-inspector { grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1.2fr); grid-template-rows: auto minmax(0, 1fr); max-height: calc(100vh - 124px - env(safe-area-inset-top)); }
   .node-inspector > header { grid-column: 1; grid-row: 1; }
   .node-inspector dl { grid-column: 1; grid-row: 2; }
   .node-inspector h3 { grid-column: 2; grid-row: 1; align-self: end; }
