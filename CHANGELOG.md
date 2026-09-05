@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.6 - 2026-09-04
+
+### Adaptive Netgraph performance
+
+- Adapt Netgraph decoration to measured frame and drawing times instead of guessing device capability from its model. Full effects stay enabled on capable devices; sustained rendering pressure reduces secondary sparks, signatures, glow work, and the transient canvas resolution. Restore detail gradually after sustained headroom, without capping animation cadence or removing live hops, musical notes, nodes, or historical links.
+- Cache coloured regional OUT/IN label artwork and keep fading route residue on its own composited canvas, avoiding repeated text rasterization and full-screen canvas copies. Keep 45-second trail expiry and clear residue when the app is hidden.
+- On constrained renderers, reuse the rendered topology during touch gestures using the exact packet projection, then repaint at release. Slow-device Reset and zoom-button changes skip expensive camera easing; capable devices retain animated camera transitions.
+- Keep the geographic map, backend, saved preferences, privacy boundary, and native APK package unchanged. Performance samples remain transient browser-local values and are never stored or transmitted.
+- Add adaptive-quality, recovery, layer-lifecycle, hop/audio preservation, and constrained-camera regression checks alongside the existing large-topology and Android touch suites.
+
 ## 0.10.5 - 2026-09-04
 
 ### Touch navigation

@@ -198,6 +198,70 @@ test('native touch pinches, pans, lifts and cancels without jumping or losing se
   await session.detach();
 });
 
+test('slow renderers adapt decoration without losing hops and composite camera gestures', async ({ page }) => {
+  await instrumentAudioContext(page);
+  await page.route('**/api/state', (route) => route.fulfill({ json: netgraphState(Date.now()) }));
+  await page.addInitScript(() => {
+    const probe = window as unknown as { feed: EventTarget; slow: boolean; timer: number; packets: number; graphPaints: number };
+    probe.slow = true;
+    probe.packets = probe.graphPaints = 0;
+    window.EventSource = class extends EventTarget {
+      onopen?: () => void;
+      constructor() { super(); probe.feed = this; setTimeout(() => this.onopen?.(), 0); }
+      close(): void {}
+    } as unknown as typeof EventSource;
+    const clear = CanvasRenderingContext2D.prototype.clearRect;
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      if (this.canvas.id === 'graph-canvas') probe.graphPaints++;
+      if (this.canvas.id === 'packet-canvas' && probe.slow) {
+        const until = performance.now() + 14;
+        while (performance.now() < until) { /* Reproducible slow drawing, not device guessing. */ }
+      }
+      return clear.apply(this, args);
+    };
+  });
+  await page.goto('/netgraph/');
+  const stage = page.locator('#netgraph-stage');
+  await expect(page.locator('#netgraph-app')).toHaveAttribute('data-loading', 'false');
+  await expect(stage).toHaveAttribute('data-quality-mode', 'full');
+  await page.locator('#sound-button').click();
+  await page.locator('#sound-toggle').click();
+  await page.locator('#sound-button').click();
+  await page.evaluate(() => {
+    const probe = window as unknown as { feed: EventTarget; timer: number; packets: number };
+    probe.timer = window.setInterval(() => {
+      probe.packets++;
+      probe.feed.dispatchEvent(new MessageEvent('packet', { data: JSON.stringify({
+        seq: probe.packets, id: `adaptive-${probe.packets}`, at: Date.now(), payloadType: 'Text', mode: 'route',
+        segments: [{ routeId: 'a-b', fromId: 'a', toId: 'b' }, { routeId: 'b-c', fromId: 'b', toId: 'c' }],
+      }) }));
+    }, 200);
+  });
+  await expect(stage).toHaveAttribute('data-quality-mode', 'low', { timeout: 8_000 });
+  const packetCount = await page.evaluate(() => {
+    const probe = window as unknown as { slow: boolean; timer: number; packets: number };
+    probe.slow = false;
+    clearInterval(probe.timer);
+    return probe.packets;
+  });
+  expect(Number(await page.locator('#sound-activity').getAttribute('data-scheduled'))).toBe(packetCount * 2);
+  expect(await page.evaluate(() => (window as unknown as { __netgraphOscillators: number }).__netgraphOscillators)).toBe(packetCount * 2);
+  await expect(stage).toHaveAttribute('data-visible-routes', '3');
+  await expect(page.locator('#netgraph-residue-canvas')).toBeVisible();
+  await expect.poll(() => canvasHasPixels(page, '#netgraph-residue-canvas')).toBe(true);
+  await expect(stage).toHaveAttribute('data-render-state', 'idle');
+  await page.mouse.move(100, 250);
+  await page.mouse.down();
+  const paints = await page.evaluate(() => (window as unknown as { graphPaints: number }).graphPaints);
+  await page.mouse.move(160, 280, { steps: 6 });
+  await expect(stage).toHaveAttribute('data-render-state', 'composited');
+  expect(await page.evaluate(() => (window as unknown as { graphPaints: number }).graphPaints)).toBe(paints);
+  await expect(page.locator('#graph-canvas')).not.toHaveCSS('transform', 'none');
+  await page.mouse.up();
+  await expect(stage).toHaveAttribute('data-render-state', 'idle');
+  await expect(page.locator('#graph-canvas')).toHaveCSS('transform', 'none');
+});
+
 test('Netgraph alone renders paired regional OUT and IN cues', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'the cue renderer uses one shared Canvas2D path');
   const now = Date.now();
