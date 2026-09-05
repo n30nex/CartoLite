@@ -130,11 +130,11 @@ async function installFixture(page: Page): Promise<{ count: number }> {
     }
     Object.defineProperty(window, 'EventSource', { value: FixtureStream });
     // Pixel assertions must not wait on a readback of the busy terrain GPU.
-    // Only this fixture's 2D overlay uses a CPU backing store; MapLibre and the
+    // This fixture's 2D canvases use CPU backing stores; MapLibre WebGL and the
     // separate performance suite keep their normal graphics contexts.
     const getContext = HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext = function (type, ...args) {
-      if (type === '2d' && this.id === 'packet-canvas') args[0] = { ...args[0], willReadFrequently: true };
+      if (type === '2d') args[0] = { ...args[0], willReadFrequently: true };
       return Reflect.apply(getContext, this, [type, ...args]);
     } as typeof getContext;
     const transform = CanvasRenderingContext2D.prototype.transform;
