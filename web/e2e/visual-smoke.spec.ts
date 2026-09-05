@@ -430,6 +430,9 @@ test('keeps a recent packet trail after stable routes are hidden', async ({ page
 });
 
 test('focuses recent route neighbors and clears selection on the map', async ({ page }, testInfo) => {
+  // This multi-step inspection journey also captures rendered evidence.
+  // Individual assertions retain their existing deadlines.
+  test.slow();
   const mobile = isMobileProject(testInfo.project.name);
   const now = Date.now();
   const center: [number, number] = [-80.35, 43.45];
