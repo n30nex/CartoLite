@@ -328,6 +328,7 @@ export class NetgraphRenderer implements ViewportProjector {
     this.selectedNodeID = nodeID && this.nodesByID.has(nodeID) ? nodeID : null;
     this.nodesDirty = true;
     this.stage.dataset.selectedNodeId = this.selectedNodeID ?? '';
+    this.stage.dataset.focusedPacketEmphasis = '1';
     this.requestStaticDraw();
   }
 
@@ -862,6 +863,7 @@ export class NetgraphRenderer implements ViewportProjector {
     if (residueCount !== this.residue.length) this.residueProjectionDirty = true;
     this.regionActivityCues = this.regionActivityCues.filter((cue) => now < cue.startedAt + cue.duration);
     this.drawResidue(context, now);
+    this.stage.dataset.focusedPacketEmphasis = '1';
     for (const route of this.activeRoutes) this.drawActiveRoute(context, route, now);
     for (const wake of this.observerWakes) this.drawObserverWake(context, wake, now);
     const regionFrames = activeRegionFrames(this.regionActivityCues, now, this.reducedMotionQuery.matches);
@@ -1047,16 +1049,18 @@ export class NetgraphRenderer implements ViewportProjector {
     const to = this.screenPoint(segment.to.id);
     if (!segmentNearViewport(from, to, this.width, this.height, 24)) return;
     const head = interpolateScreenPoint(from, to, easeInOut(motion.localProgress));
+    const emphasis = this.selectedNodeID && active.packet.segments.some((hop) => hop.from.id === this.selectedNodeID || hop.to.id === this.selectedNodeID) ? 1.3 : 1;
+    if (emphasis > 1) this.stage.dataset.focusedPacketEmphasis = String(emphasis);
     const trail = packetTrail(from, head, clamp(Math.hypot(to.x - from.x, to.y - from.y) * 0.28, 18, 68));
     if (this.quality.mode === 'low') {
       context.beginPath();
       context.moveTo(trail.tail.x, trail.tail.y);
       context.lineTo(head.x, head.y);
       context.strokeStyle = colorWithAlpha(active.color, 0.65);
-      context.lineWidth = active.longHaul ? 3.2 : 2.2;
+      context.lineWidth = (active.longHaul ? 3.2 : 2.2) * emphasis;
       context.stroke();
       context.beginPath();
-      context.arc(head.x, head.y, 3.25, 0, Math.PI * 2);
+      context.arc(head.x, head.y, 3.25 * emphasis, 0, Math.PI * 2);
       context.fillStyle = active.color;
       context.fill();
       return;
@@ -1072,7 +1076,7 @@ export class NetgraphRenderer implements ViewportProjector {
     context.lineTo(head.x, head.y);
     // Taper to the tail rather than painting a broad, flat tube.
     const length = Math.max(1, Math.hypot(head.x - trail.tail.x, head.y - trail.tail.y));
-    const halfWidth = active.longHaul ? 6 : active.crossRegion ? 5 : 4;
+    const halfWidth = (active.longHaul ? 6 : active.crossRegion ? 5 : 4) * emphasis;
     const px = -(head.y - trail.tail.y) / length * halfWidth;
     const py = (head.x - trail.tail.x) / length * halfWidth;
     context.lineTo(head.x + px, head.y + py);
@@ -1087,7 +1091,7 @@ export class NetgraphRenderer implements ViewportProjector {
     context.moveTo(trail.tail.x, trail.tail.y);
     context.lineTo(head.x, head.y);
     context.strokeStyle = gradient;
-    context.lineWidth = active.longHaul ? 4.5 : active.crossRegion ? 3.7 : 3.1;
+    context.lineWidth = (active.longHaul ? 4.5 : active.crossRegion ? 3.7 : 3.1) * emphasis;
     context.stroke();
     const sparkCount = this.quality.mode === 'balanced' || this.activeRoutes.length > 40 ? 1 : this.lowPowerQuery.matches ? 2 : 3;
     for (let index = 1; index <= sparkCount; index += 1) {
@@ -1098,10 +1102,10 @@ export class NetgraphRenderer implements ViewportProjector {
       context.fillStyle = colorWithAlpha(active.color, 0.68 - index * 0.13);
       context.fill();
     }
-    const glowRadius = active.longHaul ? 15 : active.crossRegion ? 12 : 10;
+    const glowRadius = (active.longHaul ? 15 : active.crossRegion ? 12 : 10) * emphasis;
     context.drawImage(this.glowSprite(active.color), head.x - glowRadius, head.y - glowRadius, glowRadius * 2, glowRadius * 2);
     context.beginPath();
-    context.arc(head.x, head.y, 3.25, 0, Math.PI * 2);
+    context.arc(head.x, head.y, 3.25 * emphasis, 0, Math.PI * 2);
     context.fillStyle = active.color;
     context.fill();
     if (this.quality.mode === 'full') this.drawSignature(context, head, from, to, active.color, active.signature, age);

@@ -62,6 +62,7 @@ const ACTIVITY_HEAT_SOURCE_ID = 'activity-heat-source';
 const NODE_SOURCE_ID = 'nodes';
 const NODE_CLUSTER_SOURCE_ID = 'node-clusters';
 const TERRAIN_SOURCE_ID = 'mapterhorn-dem';
+const HILLSHADE_SOURCE_ID = 'mapterhorn-hillshade-dem';
 const TERRAIN_TILEJSON_URL = 'https://tiles.mapterhorn.com/tilejson.json';
 const REGION_ATTRIBUTION_SOURCE_ID = 'meshcore-canada-regions';
 const ROUTE_TRUNK_SOURCE_ID = 'route-trunks';
@@ -799,7 +800,7 @@ export class LiveMap {
     this.container.dataset.terrain3d = String(enabled);
     if (!this.layersReady) return;
     if (enabled) this.ensureTerrainLayers();
-    this.map.setTerrain(enabled ? { source: TERRAIN_SOURCE_ID, exaggeration: 1.18 } : null);
+    this.map.setTerrain(enabled ? { source: TERRAIN_SOURCE_ID, exaggeration: 1.35 } : null);
     this.setTerrainGestures(enabled);
     const camera = this.cameraOrientation();
     this.container.dataset.cameraPitch = String(camera.pitch);
@@ -872,8 +873,9 @@ export class LiveMap {
 
   private ensureTerrainLayers(): void {
     if (this.terrainLayersReady) return;
-    if (!this.map.getSource(TERRAIN_SOURCE_ID)) {
-      this.map.addSource(TERRAIN_SOURCE_ID, {
+    for (const source of [TERRAIN_SOURCE_ID, HILLSHADE_SOURCE_ID]) {
+      if (this.map.getSource(source)) continue;
+      this.map.addSource(source, {
         type: 'raster-dem',
         url: TERRAIN_TILEJSON_URL,
         tileSize: 512,
@@ -886,14 +888,17 @@ export class LiveMap {
       this.map.addLayer({
         id: HILLSHADE_LAYER_ID,
         type: 'hillshade',
-        source: TERRAIN_SOURCE_ID,
+        source: HILLSHADE_SOURCE_ID,
         layout: { visibility: this.hillshadeVisible ? 'visible' : 'none' },
         paint: {
           'hillshade-illumination-anchor': 'map',
-          'hillshade-exaggeration': 0.36,
-          'hillshade-shadow-color': 'rgba(3, 9, 13, 0.72)',
-          'hillshade-highlight-color': 'rgba(126, 181, 164, 0.34)',
-          'hillshade-accent-color': 'rgba(43, 83, 78, 0.46)'
+          'hillshade-method': 'multidirectional',
+          'hillshade-illumination-direction': [270, 315, 0, 45],
+          'hillshade-illumination-altitude': [35, 35, 35, 35],
+          'hillshade-exaggeration': 0.75,
+          'hillshade-shadow-color': 'rgba(2, 9, 18, 0.86)',
+          'hillshade-highlight-color': 'rgba(177, 211, 175, 0.64)',
+          'hillshade-accent-color': 'rgba(47, 86, 75, 0.54)'
         }
       }, before);
     }

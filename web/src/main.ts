@@ -217,7 +217,7 @@ async function start(): Promise<void> {
     const packetCanvas = required<HTMLCanvasElement>('packet-canvas');
     const liveAnimator = new PacketAnimator(liveMap.map, packetCanvas);
     animator = liveAnimator;
-    const routeSonifier = new RouteSonifier(liveMap.map, packetCanvas);
+    const routeSonifier = new RouteSonifier(liveAnimator.projection, packetCanvas);
     sonifier = routeSonifier;
     soundVolume.value = String(Math.round(routeSonifier.getVolume() * 100));
     soundVolumeOutput.value = `${soundVolume.value}%`;
@@ -257,6 +257,7 @@ async function start(): Promise<void> {
       persistUiPreference({ hillshade: visible });
     });
     wireLayerToggle(terrainButton, uiPreferences.terrain3D, '3D terrain', (visible) => {
+      if (visible && !uiPreferences.hillshade) hillshadeButton.click();
       liveMap.setTerrain3D(visible);
       persistUiPreference({ terrain3D: visible });
     });
@@ -373,9 +374,11 @@ async function start(): Promise<void> {
     setLiveFollow(false);
 
     liveMap.map.on('dragstart', () => setLiveFollow(false));
-    liveMap.map.on('zoomstart', (event) => {
-      if (event.originalEvent) setLiveFollow(false);
-    });
+    for (const type of ['zoomstart', 'rotatestart', 'pitchstart'] as const) {
+      liveMap.map.on(type, (event) => {
+        if (event.originalEvent) setLiveFollow(false);
+      });
+    }
 
     const updateStatus = (): void => {
       const display = activityLabel(liveStore.snapshot, streamConnected);

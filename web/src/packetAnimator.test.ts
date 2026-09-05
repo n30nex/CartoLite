@@ -288,6 +288,15 @@ describe('PacketAnimator motion preference lifecycle', () => {
     expect(state.activeRoutes[0]?.longHaul).toBe(true);
     expect(state.residue).toHaveLength(0);
 
+    const resetProjection = vi.spyOn(animator.projection, 'reset');
+    const mapListeners = vi.mocked(map.on).mock.calls;
+    const move = mapListeners.find(([type]) => type === 'move')![1] as () => void;
+    const terrain = mapListeners.find(([type]) => type === 'terrain')![1] as () => void;
+    move();
+    terrain();
+    expect(resetProjection).toHaveBeenCalledTimes(2);
+    expect(state.activeRoutes[0]?.started).toBe(500);
+
     motionListener.current?.({ matches: true } as MediaQueryListEvent);
 
     expect(canvas.dataset.motionMode).toBe('static');

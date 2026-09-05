@@ -108,6 +108,16 @@ describe('route hop sonification', () => {
     }, projector, 100, 100)).toEqual([]);
   });
 
+  it('sounds a terrain path crossing the view once without treating its samples as extra hops', () => {
+    const route = packet([endpoint('a', -20, -20), endpoint('b', 120, -20)]);
+    expect(routeSoundPlan(route, projector, 100, 100)).toEqual([]);
+    const terrain = { ...projector, projectSegment: () => [{ x: -20, y: -20 }, { x: 50, y: 50 }, { x: 120, y: -20 }] };
+    const notes = routeSoundPlan(route, terrain, 100, 100);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.pan).toBe(0);
+    expect(notes[0]!.startMS).toBe(0);
+  });
+
   it('uses distinct but restrained voices for different packet families', () => {
     const points = [endpoint('a', 20, 50), endpoint('b', 80, 50)];
     const text = routeSoundPlan(packet(points, 'Text'), projector, 100, 100)[0]!;
