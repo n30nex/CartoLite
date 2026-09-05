@@ -1,5 +1,11 @@
 # Operations
 
+## v0.11.0 terrain and visual acceptance
+
+Run the synthetic relief browser fixture on Actions and inspect flat Topo, pitched 3D, rotated reduced-motion, and selected Netgraph traffic images. Confirm 3D enables and persists Topo from both a click and an older saved preference, while leaving 3D retains Topo. Check all live hops and notes, camera/DEM cache invalidation without clock resets, and ground-plane rings. Run the full existing privacy, browser, scale, budget, and image gates.
+
+On production, verify the exact released image/SHA and observe real elevation tiles in a mountainous region. Confirm terrain and packet alignment through pitch and rotation, readable controls, and Netgraph selection emphasis. Canvas2D trails remain overlays without true mountain occlusion; do not interpret them as RF coverage or antenna elevation. Preserve the current image/configuration/checkpoint, recreate only CartoLite, and verify public health/readiness, live SSE, zero restarts/drops, and five minutes of stable operation.
+
 ## v0.10.7 recovery and navigation acceptance
 
 Verify the exact published version/SHA/digest and standard health, readiness, MQTT, checkpoint, queue, drops, privacy, and SSE gates. Check the map toolbar at laptop and narrow phone widths: navigation and controls must remain separate, and live status must stay readable. In Map and Netgraph, use Finder with Up/Down, Enter, and Escape; keyboard selection must preserve typing focus and Escape must return focus to Find. Simulate an initial state failure independently for Map, Netgraph, and Labs, then use Try again to reach a working view.

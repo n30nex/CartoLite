@@ -75,14 +75,7 @@ export function drawImageCover(
   canvas.restore();
 }
 
-export function rgba(color: string, alpha: number): string {
-  const hex = color.replace('#', '');
-  const value = Number.parseInt(hex, 16);
-  const red = (value >> 16) & 255;
-  const green = (value >> 8) & 255;
-  const blue = value & 255;
-  return `rgba(${red}, ${green}, ${blue}, ${Math.max(0, Math.min(1, alpha))})`;
-}
+export { colorWithAlpha as rgba } from '../trafficVisuals';
 
 export function easeOut(value: number): number {
   const bounded = Math.max(0, Math.min(1, value));

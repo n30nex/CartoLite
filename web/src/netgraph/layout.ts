@@ -1,3 +1,4 @@
+import { stableHash } from '../trafficVisuals';
 import type { NodeV2, RouteV2 } from '../types';
 import { nearestNetgraphArea, type NetgraphAreaAnchor } from './areas';
 
@@ -339,13 +340,4 @@ function compareSortKey(sortKeys: ReadonlyMap<string, string>, leftID: string, r
   const left = sortKeys.get(leftID) ?? leftID;
   const right = sortKeys.get(rightID) ?? rightID;
   return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function stableHash(value: string): number {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
 }

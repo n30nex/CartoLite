@@ -166,6 +166,12 @@ jobs:
           bash scripts/integration-smoke.sh http://127.0.0.1:39476 artifacts/integration cartolite-mqtt
       - name: Bounded load smoke
         run: bash scripts/performance-smoke.sh http://127.0.0.1:39476 cartolite-mqtt
+      - name: Terrain and Netgraph visual regression
+        working-directory: web
+        env:
+          CARTOLITE_BASE_URL: http://127.0.0.1:39476
+          PLAYWRIGHT_HTML_OUTPUT_DIR: terrain-playwright-report
+        run: npm run test:e2e -- --grep @terrain --output terrain-test-results
       - name: Desktop and mobile Playwright smoke
         working-directory: web
         env:
@@ -188,7 +194,7 @@ jobs:
             done
           ) &
           publisher_pid="$!"
-          npm run test:e2e
+          npm run test:e2e -- --grep-invert @terrain
       - name: Trivy HIGH/CRITICAL gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -207,6 +213,8 @@ jobs:
             artifacts/integration/
             web/test-results/
             web/playwright-report/
+            web/terrain-test-results/
+            web/terrain-playwright-report/
           if-no-files-found: ignore
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

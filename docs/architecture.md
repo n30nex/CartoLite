@@ -58,3 +58,9 @@ The Labs page receives exactly the public information already available to the m
 ## Android shell
 
 The Android app is one native `Activity` containing a hardened WebView for the exact `https://carto.canadaverse.org` origin. It adds no application backend, API, state store, JavaScript bridge, analytics SDK, or downloaded media. Android owns immersive window presentation, the keep-screen-on flag, secure external-link handoff, connection recovery UI, and lifecycle/network resume signals. The web client continues to own map rendering, live state, SSE, preferences, animation, and Web Audio. Release links are associated through the public signing certificate in `/.well-known/assetlinks.json`; debug certificates are never trusted by production.
+
+## Terrain-aware motion
+
+Historical routes use a native terrain-draped line layer only when both Routes and 3D are enabled. Flat views retain the custom texture/line renderer and do not update the terrain route source or filter. The 3D source uses the same complete confirmed geometry and age bands, with no route cap.
+
+In 3D, confirmed hop segments are sampled at 17 Mercator positions and then projected through MapLibre's public terrain-aware projection. The flat path stays at two endpoints. The shared projection also gates and pans hop audio; samples never become extra hops. Small bounded caches are invalidated on camera, resize, terrain-toggle, and terrain-source updates without changing packet clocks. Canvas2D trails, residue and sparks follow these paths. Local east/north projections orient ground rings, while readable packet cores use bounded perspective sizing. Canvas2D provides no true mountain occlusion. Separate DEM sources support multidirectional hillshade and 1.35x terrain exaggeration. See [research and remaining ideas](visual-enhancement-plan.md).

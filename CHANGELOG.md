@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.0 - 2026-09-05
+
+### Terrain and live traffic
+
+- Strengthen Topo with multidirectional, map-anchored relief shading and separate DEM sources for shading and terrain. Enabling 3D also enables and remembers Topo; leaving 3D keeps Topo available. Use restrained 1.35× elevation exaggeration.
+- Project confirmed hops through sampled terrain before drawing live trails, sparks, partial reduced-motion traces, and residue. Cache projections until the camera or DEM changes, retain the two-point flat-map path, and keep hop clocks and sound aligned.
+- Drape historical routes over terrain in 3D using a native MapLibre line layer; preserve the fast custom renderer in flat views and remove retired, empty trunk layers.
+- Tilt ground rings with local terrain and camera orientation, and give packet heads and trails bounded perspective sizing. Manual zoom, rotation, and pitch release Live Follow so it does not fight camera exploration.
+- Emphasize Netgraph packets passing through the inspected node while keeping other traffic and all confirmed hops visible.
+- Add synthetic relief, projection/cache, audio visibility, auto-Topo, and selected-traffic checks. See the [visual enhancement plan and research](docs/visual-enhancement-plan.md), including the Canvas2D terrain-occlusion limitation and further ideas.
+
 ## 0.10.7 - 2026-09-05
 
 ### Recovery and navigation refinement
