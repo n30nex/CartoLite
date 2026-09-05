@@ -76,7 +76,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
   padding: 0 12px;
   border-radius: 14px;
 }
-.labs-back { display: inline-flex; min-height: 44px; align-items: center; gap: 6px; color: #effdff; text-decoration: none; font-size: 13px; font-weight: 750; }
+.labs-back, .labs-retry { display: inline-flex; min-height: 44px; align-items: center; gap: 6px; color: #effdff; text-decoration: none; font-size: 13px; font-weight: 750; }
 .labs-back > span:first-child { color: #63d9cc; font-size: 16px; }
 .labs-netgraph { display: inline-flex; min-height: 44px; align-items: center; gap: 5px; color: #9ccbc8; text-decoration: none; font-size: 10px; font-weight: 720; letter-spacing: 0.035em; }
 .labs-netgraph > span:first-child { color: #63d9cc; }
