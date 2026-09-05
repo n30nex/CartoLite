@@ -107,6 +107,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .traffic-meter i:nth-child(3) { max-height: 12px; }
 
 .controls {
+  z-index: 8;
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
   right: max(12px, env(safe-area-inset-right));
@@ -304,8 +305,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 @media (orientation: landscape) and (max-height: 520px) {
   .graph-summary { display: none; }
   .legend { right: 8px; bottom: 8px; left: auto; max-width: 58vw; }
-  .node-inspector-sheet { top: 62px; right: 8px; bottom: 8px; left: auto; width: min(440px, 48vw); max-height: none; }
-  .node-inspector { grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1.2fr); grid-template-rows: auto minmax(0, 1fr); max-height: calc(100vh - 70px); }
+  .node-inspector-sheet { top: max(116px, calc(env(safe-area-inset-top) + 116px)); right: 8px; bottom: 8px; left: auto; width: min(440px, 48vw); max-height: none; }
+  .node-inspector { grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1.2fr); grid-template-rows: auto minmax(0, 1fr); max-height: calc(100vh - 124px - env(safe-area-inset-top)); }
   .node-inspector > header { grid-column: 1; grid-row: 1; }
   .node-inspector dl { grid-column: 1; grid-row: 2; }
   .node-inspector h3 { grid-column: 2; grid-row: 1; align-self: end; }

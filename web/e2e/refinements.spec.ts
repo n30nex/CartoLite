@@ -45,6 +45,11 @@ for (const path of ['/', '/netgraph/']) {
     await input.press('Enter');
     await expect(page.locator('.node-inspector[data-node-id="audit-1"]')).toBeVisible();
     await expect(page.locator('#find-panel')).toBeHidden();
+    if (path === '/netgraph/' && page.viewportSize()!.height <= 520) {
+      const inspector = await page.locator('#node-inspector-sheet').boundingBox();
+      const controls = await page.locator('.controls').boundingBox();
+      expect(inspector!.y).toBeGreaterThanOrEqual(controls!.y + controls!.height);
+    }
 
     if (await layers.isVisible()) await layers.click();
     await page.locator('#find-button').click();
@@ -52,6 +57,11 @@ for (const path of ['/', '/netgraph/']) {
     await expect(input).not.toHaveAttribute('aria-activedescendant', /.+/);
     await input.press('ArrowUp');
     await expect(page.locator('[role="option"][aria-selected="true"]')).toContainText('Audit Charlie');
+    // Pointer selection must also work when the details panel is still open.
+    await page.locator('[role="option"][aria-selected="true"]').click();
+    await expect(page.locator('.node-inspector[data-node-id="audit-2"]')).toBeVisible();
+    if (await layers.isVisible()) await layers.click();
+    await page.locator('#find-button').click();
     await input.press('Escape');
     await expect(page.locator('#find-panel')).toBeHidden();
     await expect(page.locator('#find-button')).toBeFocused();
