@@ -1,5 +1,11 @@
 # Operations
 
+## v0.10.7 recovery and navigation acceptance
+
+Verify the exact published version/SHA/digest and standard health, readiness, MQTT, checkpoint, queue, drops, privacy, and SSE gates. Check the map toolbar at laptop and narrow phone widths: navigation and controls must remain separate, and live status must stay readable. In Map and Netgraph, use Finder with Up/Down, Enter, and Escape; keyboard selection must preserve typing focus and Escape must return focus to Find. Simulate an initial state failure independently for Map, Netgraph, and Labs, then use Try again to reach a working view.
+
+Run the existing full browser and load suites against the candidate image. Preserve the rollback image and checkpoint, recreate only CartoLite, and observe production for five minutes with zero restarts/drops or sustained resource regression. This release updates shared web assets; existing APKs receive them on page reload and need no native package replacement.
+
 ## v0.10.4 Netgraph performance acceptance
 
 Use synthetic 4,000-node/7,000-route state, phone portrait and landscape viewports, and a controlled live stream. Record steady-state frame intervals separately from initial layout; use the same browser and CPU throttle for before/after comparisons. Confirm last-heard updates do not repaint the graph, changed labels appear in Finder and inspection, all links remain available, packet cores and sparkles continue smoothly, and no continuous animation remains when idle. Check desktop selection and zoom, reduced-motion expiry, paired OUT/IN timing, and one oscillator per visible hop with the existing browser/audio suites. APK performance claims require physical-device measurements; browser emulation alone is not an Android hardware result.

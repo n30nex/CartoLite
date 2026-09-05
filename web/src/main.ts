@@ -20,6 +20,8 @@ import {
   type ViewClass
 } from './preferences';
 import { activityLabel, LiveStore } from './state';
+import { wireNodeSearch } from './nodeSearch';
+import { showStartupError } from './startupError';
 import { normalizePacketKind, PACKET_KIND_COLORS, ROUTE_LEGEND_ITEMS } from './trafficVisuals';
 import type { PacketView } from './types';
 
@@ -266,39 +268,21 @@ async function start(): Promise<void> {
       liveMap.setRouteWindow(window);
       persistUiPreference({ routeWindow: window });
     });
-    const renderNodeSearch = (): void => {
-      const started = performance.now();
-      const results = liveMap.findNodes(nodeSearch.value);
-      nodeSearchResults.replaceChildren();
-      if (!nodeSearch.value.trim()) {
-        mapElement.dataset.nodeSearchApplyMs = (performance.now() - started).toFixed(1);
-        return;
-      } else if (results.length === 0) {
-        const empty = document.createElement('p');
-        empty.textContent = 'No matching public labels';
-        nodeSearchResults.append(empty);
-      } else {
-        for (const { node } of results) {
-          const result = document.createElement('button');
-          result.type = 'button';
-          result.className = 'node-search-result';
-          result.setAttribute('role', 'option');
-          result.dataset.nodeId = node.id;
-          const label = document.createElement('strong');
-          label.textContent = node.label;
-          const context = document.createElement('span');
-          context.textContent = `${node.role.replace('_', ' ')} · ${relativeNodeTime(node.lastSeen)}`;
-          result.append(label, context);
-          result.addEventListener('click', () => {
-            liveMap.selectNodeByID(node.id, true);
-            closeFindPanel();
-            if (activeViewClass === 'mobile') setLayersOpen(false);
-          });
-          nodeSearchResults.append(result);
-        }
-      }
-      mapElement.dataset.nodeSearchApplyMs = (performance.now() - started).toFixed(1);
-    };
+    const renderNodeSearch = wireNodeSearch({
+      input: nodeSearch,
+      results: nodeSearchResults,
+      metrics: mapElement,
+      search: (query) => liveMap.findNodes(query),
+      select(nodeID) {
+        liveMap.selectNodeByID(nodeID, true);
+        closeFindPanel();
+        if (activeViewClass === 'mobile') setLayersOpen(false);
+      },
+      dismiss() {
+        closeFindPanel();
+        findButton.focus();
+      },
+    });
     findButton.addEventListener('click', () => {
       const opening = findPanel.hidden;
       findPanel.hidden = !opening;
@@ -307,23 +291,6 @@ async function start(): Promise<void> {
       closeSoundPanel();
       renderNodeSearch();
       window.requestAnimationFrame(() => nodeSearch.focus());
-    });
-    nodeSearch.addEventListener('input', renderNodeSearch);
-    nodeSearch.addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowDown') {
-        const first = nodeSearchResults.querySelector<HTMLButtonElement>('button');
-        if (first) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
-      if (event.key === 'Enter') {
-        const first = nodeSearchResults.querySelector<HTMLButtonElement>('button');
-        if (first) {
-          event.preventDefault();
-          first.click();
-        }
-      }
     });
     let wasHidden = document.hidden;
     document.addEventListener('visibilitychange', () => {
@@ -528,8 +495,7 @@ async function start(): Promise<void> {
     mapView?.destroy();
     statusElement.dataset.state = 'offline';
     statusText.textContent = 'Unavailable';
-    fatal.textContent = error instanceof Error ? error.message : 'CartoLite could not start';
-    fatal.hidden = false;
+    showStartupError(fatal, 'the map', error);
   }
 }
 
@@ -614,14 +580,8 @@ function closeSoundPanel(): void {
 function closeFindPanel(): void {
   findPanel.hidden = true;
   findButton.setAttribute('aria-expanded', 'false');
-}
-
-function relativeNodeTime(timestamp: number): string {
-  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1_000));
-  if (seconds < 60) return 'seen now';
-  if (seconds < 3_600) return `seen ${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86_400) return `seen ${Math.floor(seconds / 3_600)}h ago`;
-  return `seen ${Math.floor(seconds / 86_400)}d ago`;
+  nodeSearch.setAttribute('aria-expanded', 'false');
+  nodeSearch.removeAttribute('aria-activedescendant');
 }
 
 function formatUpdate(timestamp: number): string {

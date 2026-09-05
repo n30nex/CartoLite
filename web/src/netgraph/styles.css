@@ -168,7 +168,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .node-search-result { display: grid; min-height: 50px; gap: 2px; border: 0; border-top: 1px solid rgba(139, 205, 214, 0.1); padding: 7px 8px; color: #eaffff; background: transparent; text-align: left; cursor: pointer; }
 .node-search-result strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .node-search-result span { color: #8298a5; font-size: 9px; text-transform: capitalize; }
-.node-search-result:hover, .node-search-result:focus-visible { background: rgba(41, 184, 169, 0.13); outline-offset: -2px; }
+.node-search-result:hover, .node-search-result:focus-visible, .node-search-result[aria-selected="true"] { background: rgba(41, 184, 169, 0.13); outline-offset: -2px; }
 
 .sound-panel { right: 0; width: 250px; gap: 11px; padding: 13px; }
 .sound-panel header { display: flex; align-items: center; justify-content: space-between; color: #efffff; font-size: 12px; }
