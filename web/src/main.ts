@@ -6,7 +6,6 @@ import {
   LIVE_FOLLOW_MIN_INTERVAL_MS,
   LiveMap,
   type LiveMapFocus,
-  type RouteRepresentation,
   type RouteWindow
 } from './map';
 import { PacketAnimator, potentialLongHaulPacket } from './packetAnimator';
@@ -173,7 +172,7 @@ legend.dataset.collapsed = String(!legendExpanded);
 legendToggle.setAttribute('aria-expanded', String(legendExpanded));
 legendToggle.setAttribute('aria-label', legendExpanded ? 'Hide map legend' : 'Show map legend');
 
-renderRouteLegend(routeLegend, 'individual-routes');
+renderRouteLegend(routeLegend);
 aboutButton.addEventListener('click', () => aboutDialog.showModal());
 aboutClose.addEventListener('click', () => aboutDialog.close());
 aboutDialog.addEventListener('click', (event) => {
@@ -221,9 +220,6 @@ async function start(): Promise<void> {
       {
       appearance: uiPreferences,
       onFocusChange(focus) { updateFocusChrome(focus); if (focus) pauseFollowForVisibility(); },
-      onRouteRepresentationChange(representation) {
-        renderRouteLegend(routeLegend, representation);
-      },
       onRouteWindowChange(label) {
         const option = routeWindow.querySelector<HTMLOptionElement>('option[value="auto"]');
         if (option) option.textContent = label;
@@ -727,35 +723,8 @@ function wireLayerToggle(
   });
 }
 
-function renderRouteLegend(container: HTMLElement, representation: RouteRepresentation): void {
+function renderRouteLegend(container: HTMLElement): void {
   container.replaceChildren();
-  if (representation !== 'individual-routes') {
-    container.setAttribute('aria-label', 'Grouped route colors show connection density');
-    for (const item of [
-      { color: '#63bcb2', label: 'Grouped routes', shortLabel: 'Grouped' },
-      { color: '#d1b36b', label: 'Dense traffic', shortLabel: 'Dense' }
-    ]) {
-      const entry = document.createElement('span');
-      entry.className = 'route-legend-item';
-      entry.setAttribute('aria-label', item.label);
-      entry.title = item.label;
-
-      const swatch = document.createElement('i');
-      swatch.className = 'route-legend-swatch';
-      swatch.setAttribute('aria-hidden', 'true');
-      swatch.style.setProperty('--route-color', item.color);
-
-      const label = document.createElement('span');
-      label.className = 'route-legend-label';
-      label.setAttribute('aria-hidden', 'true');
-      label.dataset.short = item.shortLabel;
-      label.textContent = item.label;
-
-      entry.append(swatch, label);
-      container.append(entry);
-    }
-    return;
-  }
   container.setAttribute('aria-label', 'Route colors show the latest packet type');
   for (const item of ROUTE_LEGEND_ITEMS) {
     const entry = document.createElement('span');
