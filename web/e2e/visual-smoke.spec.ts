@@ -6,8 +6,7 @@ import type { StateV2 } from '../src/types';
 
 // Terrain screencasts stall software-rendered readback. Keep explicit captures
 // and failure screenshots, with the same assertions and 90-second test budget.
-test.describe('live map layers', () => {
-  test.use({ trace: 'off' });
+test.use({ trace: 'off' });
 test('renders the live route map and privacy-safe state', async ({ page }, testInfo) => {
   // This full journey includes terrain downloads, camera transitions, audio,
   // and region loading. Keep each assertion's own deadline unchanged.
@@ -292,8 +291,6 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   }
 
   await page.screenshot({ path: testInfo.outputPath('cartolite.png'), fullPage: true });
-});
-
 });
 
 test('keeps the map primary with reduced motion and releases live follow on drag', async ({ page }, testInfo) => {
