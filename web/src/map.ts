@@ -2730,22 +2730,6 @@ export function routeTrunkFeaturesForWindow(
   });
 }
 
-function routeWindowSummary(
-  features: readonly Feature<LineString>[],
-  maxAge: number
-): { trunks: number; routes: number } {
-  const suffix = ROUTE_WINDOW_BUCKETS.find((bucket) => bucket.ms === maxAge)?.suffix ?? '24h';
-  let trunks = 0;
-  let routes = 0;
-  for (const feature of features) {
-    const count = Number(feature.properties?.[`routeCount${suffix}`] ?? 0);
-    if (count <= 0) continue;
-    trunks += 1;
-    routes += count;
-  }
-  return { trunks, routes };
-}
-
 function countEligibleRoutes(
   routes: Iterable<RouteV2>,
   nodes: ReadonlyMap<string, NodeV2>,
