@@ -16,6 +16,9 @@ import regionPartitionURL from './assets/meshcore-canada-region-partition.geojso
 import { colorWithAlpha as alphaColor } from './trafficVisuals';
 import regionRegistryURL from './assets/meshcore-canada-regions.json?url';
 import { cartoVectorRequestURL, cartoVectorStyle } from './basemap';
+import { DEFAULT_UI_PREFERENCES, type UiPreferences } from './preferences';
+import { FOLLOW_DWELL_MS, followEndpoints } from './liveFollow';
+import { longitudeDelta } from './worldGeometry';
 import {
   buildNodeInspectorModel,
   createNodeInspectorContent,
@@ -45,7 +48,7 @@ export const DEFAULT_CENTER: [number, number] = [-96, 56];
 export const DEFAULT_ZOOM = 3.4;
 export const DETAIL_ZOOM = 8.4;
 export const LIVE_FOLLOW_SAFE_RATIO = 0.6;
-export const LIVE_FOLLOW_MIN_INTERVAL_MS = 5_000;
+export const LIVE_FOLLOW_MIN_INTERVAL_MS = FOLLOW_DWELL_MS;
 export const ACTIVE_NODE_WINDOW_MS = 24 * 60 * 60_000;
 
 export function mapPixelRatio(devicePixelRatio: number, lowPower: boolean): number {
@@ -70,6 +73,7 @@ const ROUTE_TRUNK_SOURCE_ID = 'route-trunks';
 const ROUTE_DETAIL_SOURCE_ID = 'route-details';
 const ROUTE_TERRAIN_LAYER_ID = 'route-terrain';
 const ROUTE_FOCUS_SOURCE_ID = 'route-focus';
+const FOLLOW_SOURCE_ID = 'live-follow-activity';
 const ROUTE_TRUNK_WINDOW_STATE_ID = 'cartolite-trunk-window';
 export const REGION_LAYER_IDS = ['meshcore-region-lines', 'meshcore-region-labels'] as const;
 export const HEATMAP_LAYER_IDS = PACKET_KINDS.map((kind) => `activity-heat-${kind.toLowerCase()}`);
@@ -134,6 +138,7 @@ export interface LiveMapFocus {
 }
 
 export interface LiveMapOptions {
+  appearance?: UiPreferences;
   onFocusChange?: (focus: LiveMapFocus | null) => void;
   onRouteRepresentationChange?: (representation: RouteRepresentation) => void;
   onRouteWindowChange?: (label: string) => void;
@@ -210,6 +215,9 @@ export class LiveMap {
   private nodeInspectorPopupAnchor?: 'left' | 'right';
   private suppressPopupClose = false;
   private lastFollowMoveAt = 0;
+  private followZoom = DEFAULT_ZOOM;
+  private followedPacket?: PacketView;
+  private appearance: UiPreferences = { ...DEFAULT_UI_PREFERENCES };
   private directorTimer?: number;
   private readonly reducedMotion = prefersReducedMotion();
   private freshnessTimer: number;
@@ -222,6 +230,7 @@ export class LiveMap {
     private readonly inspectorSheet: HTMLElement,
     private readonly options: LiveMapOptions
   ) {
+    this.appearance = { ...DEFAULT_UI_PREFERENCES, ...options.appearance };
     const lowPower = window.matchMedia('(max-width: 620px), (pointer: coarse)').matches;
     this.container.dataset.renderState = 'loading';
     this.container.dataset.routesVisible = 'true';
@@ -245,7 +254,7 @@ export class LiveMap {
     this.container.dataset.regionSourceRevision = '0';
     this.map = new maplibregl.Map({
       container: this.container,
-      style: cartoVectorStyle(),
+      style: cartoVectorStyle(undefined, this.appearance.basemap),
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
       minZoom: 3,
@@ -690,23 +699,91 @@ export class LiveMap {
     this.directorTimer = window.setTimeout(() => {
       this.directorTimer = undefined;
       this.container.dataset.cameraMode = 'idle';
-    }, 900);
+    }, 1500);
     if (endpoints.length === 1) {
       const center: [number, number] = [endpoints[0]!.lng, endpoints[0]!.lat];
       if (this.reducedMotion) this.map.jumpTo({ center });
-      else this.map.easeTo({ center, duration: 620, essential: false, easeId: 'cartolite-live-follow' });
+      else this.map.easeTo({ center, duration: 1200, essential: false, easeId: 'cartolite-live-follow' });
       return true;
     }
     const bounds = new maplibregl.LngLatBounds();
-    for (const endpoint of endpoints) bounds.extend([endpoint.lng, endpoint.lat]);
+    const anchor = endpoints[0]!.lng;
+    for (const endpoint of endpoints) bounds.extend([anchor + longitudeDelta(anchor, endpoint.lng), endpoint.lat]);
     const horizontal = container.clientWidth <= 620 ? 56 : 104;
-    this.map.fitBounds(bounds, {
-      padding: { top: 86, right: horizontal, bottom: 72, left: horizontal },
-      maxZoom: this.map.getZoom(),
-      duration: this.reducedMotion ? 0 : 720,
-      essential: false,
+    const camera = this.map.cameraForBounds(bounds, {
+      padding: { top: 96, right: horizontal, bottom: Math.min(230, viewport.height * 0.32), left: horizontal },
+      bearing: this.map.getBearing(),
+      maxZoom: this.followZoom,
     });
+    if (!camera) return false;
+    this.map.easeTo({ ...camera, duration: this.reducedMotion ? 0 : 1400, essential: false, easeId: 'cartolite-live-follow' });
     return true;
+  }
+
+  beginFollow(): void {
+    this.lastFollowMoveAt = 0;
+    this.followZoom = Math.min(10, this.map.getZoom());
+  }
+
+  followPriority(packet: PacketView): number {
+    const bounds = this.map.getBounds();
+    return followEndpoints(packet).filter((point) => bounds.contains([point.lng, point.lat])).length;
+  }
+
+  showFollowPacket(packet?: PacketView): void {
+    this.followedPacket = packet;
+    const source = this.map.getSource(FOLLOW_SOURCE_ID) as GeoJSONSource | undefined;
+    if (!source) return;
+    const features: Feature<LineString | Point>[] = [];
+    if (packet) {
+      const color = payloadColor(packet.payloadType);
+      if (packet.mode === 'route') for (const hop of packet.segments) {
+        features.push({ type: 'Feature', properties: { color }, geometry: { type: 'LineString', coordinates: [
+          [hop.from.lng, hop.from.lat], [hop.from.lng + longitudeDelta(hop.from.lng, hop.to.lng), hop.to.lat],
+        ] } });
+      }
+      for (const point of followEndpoints(packet)) features.push({
+        type: 'Feature', properties: { color }, geometry: { type: 'Point', coordinates: [point.lng, point.lat] },
+      });
+    }
+    source.setData({ type: 'FeatureCollection', features });
+  }
+
+  setAppearance(preferences: UiPreferences, force = false): void {
+    const previous = this.appearance;
+    this.appearance = { ...preferences };
+    this.container.dataset.basemapStyle = preferences.basemap;
+    this.container.dataset.nodeLabels = String(preferences.nodeLabels);
+    this.container.dataset.mapLabels = String(preferences.mapLabels);
+    this.container.dataset.roadsVisible = String(preferences.roads);
+    this.container.dataset.routeOpacity = String(preferences.routeOpacity);
+    if (!this.layersReady) return;
+    if (force || previous.basemap !== preferences.basemap) {
+      for (const layer of cartoVectorStyle(undefined, preferences.basemap).layers) {
+        if (!this.map.getLayer(layer.id) || !('paint' in layer)) continue;
+        for (const [property, value] of Object.entries(layer.paint ?? {})) this.map.setPaintProperty(layer.id, property, value);
+      }
+      const light = preferences.basemap !== 'dark';
+      this.historicalRouteLayer.setLightBackground(light);
+      this.map.setPaintProperty(NODE_LABEL_LAYER_ID, 'text-color', light ? '#27464c' : '#c8d9df');
+      this.map.setPaintProperty(NODE_LABEL_LAYER_ID, 'text-halo-color', light ? '#f4f6ee' : '#07121a');
+    }
+    if (force || previous.basemap !== preferences.basemap || previous.mapLabels !== preferences.mapLabels || previous.roads !== preferences.roads) {
+      for (const layer of cartoVectorStyle().layers) {
+        const enabled = layer.type === 'symbol' ? preferences.mapLabels : layer.id.endsWith('-roads') ? preferences.roads : true;
+        this.map.setLayoutProperty(layer.id, 'visibility', enabled ? 'visible' : 'none');
+      }
+    }
+    this.map.setLayoutProperty(NODE_LABEL_LAYER_ID, 'visibility', preferences.nodeLabels ? 'visible' : 'none');
+    this.historicalRouteLayer.setOpacity(preferences.routeOpacity);
+    this.map.setPaintProperty(ROUTE_TERRAIN_LAYER_ID, 'line-opacity', ['*', ['get', 'opacity'], preferences.routeOpacity]);
+    if (this.map.getLayer(HILLSHADE_LAYER_ID)) {
+      this.map.setPaintProperty(HILLSHADE_LAYER_ID, 'hillshade-exaggeration', preferences.relief);
+      const light = preferences.basemap !== 'dark';
+      this.map.setPaintProperty(HILLSHADE_LAYER_ID, 'hillshade-shadow-color', light ? 'rgba(47, 64, 61, 0.55)' : 'rgba(2, 9, 18, 0.86)');
+      this.map.setPaintProperty(HILLSHADE_LAYER_ID, 'hillshade-highlight-color', light ? 'rgba(255, 255, 244, 0.6)' : 'rgba(177, 211, 175, 0.64)');
+    }
+    this.markRendering();
   }
 
   shouldFollow(packet: PacketView): boolean {
@@ -898,9 +975,9 @@ export class LiveMap {
           'hillshade-method': 'multidirectional',
           'hillshade-illumination-direction': [270, 315, 0, 45],
           'hillshade-illumination-altitude': [35, 35, 35, 35],
-          'hillshade-exaggeration': 0.75,
-          'hillshade-shadow-color': 'rgba(2, 9, 18, 0.86)',
-          'hillshade-highlight-color': 'rgba(177, 211, 175, 0.64)',
+          'hillshade-exaggeration': this.appearance.relief,
+          'hillshade-shadow-color': this.appearance.basemap === 'dark' ? 'rgba(2, 9, 18, 0.86)' : 'rgba(47, 64, 61, 0.55)',
+          'hillshade-highlight-color': this.appearance.basemap === 'dark' ? 'rgba(177, 211, 175, 0.64)' : 'rgba(255, 255, 244, 0.6)',
           'hillshade-accent-color': 'rgba(47, 86, 75, 0.54)'
         }
       }, before);
@@ -1144,9 +1221,9 @@ export class LiveMap {
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: exactVisibility },
       paint: {
         'line-color': routeColorExpression(),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 6.5, ['*', ['get', 'glowWidth'], 1.5], 10, ['*', ['get', 'glowWidth'], 2.1], 14, ['*', ['get', 'glowWidth'], 2.4]],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.5, 6.5, ['*', ['get', 'glowWidth'], 0.75], 10, ['*', ['get', 'glowWidth'], 1.5], 14, ['*', ['get', 'glowWidth'], 2.4]],
         'line-opacity': ['*', ['get', 'opacity'], 0.78],
-        'line-blur': ['interpolate', ['linear'], ['zoom'], 6.5, 3.2, 12, 4.8]
+        'line-blur': ['interpolate', ['linear'], ['zoom'], 3, 0.2, 6.5, 0.6, 12, 2.5]
       }
     });
     this.map.addLayer({
@@ -1170,7 +1247,7 @@ export class LiveMap {
         'line-color': routeColorExpression(),
         'line-width': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, ['*', ['get', 'glowWidth'], 1.8], 14, ['*', ['get', 'glowWidth'], 2.15]],
         'line-opacity': 0.62,
-        'line-blur': 4.2
+        'line-blur': ['interpolate', ['linear'], ['zoom'], 3, 0.2, 7, 0.8, 12, 2.5]
       }
     });
     this.map.addLayer({
@@ -1433,7 +1510,21 @@ export class LiveMap {
       this.map.on('mouseleave', layer, () => { this.map.getCanvas().style.cursor = ''; });
     }
     this.map.on('mouseenter', ROUTE_HIT_LAYER_ID, () => { this.map.getCanvas().style.cursor = 'pointer'; });
+    this.map.addSource(FOLLOW_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES });
+    this.map.addLayer({
+      id: 'live-follow-line', type: 'line', source: FOLLOW_SOURCE_ID,
+      filter: ['==', ['geometry-type'], 'LineString'],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 1.1, 12, 2.3], 'line-opacity': 0.9 },
+    });
+    this.map.addLayer({
+      id: 'live-follow-nodes', type: 'circle', source: FOLLOW_SOURCE_ID,
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: { 'circle-color': ['get', 'color'], 'circle-radius': 4, 'circle-stroke-color': '#19363b', 'circle-stroke-width': 1.5 },
+    });
     this.layersReady = true;
+    this.setAppearance(this.appearance, true);
+    this.showFollowPacket(this.followedPacket);
     if (this.terrain3D) this.setTerrain3D(true);
     if (this.regionsVisible) this.ensureRegionsData();
     this.render(this.lastState, { reset: true }, true);
