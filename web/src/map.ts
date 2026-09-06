@@ -218,6 +218,8 @@ export class LiveMap {
   private readonly reducedMotion = prefersReducedMotion();
   private freshnessTimer: number;
   private renderEpoch = 0;
+  private renderingScheduled = false;
+  private renderingSources = new Set<string>();
   private layersReady = false;
 
   constructor(
@@ -1508,15 +1510,19 @@ export class LiveMap {
   }
 
   private markRendering(sourceIDs?: readonly string[]): void {
-    const epoch = ++this.renderEpoch;
-    const sourceEpoch = this.routeHydrationEpoch;
-    let settledFrames = 0;
     this.container.dataset.renderState = 'rendering';
+    for (const sourceID of sourceIDs ?? []) this.renderingSources.add(sourceID);
+    // One readiness loop survives new packets; a busy feed must not keep
+    // cancelling the two-frame settle check or queue duplicate frame callbacks.
+    if (this.renderingScheduled) return;
+    this.renderingScheduled = true;
+    const epoch = ++this.renderEpoch;
+    let settledFrames = 0;
     // Basemap tiles and live packets can keep MapLibre's global loaded/idle
     // state false indefinitely. Gate readiness on CartoLite's own sources.
     const settle = (): void => {
-      if (epoch !== this.renderEpoch || sourceEpoch !== this.routeHydrationEpoch) return;
-      const sourcesSettled = !sourceIDs?.length || sourceIDs.every((sourceID) => (
+      if (epoch !== this.renderEpoch) return;
+      const sourcesSettled = [...this.renderingSources].every((sourceID) => (
         Boolean(this.map.getSource(sourceID)) && this.map.isSourceLoaded(sourceID)
       ));
       const awaitingVisibleRoutes = this.routesVisible
@@ -1531,6 +1537,8 @@ export class LiveMap {
         window.requestAnimationFrame(settle);
         return;
       }
+      this.renderingSources.clear();
+      this.renderingScheduled = false;
       this.container.dataset.renderState = 'idle';
     };
     window.requestAnimationFrame(settle);
@@ -1899,6 +1907,8 @@ export class LiveMap {
       }
       if (this.map.getLayer(ROUTE_WEBGL_LAYER_ID)) this.map.removeLayer(ROUTE_WEBGL_LAYER_ID);
       const layer = new HistoricalRouteLayer();
+      layer.setOpacity(this.appearance.routeOpacity);
+      layer.setLightBackground(this.appearance.basemap !== 'dark');
       layer.setRoutes([...this.routeDetailFeatures.values()]);
       layer.setVisible(this.routesVisible && !this.terrain3D);
       layer.setMaximumBand(routeWindowBand(this.effectiveRouteAgeMS()));
