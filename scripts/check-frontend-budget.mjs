@@ -3,8 +3,10 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = process.argv[2] ?? "web/dist";
-// v0.11 terrain projection adds <1 KiB after sharing visual helpers and caches.
-const limit = Number(process.env.CARTOLITE_GZIP_BUDGET ?? 356 * 1024);
+// v0.12 adds saved styles and the follow card. After removing the old texture
+// and empty trunk bookkeeping, the measured total is 357.43 KiB (Actions).
+// Allow 2 KiB over v0.11; renderer latency and route-count limits are unchanged.
+const limit = Number(process.env.CARTOLITE_GZIP_BUDGET ?? 358 * 1024);
 const partitionLimit = Number(process.env.CARTOLITE_REGION_GZIP_BUDGET ?? 3_200 * 1024);
 const registryLimit = Number(process.env.CARTOLITE_REGION_REGISTRY_GZIP_BUDGET ?? 24 * 1024);
 
