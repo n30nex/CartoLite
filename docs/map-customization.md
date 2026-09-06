@@ -12,6 +12,6 @@ Live Follow holds each packet for ten seconds. A small card shows its public nod
 
 Dragging, zooming, rotating, inspecting a node or hiding the tab pauses follow. Resume starts with fresh activity. Closing the card stops follow. Empty queues wait for a new packet instead of replaying stale traffic. The card does not display packet IDs, keys, paths, messages or resolver details.
 
-Validation uses synthetic fixtures in GitHub Actions: saved settings, keyboard controls, menu bounds, theme changes, route geometry, a ten-second countdown under incoming traffic, pause/resume, terrain and worldwide date-line regressions. Existing performance and privacy budgets remain in place.
+Validation uses synthetic fixtures in GitHub Actions: saved settings, keyboard controls, menu bounds, theme changes, route geometry, a ten-second countdown under incoming traffic, pause/resume, terrain and worldwide date-line regressions. Existing renderer performance and privacy checks remain in place. After removing obsolete route work, the Canada JS/CSS bundle measures 357.43 KiB; its versioned size budget grows from 356 to 358 KiB for the new controls and follow card.
 
 References: [CARTO vector basemaps and authorization](https://carto.com/basemaps/apikey/), [MapLibre layer properties](https://maplibre.org/maplibre-style-spec/layers/), [MapLibre camera options](https://maplibre.org/maplibre-gl-js/docs/API/type-aliases/CameraForBoundsOptions/).
