@@ -1,4 +1,6 @@
-import maplibregl, {
+import * as maplibregl from 'maplibre-gl';
+import workerURL from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+import {
   type ExpressionSpecification,
   type GeoJSONSource,
   type GeoJSONSourceDiff,
@@ -43,6 +45,8 @@ import {
   type PacketKind
 } from './trafficVisuals';
 import type { EndpointV2, NodeV2, PacketView, RouteV2, StateV2 } from './types';
+
+maplibregl.setWorkerUrl(workerURL);
 
 export const DEFAULT_CENTER: [number, number] = [-96, 56];
 export const DEFAULT_ZOOM = 3.4;

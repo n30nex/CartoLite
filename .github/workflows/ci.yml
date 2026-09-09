@@ -60,6 +60,9 @@ jobs:
       - name: Install from lockfile
         working-directory: web
         run: npm ci
+      - name: Audit shipped frontend dependencies
+        working-directory: web
+        run: npm audit --omit=dev --audit-level=high
       - name: Unit tests
         working-directory: web
         run: npm test -- --run
