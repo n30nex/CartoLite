@@ -71,7 +71,7 @@ jobs:
       - name: Production build
         working-directory: web
         run: npm run build
-      - name: First-view bundle budget
+      - name: Total frontend and worker budgets
         run: node scripts/check-frontend-budget.mjs web/dist
 
   container:
