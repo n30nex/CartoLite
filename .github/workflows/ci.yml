@@ -59,6 +59,16 @@ jobs:
               service = json.loads(result)["services"]["cartolite"]
               assert service["environment"]["REGION_ALLOWLIST"] == (regions or "")
               assert "build" not in service
+      - name: Release version consistency
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          version = Path("VERSION").read_text().strip()
+          package = json.loads(Path("web/package.json").read_text())
+          lock = json.loads(Path("web/package-lock.json").read_text())
+          assert package["version"] == lock["version"] == lock["packages"][""]["version"] == version
 
   frontend:
     name: Frontend test, build, and budget
