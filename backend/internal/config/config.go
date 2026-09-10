@@ -122,9 +122,11 @@ func cleanBuildValue(value, fallback string) string {
 }
 
 var defaultCanadaRegions = []string{
-	"YYZ", "YTZ", "YOW", "YHM", "YKF", "YXU", "YOO", "YKZ", "YAM", "YQT", "YSB", "YTS", "YQG", "YYB", "YGK", "YPQ", "YTR", "YHD", "YPL", "YND",
-	"YUL", "YMX", "YQB", "YBG", "YVO", "YHU", "YRJ", "YGL", "YSC", "YTQ", "YUY", "YZV", "YGP", "YRQ",
-	"YVR", "YYJ", "YXX", "YLW", "YXS", "YPR", "YXT", "YQQ", "YCD", "YYD", "YDQ", "YXJ", "YYF", "YCG", "YKA", "YXC", "YBC",
+	// Exact MQTT region labels; these differ from the map overlay's geographic tags.
+	// Coverage review: https://dev.meshcore.ca/api/v1/iatas (2026-09-10).
+	"YYZ", "YTZ", "YOW", "YHM", "YKF", "YXU", "YOO", "YKZ", "YAM", "YQT", "YSB", "YTS", "YQG", "YYB", "YGK", "YPQ", "YTR", "YHD", "YPL", "YND", "XCM", "YLK", "YQA", "YTA",
+	"YUL", "YMX", "YQB", "YBG", "YVO", "YHU", "YRJ", "YGL", "YSC", "YTQ", "YUY", "YZV", "YGP", "YRQ", "YJN", "YML", "YTF", "YYY",
+	"YVR", "YYJ", "YXX", "YLW", "YXS", "YPR", "YXT", "YQQ", "YCD", "YYD", "YDQ", "YXJ", "YYF", "YCG", "YKA", "YXC", "YBC", "YSN", "YVE",
 	"YYC", "YEG", "YMM", "YQU", "YQL", "YXH", "YQR", "YXE", "YPA", "YWG", "YBR", "YTH", "YDN", "YPG",
 	"YFC", "YSJ", "YQM", "ZBF", "YHZ", "YQY", "YQI", "YYG", "YYT", "YQX", "YDF", "YYR", "YWK", "YXY", "YZF", "YFB", "YEV", "YHY",
 }

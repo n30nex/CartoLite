@@ -43,6 +43,32 @@ jobs:
         run: go test -race ./...
       - name: Watchdog transition tests
         run: python3 -m unittest deploy.watchdog.test_cartolite_watchdog deploy.backup.test_cartolite_backup deploy.cloudflare.test_region_cache_rule
+      - name: Compose region defaults and overrides
+        shell: python
+        run: |
+          import json
+          import os
+          import subprocess
+
+          for regions in (None, "", "YQA,YYZ"):
+              env = dict(os.environ, CARTOLITE_IMAGE="example.invalid/cartolite:test", MQTT_BROKER_URL="tcp://example.invalid:1883")
+              env.pop("REGION_ALLOWLIST", None)
+              if regions is not None:
+                  env["REGION_ALLOWLIST"] = regions
+              result = subprocess.check_output(["docker", "compose", "--env-file", ".env.example", "config", "--format", "json"], env=env)
+              service = json.loads(result)["services"]["cartolite"]
+              assert service["environment"]["REGION_ALLOWLIST"] == (regions or "")
+              assert "build" not in service
+      - name: Release version consistency
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          version = Path("VERSION").read_text().strip()
+          package = json.loads(Path("web/package.json").read_text())
+          lock = json.loads(Path("web/package-lock.json").read_text())
+          assert package["version"] == lock["version"] == lock["packages"][""]["version"] == version
 
   frontend:
     name: Frontend test, build, and budget

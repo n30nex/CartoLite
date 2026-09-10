@@ -1,5 +1,15 @@
 # Data sources
 
+## Canada MQTT coverage
+
+MQTT topic regions are exact broker labels such as `YQA`; they are separate from the geographic partition tags used by the Regions overlay and Netgraph. Enabling a map layer cannot recover packets rejected at ingestion.
+
+The default allowlist in `backend/internal/config/config.go` was compared with [Beacon Canada's public region catalog](https://dev.meshcore.ca/api/v1/iatas) on 2026-09-10. All 38 observed labels are covered, including ten previously omitted labels: `XCM`, `YJN`, `YLK`, `YML`, `YQA`, `YSN`, `YTA`, `YTF`, `YVE`, and `YYY`. Existing allowed regions remain supported. This is a reviewed, bundled list, not a runtime dependency on Beacon or automatic acceptance of arbitrary topic regions.
+
+Keep `REGION_ALLOWLIST` blank to receive the maintained defaults with each release, or supply exact labels for an intentional restriction. Review new Canadian broker labels when reported; the defaults are not a claim that every possible future region is known. Node coordinates still pass the existing Canada geographic checks, and unresolved paths or missing RF evidence still cannot create routes. An accepted, positioned advert can show a node independently of route resolution.
+
+After correcting coverage, nodes appear as their adverts are received. CartoLite cannot replay packets previously discarded by its allowlist; Beacon's retained node history is not imported into CartoLite.
+
 ## Optional terrain elevation
 
 Topography and 3D use the public Mapterhorn TileJSON endpoint at `https://tiles.mapterhorn.com/tilejson.json`. MapLibre reads its 512-pixel Terrarium-encoded elevation tiles as a `raster-dem` source for hillshade and terrain geometry only; the CARTO vector style remains the sole basemap and there is no raster basemap fallback. The source is created lazily after a visitor enables Topography or 3D, keeps Mapterhorn attribution visible, and receives no CartoLite state or visitor identifier.

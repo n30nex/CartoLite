@@ -13,7 +13,7 @@ An owner-approved no-Actions release follows the separate [manual Pi release exc
 
 ## Install
 
-Copy `.env.example` to `.env`, pin `CARTOLITE_IMAGE` to a release digest, add private MQTT values, and use an exact comma-separated region allowlist. Then:
+Copy `.env.example` to `.env`, pin `CARTOLITE_IMAGE` to a release digest, and add private MQTT values. Leave `REGION_ALLOWLIST` blank to use the release's maintained Canada MQTT region list. Set an exact comma-separated list only to intentionally restrict coverage. Then:
 
 ```bash
 docker compose pull
@@ -25,6 +25,8 @@ curl --fail http://127.0.0.1:39476/readyz
 The production defaults publish `0.0.0.0:80` for an edge proxy and `127.0.0.1:39476` for local health checks. Restrict the public port to the edge provider's current address ranges. The public edge must redirect HTTP to HTTPS and validate the origin certificate strictly; CartoLite supplies HSTS on responses. Do not make `.env` or the data volume public. The Compose service has a read-only root filesystem, no Linux capabilities, a non-root user, a 256 MiB memory limit, and bounded JSON logs.
 
 ## Upgrade
+
+When upgrading from 0.12.1 or earlier, install the release's `compose.yml` and clear a copied national `REGION_ALLOWLIST` in `.env` to adopt the maintained defaults. Previously shipped lists omitted active regions, including Muskoka (`YQA`). Preserve intentional regional restrictions. Outside Compose, an unset/blank `REGION_ALLOWLIST` still honors the legacy `PUBLIC_REGIONS` setting before using the defaults. See [MQTT coverage](data-sources.md#canada-mqtt-coverage).
 
 1. Record the current `CARTOLITE_IMAGE` digest and copy the named `cartolite-data` volume using your normal encrypted backup process.
 2. Set `CARTOLITE_IMAGE` to the new digest from the GitHub release manifest.
