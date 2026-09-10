@@ -15,7 +15,7 @@ services:
       MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-cartolite}
       MQTT_USERNAME: ${MQTT_USERNAME:-}
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
-      REGION_ALLOWLIST: ${REGION_ALLOWLIST:?Set REGION_ALLOWLIST to exact region names}
+      REGION_ALLOWLIST: ${REGION_ALLOWLIST:-}
       STATE_PATH: ${STATE_PATH:-/data/state-v1.json}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:

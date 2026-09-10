@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.2 - 2026-09-10
+
+- Restore MQTT coverage for ten omitted Canadian regions, including Muskoka (`YQA`), Lake Simcoe (`YLK`), Pembroke (`YTA`), and Chatham-Kent (`XCM`).
+- Use maintained Canada region defaults in new installations instead of a four-region example. Preserve exact operator overrides and document migration from older pinned lists.
+- Add synthetic regression coverage for region admission, explicit restrictions, and positioned adverts without resolvable routes. Public privacy and route checks remain unchanged.
+
 ## 0.12.1 - 2026-09-09
 
 - Add the paired audit roadmap and begin its security and data-correctness milestone.
