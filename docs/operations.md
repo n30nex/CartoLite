@@ -1,5 +1,9 @@
 # Operations
 
+## v0.13.0 packet sound acceptance
+
+Build and test through GitHub Actions, then promote the exact tested image digest. Verify the [30-voice catalog](sound-voices.md), grouped Voice selector, descriptions and saved selection on Map, Netgraph and Labs. Native offline audio checks must pass for all 30 voices, including audible finite output, distinct signals, bounded peaks, oscillator completion and silent tails. Existing opt-in, volume, visible-hop timing and hidden-page muting checks still apply. After deployment, confirm the public selector and live sound activity, then retain the standard five-minute health, checkpoint and resource observation.
+
 ## v0.11.0 terrain and visual acceptance
 
 Run the synthetic relief browser fixture on Actions and inspect flat Topo, pitched 3D, rotated reduced-motion, and selected Netgraph traffic images. Confirm 3D enables and persists Topo from both a click and an older saved preference, while leaving 3D retains Topo. Check all live hops and notes, camera/DEM cache invalidation without clock resets, and ground-plane rings. Run the full existing privacy, browser, scale, budget, and image gates.
@@ -106,7 +110,7 @@ Use the explicitly approved [manual Pi release exception](manual-release.md). Re
 
 In addition to the standard identity, hardening, health, readiness, MQTT, checkpoint, queue, drops, privacy, SSE, vector-only, region, cache, and bounded-load gates, verify all of the following:
 
-- All 30 sound voices retain one oscillator and one scheduled articulation per visible hop, with off-screen and observer-only traffic silent.
+- Aurora, Wood, and Chimes retain one oscillator and one scheduled articulation per visible hop, with off-screen and observer-only traffic silent.
 - The packet core, short tapered glow, sparks, relay handoff, destination shimmer, reduced-motion cue, and 15-second residue stay aligned to the exact straight route without a full-map flash or white saturation.
 - Desktop popup and phone bottom-sheet inspectors survive camera movement, update on adjacent route and window changes, sort every active neighbour newest first, select neighbours, and close by their control, Escape, or an empty-map click.
 - Finder searches 4,000 downloaded labels without a network query, returns at most eight deterministic results, distinguishes duplicate labels, and opens the selected inspector.
