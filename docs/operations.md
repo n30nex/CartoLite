@@ -106,7 +106,7 @@ Use the explicitly approved [manual Pi release exception](manual-release.md). Re
 
 In addition to the standard identity, hardening, health, readiness, MQTT, checkpoint, queue, drops, privacy, SSE, vector-only, region, cache, and bounded-load gates, verify all of the following:
 
-- Aurora, Wood, and Chimes retain one oscillator and one scheduled articulation per visible hop, with off-screen and observer-only traffic silent.
+- All 30 sound voices retain one oscillator and one scheduled articulation per visible hop, with off-screen and observer-only traffic silent.
 - The packet core, short tapered glow, sparks, relay handoff, destination shimmer, reduced-motion cue, and 15-second residue stay aligned to the exact straight route without a full-map flash or white saturation.
 - Desktop popup and phone bottom-sheet inspectors survive camera movement, update on adjacent route and window changes, sort every active neighbour newest first, select neighbours, and close by their control, Escape, or an empty-map click.
 - Finder searches 4,000 downloaded labels without a network query, returns at most eight deterministic results, distinguishes duplicate labels, and opens the selected inspector.
