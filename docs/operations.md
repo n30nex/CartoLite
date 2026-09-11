@@ -1,5 +1,9 @@
 # Operations
 
+## v0.13.0 packet sound acceptance
+
+Build and test through GitHub Actions, then promote the exact tested image digest. Verify the [30-voice catalog](sound-voices.md), grouped Voice selector, descriptions and saved selection on Map, Netgraph and Labs. Native offline audio checks must pass for all 30 voices, including audible finite output, distinct signals, bounded peaks, oscillator completion and silent tails. Existing opt-in, volume, visible-hop timing and hidden-page muting checks still apply. After deployment, confirm the public selector and live sound activity, then retain the standard five-minute health, checkpoint and resource observation.
+
 ## v0.11.0 terrain and visual acceptance
 
 Run the synthetic relief browser fixture on Actions and inspect flat Topo, pitched 3D, rotated reduced-motion, and selected Netgraph traffic images. Confirm 3D enables and persists Topo from both a click and an older saved preference, while leaving 3D retains Topo. Check all live hops and notes, camera/DEM cache invalidation without clock resets, and ground-plane rings. Run the full existing privacy, browser, scale, budget, and image gates.
