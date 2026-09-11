@@ -2,7 +2,7 @@
 
 ## Sound scenes
 
-CartoLite uses native Web Audio with no samples or audio dependency. **Aurora** is the warm default, **Wood** uses short rounded attacks, and **Chimes** uses a brighter soft-bell spectrum. Cached `PeriodicWave` tables provide each timbre. Packet kind still controls the scale, register, brightness, and duration, while a stable hash of packet, route, hop, and scene selects subtle variation.
+CartoLite offers [30 packet sound voices](sound-voices.md) using native Web Audio with no samples or audio dependency. **Aurora** is the warm default, **Wood** uses short rounded attacks, and **Chimes** uses a brighter soft-bell spectrum. Cached `PeriodicWave` tables provide each timbre. Packet kind still controls the scale, register, brightness, and duration, while a stable hash of packet, route, hop, and scene selects subtle variation.
 
 One visible route hop always schedules one articulation and one oscillator. The hop start time comes from the same geographic distance weights used by the animation. A segment crossing the viewport is audible even when both endpoints are outside; an off-screen segment and observer-only activity are silent. Density may shorten and soften envelopes but cannot remove a visible hop.
 
