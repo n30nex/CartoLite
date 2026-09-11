@@ -1,3 +1,4 @@
+import { populateSoundScenes, syncSoundScene } from '../soundScenes';
 import './styles.css';
 import { fetchState, LiveFeed } from '../api';
 import { RouteSonifier, type SoundScene, type SoundStatus } from '../audio';
@@ -23,6 +24,7 @@ const picker = required<HTMLSelectElement>('experiment-select');
 const pauseButton = required<HTMLButtonElement>('pause-button');
 const soundButton = required<HTMLButtonElement>('sound-button');
 const soundScene = required<HTMLSelectElement>('sound-scene');
+populateSoundScenes(soundScene);
 const soundVolume = required<HTMLInputElement>('sound-volume');
 const soundVolumeOutput = required<HTMLOutputElement>('sound-volume-output');
 const resetButton = required<HTMLButtonElement>('reset-button');
@@ -256,8 +258,11 @@ async function switchExperiment(definition: ExperimentDefinition, snapshot: Read
 function configureSound(sonifier: RouteSonifier): void {
   soundVolume.value = String(Math.round(sonifier.getVolume() * 100));
   soundVolumeOutput.value = `${soundVolume.value}%`;
-  soundScene.value = sonifier.getScene();
-  sonifier.setStatusListener((soundStatus) => updateSoundButton(soundStatus));
+  syncSoundScene(soundScene, sonifier.getScene());
+  sonifier.setStatusListener((soundStatus) => {
+    syncSoundScene(soundScene, sonifier.getScene());
+    updateSoundButton(soundStatus);
+  });
   if (!sonifier.supported()) {
     soundButton.disabled = true;
     soundScene.disabled = true;
