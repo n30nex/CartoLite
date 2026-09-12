@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.1 - 2026-09-12
+
+- Cull off-screen and out-of-window historical routes before terrain projection, and reuse repeated endpoint work during mesh updates.
+- Bound terrain zoom to match vector overlays and keep finer hillshade independent, avoiding excessive close-zoom terrain requests.
+- Add a 7,000-route close-zoom 3D regression. This supersedes 0.14.0, which was rolled back during live visual verification.
+
 ## 0.14.0 - 2026-09-12
 
 - Share Night/Daylight/Streets appearance and six route presets between Map and Netgraph, with advanced line, glow, packet and trail controls.
