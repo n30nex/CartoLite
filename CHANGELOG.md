@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0 - 2026-09-12
+
+- Share Night/Daylight/Streets appearance and six route presets between Map and Netgraph, with advanced line, glow, packet and trail controls.
+- Improve light-map and interface contrast, stale-node label readability, sharp route widths and terrain-aware route inspection.
+- Add desktop buildings, compass/pitch/terrain-height controls and adaptive terrain sampling while preserving confirmed-hop timing.
+- Strengthen Canada region borders, add subtle stable fills and a viewport legend; keep CARTO geography.
+- Add synthetic browser coverage for shared settings, palettes, building geometry, camera persistence, missing tiles and configurable trails.
+
 ## 0.13.1 - 2026-09-12
 
 - Keep desktop node details above live packet trails and map shading so traffic cannot obscure the card. Preserve the toolbar and phone sheet layer order.

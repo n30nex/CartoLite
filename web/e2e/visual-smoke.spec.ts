@@ -173,7 +173,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await openMapOptions(page);
   await terrainButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-terrain3d', 'true');
-  await expect(page.locator('#map')).toHaveAttribute('data-camera-pitch', '52');
+  await expect(page.locator('#map')).toHaveAttribute('data-camera-pitch', '50');
   await openMapOptions(page);
   await terrainButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-terrain3d', 'false');
@@ -402,6 +402,7 @@ test('keeps mobile awake and refreshes live state after the page resumes', async
 
 test('keeps a recent packet trail after stable routes are hidden', async ({ page }, testInfo) => {
   test.skip(isMobileProject(testInfo.project.name), 'trail lifetime is covered once on desktop');
+  await page.addInitScript(() => localStorage.setItem('cartolite:display:v1', JSON.stringify({ preset: 'custom', residueSeconds: 45 })));
   const now = Date.now();
   const from = { id: 'a', label: 'Alpha', lat: 43.45, lng: -80.42 };
   const to = { id: 'b', label: 'Bravo', lat: 43.5, lng: -80.28 };
