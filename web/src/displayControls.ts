@@ -18,7 +18,16 @@ export function mountDisplayControls(parent: HTMLElement, sceneControls = false)
       ] as const).map(([key, label, min, max, step, unit]) => `<label class="display-slider">${label}<output data-output="${key}" data-unit="${unit}"></output><input data-display="${key}" aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}"></label>`).join('')}
       <button class="display-reset" type="button">Reset route styling</button>
     </details><p class="display-note">Shared with Map and Netgraph in this browser.</p>`;
-  parent.append(section);
+  const oldOpacity = parent.querySelector<HTMLInputElement>('#route-opacity');
+  const oldOpacityLabel = oldOpacity?.closest('label');
+  const duplicateOpacity = section.querySelector('[data-display="opacity"]')?.closest('label');
+  if (oldOpacityLabel && duplicateOpacity) {
+    oldOpacityLabel.querySelector('span')!.textContent = 'Line opacity';
+    duplicateOpacity.replaceWith(oldOpacityLabel);
+  }
+  const layersHeading = parent.querySelector('.map-options-label');
+  if (layersHeading?.parentElement === parent) parent.insertBefore(section, layersHeading);
+  else parent.append(section);
   const sync = (): void => {
     const settings = displayPreferences();
     for (const input of section.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-display]')) input.value = String(settings[input.dataset.display as keyof DisplayPreferences]);

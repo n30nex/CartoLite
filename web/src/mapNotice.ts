@@ -14,7 +14,7 @@ export function attachMapNotice(map: MapLibreMap, container: HTMLElement): (mess
   close.type = 'button'; close.textContent = '×'; close.setAttribute('aria-label', 'Dismiss map notice');
   close.addEventListener('click', () => { notice.hidden = true; });
   notice.append(text, retry, close);
-  container.after(notice);
+  container.parentElement?.append(notice);
   const show = (message: string): void => { text.textContent = message; notice.hidden = false; };
   // Never forward provider error text: tile URLs can include browser credentials.
   map.on('error', () => show('Some map details could not load. Refresh to retry.'));
