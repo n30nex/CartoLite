@@ -173,7 +173,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await openMapOptions(page);
   await terrainButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-terrain3d', 'true');
-  await expect(page.locator('#map')).toHaveAttribute('data-camera-pitch', '52');
+  await expect(page.locator('#map')).toHaveAttribute('data-camera-pitch', '50');
   await openMapOptions(page);
   await terrainButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-terrain3d', 'false');

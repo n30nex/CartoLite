@@ -70,12 +70,21 @@ export class HistoricalRouteLayer implements CustomLayerInterface {
   private sourceChanged = (event: { sourceId?: string }): void => {
     if (event.sourceId && event.sourceId === this.map?.getTerrain()?.source) this.invalidate();
   };
-  private invalidate = (): void => { this.dirty = true; this.map?.triggerRepaint(); };
+  private invalidate = (): void => { this.dirty = true; if (this.visible) this.map?.triggerRepaint(); };
   setRoutes(routes: readonly Feature<LineString>[]): void { this.routes = routes; this.invalidate(); }
   setOpacity(opacity: number): void { this.opacity = clamp(opacity, 0.2, 1); this.map?.triggerRepaint(); }
   setLightBackground(light: boolean): void { if (light !== this.lightBackground) { this.lightBackground = light; this.invalidate(); } }
-  setVisible(visible: boolean): void { this.visible = visible; this.map?.triggerRepaint(); }
-  setMaximumBand(band: number): void { this.maximumBand = clamp(Math.round(band), 0, 3); this.map?.triggerRepaint(); }
+  setVisible(visible: boolean): void {
+    if (this.visible === visible) return;
+    this.visible = visible;
+    this.map?.triggerRepaint();
+  }
+  setMaximumBand(band: number): void {
+    const next = clamp(Math.round(band), 0, 3);
+    if (next === this.maximumBand) return;
+    this.maximumBand = next;
+    if (this.visible) this.map?.triggerRepaint();
+  }
   refreshAppearance(): void { this.map?.triggerRepaint(); }
 
   pick(point: { x: number; y: number }, allowed: (id: string) => boolean): string | undefined {
