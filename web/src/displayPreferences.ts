@@ -1,4 +1,4 @@
-import type { BasemapStyle, InterfaceTheme } from './preferences';
+import { UI_STORAGE_KEY, type BasemapStyle, type InterfaceTheme } from './preferences';
 
 export type LinePattern = 'solid' | 'dashed' | 'dotted';
 export type RoutePreset = 'crisp' | 'neon' | 'dashed' | 'dotted' | 'ribbon' | 'comet' | 'custom';
@@ -15,7 +15,7 @@ export interface DisplayPreferences {
   residueSeconds: number;
 }
 
-export const DISPLAY_STORAGE_KEY = 'cartolite:display:v1';
+export const DISPLAY_STORAGE_KEY = UI_STORAGE_KEY.replace(':ui:', ':display:');
 export const DISPLAY_EVENT = 'cartolite:display-change';
 export const ROUTE_PRESETS = {
   crisp: { pattern: 'solid', width: 1.6, opacity: 0.8, glow: 0.15, packetSize: 1, trailLength: 1, residueSeconds: 15 },
@@ -99,7 +99,7 @@ export function loadDisplayPreferences(storage: Pick<Storage, 'getItem'>): Displ
   try {
     const saved = storage.getItem(DISPLAY_STORAGE_KEY);
     if (saved) return normalizeDisplay(JSON.parse(saved));
-    const legacy = JSON.parse(storage.getItem('cartolite:ui:v1') ?? 'null');
+    const legacy = JSON.parse(storage.getItem(UI_STORAGE_KEY) ?? 'null');
     return normalizeDisplay({ ...DEFAULT_DISPLAY, ...legacy, opacity: legacy?.routeOpacity ?? DEFAULT_DISPLAY.opacity });
   } catch { return { ...DEFAULT_DISPLAY }; }
 }

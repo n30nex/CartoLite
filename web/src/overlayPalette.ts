@@ -7,9 +7,10 @@ export function applyOverlayPalette(map: MapLibreMap, originals: Map<string, unk
     if (layer.id.startsWith('basemap-') || !('paint' in layer)) continue;
     for (const property of Object.keys(layer.paint ?? {})) {
       if (!property.endsWith('-color')) continue;
+      const paintProperty = property as Parameters<MapLibreMap['setPaintProperty']>[1];
       const key = `${layer.id}:${property}`;
-      if (!originals.has(key)) originals.set(key, map.getPaintProperty(layer.id, property));
-      map.setPaintProperty(layer.id, property, recolorPaint(originals.get(key), light));
+      if (!originals.has(key)) originals.set(key, map.getPaintProperty(layer.id, paintProperty));
+      map.setPaintProperty(layer.id, paintProperty, recolorPaint(originals.get(key), light));
     }
   }
 }

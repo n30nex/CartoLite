@@ -229,7 +229,7 @@ function createProgram(gl: GL): WebGLProgram {
     }
   `);
   const fragment = compileShader(gl, gl.FRAGMENT_SHADER, `
-    precision mediump float;
+    precision highp float;
     uniform float u_width; uniform float u_glow; uniform float u_opacity; uniform float u_maximum_band; uniform float u_pattern;
     varying vec3 v_color; varying float v_alpha; varying float v_band; varying vec2 v_local; varying float v_length;
     void main() {
