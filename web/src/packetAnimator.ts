@@ -692,7 +692,17 @@ export class PacketAnimator {
       const trail: PacketTrail = { points, tail: points[0]!, head, length: points.slice(1).reduce((sum, point, index) => sum + Math.hypot(point.x - points[index]!.x, point.y - points[index]!.y), 0) };
       const before = surfacePathPoint(path, Math.max(0, motion.localProgress - 0.01));
       const after = surfacePathPoint(path, Math.min(1, motion.localProgress + 0.01));
-      const tangent = { x: after.x - before.x, y: after.y - before.y };
+      let tangent = { x: after.x - before.x, y: after.y - before.y };
+      if (path[0]?.progress !== undefined) {
+        for (let index = 1; index < path.length; index += 1) {
+          const from = path[index - 1]!;
+          const to = path[index]!;
+          if (!to.breakBefore && from.progress! <= motion.localProgress && to.progress! >= motion.localProgress) {
+            tangent = { x: to.x - from.x, y: to.y - from.y };
+            break;
+          }
+        }
+      }
       this.canvas.dataset.projectionSamples = String(path.length);
       this.drawProgressiveTrail(trail, item.color, quality, item.longHaul);
       if (quality !== 'low') {
@@ -1078,7 +1088,7 @@ export class PacketAnimator {
     }
     return packet.segments.some((segment) => {
       const path = this.projection.projectSegment(segment);
-      return path.some((point, index) => index > 0 && segmentNearViewport(path[index - 1]!, point, width, height));
+      return path.some((point, index) => index > 0 && !point.breakBefore && segmentNearViewport(path[index - 1]!, point, width, height));
     });
   }
 
