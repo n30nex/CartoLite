@@ -16,7 +16,7 @@ Packet Pond maps ordered hops to arcing droplets, route-reuse currents, travelli
 
 ## Packet motion
 
-Each hop stays on the exact straight geographic segment used by the historical route layer. The moving cue consists of a sharp packet core, a short screen-bounded tapered glow, up to three restrained sparks, a relay ring and forward tick, and a destination shimmer. Completed segments enter a low-opacity 45-second residue cache with deterministic coloured sparkles. This recent-live layer remains visible whether the historical Routes layer is on or off.
+Each hop stays on the exact straight geographic segment used by the historical route layer. The moving cue consists of a sharp packet core, a short screen-bounded tapered glow, up to three restrained sparks, a relay ring and forward tick, and a destination shimmer. Completed segments enter a configurable low-opacity residue cache (0–45 seconds; 15 seconds in Crisp) with deterministic coloured sparkles. This recent-live layer remains visible whether the historical Routes layer is on or off.
 
 Regional label animation exists only in Netgraph. Its already-loaded MeshCore.ca assignments let a same-region packet pulse one LOCAL label. Cross-region traffic starts an OUT cue at the sending label, keeps it present through transit, and schedules an IN answer at the receiving label on the same final-hop arrival timeline used by animation and sound. Both cues finish together. A cross-region endpoint span of at least 75 km is presented there as a long-haul DX candidate with a stronger colour-faithful live path, ten-second paired area glow, and a DX prefix. This is evidence of geographic span, not proof that tropospheric ducting caused the reception.
 

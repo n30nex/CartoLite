@@ -77,7 +77,6 @@ const HILLSHADE_SOURCE_ID = 'mapterhorn-hillshade-dem';
 const TERRAIN_TILEJSON_URL = 'https://tiles.mapterhorn.com/tilejson.json';
 const REGION_ATTRIBUTION_SOURCE_ID = 'meshcore-canada-regions';
 const ROUTE_DETAIL_SOURCE_ID = 'route-details';
-const ROUTE_TERRAIN_LAYER_ID = 'route-terrain';
 const ROUTE_FOCUS_SOURCE_ID = 'route-focus';
 const FOLLOW_SOURCE_ID = 'live-follow-activity';
 export const REGION_LAYER_IDS = ['meshcore-region-lines', 'meshcore-region-labels', 'meshcore-region-fill'] as const;
@@ -197,7 +196,6 @@ export class LiveMap {
   private hillshadeVisible = false;
   private terrain3D = false;
   private terrainLayersReady = false;
-  private terrainRoutesVisible = false;
   private regionsLoaded = false;
   private regionsLoad?: Promise<void>;
   private regionWorker?: Worker;
@@ -464,7 +462,7 @@ export class LiveMap {
       this.container.dataset.routeBuildMaxSliceMs = collections.maxSliceMS.toFixed(1);
       const sourceStarted = performance.now();
       this.historicalRouteLayer.setRoutes(collections.individual.features);
-      this.updateTerrainRoutes(true);
+      this.updateTerrainRoutes();
       this.routeDetailFeatures.clear();
       for (const feature of collections.individual.features) {
         if (feature.id !== undefined) this.routeDetailFeatures.set(String(feature.id), feature);
@@ -757,7 +755,6 @@ export class LiveMap {
       this.map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: preferences.terrainExaggeration });
     }
     this.updateBuildingLayer();
-    this.map.setPaintProperty(ROUTE_TERRAIN_LAYER_ID, 'line-opacity', ['*', ['get', 'opacity'], preferences.routeOpacity]);
     if (this.map.getLayer(HILLSHADE_LAYER_ID)) {
       this.map.setPaintProperty(HILLSHADE_LAYER_ID, 'hillshade-exaggeration', this.hillshadeStrength());
       const light = preferences.basemap !== 'dark';
@@ -801,7 +798,7 @@ export class LiveMap {
     }
     const detailSource = this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource | undefined;
     const needsHydration = visible && this.routeDataDirty && Boolean(detailSource);
-    this.updateTerrainRoutes(true);
+    this.updateTerrainRoutes();
     const maxAge = this.effectiveRouteAgeMS();
     const visualApplied = detailSource
       ? applyRouteVisibilityForZoom(this.map, visible, maxAge, this.map.getZoom())
@@ -858,7 +855,7 @@ export class LiveMap {
     this.updateSky();
     this.map.setLight({ anchor: 'map', color: '#ffffff', intensity: 0.3, position: [1.5, 195, 50] });
     this.updateBuildingLayer();
-    this.updateTerrainRoutes(true);
+    this.updateTerrainRoutes();
     this.setTerrainGestures(enabled);
     const camera = this.cameraOrientation();
     this.container.dataset.cameraPitch = String(camera.pitch);
@@ -1054,20 +1051,9 @@ export class LiveMap {
     return this.terrain3D ? { bearing: this.appearance.terrainBearing, pitch: this.appearance.terrainPitch } : { bearing: 0, pitch: 0 };
   }
 
-  private updateTerrainRoutes(refreshData = false): void {
-    if (!this.map.getLayer(ROUTE_TERRAIN_LAYER_ID)) return;
-    const visible = this.terrain3D && this.routesVisible;
+  private updateTerrainRoutes(): void {
     this.container.dataset.routeSurface = this.terrain3D ? 'terrain' : 'flat';
-    if (!visible && !this.terrainRoutesVisible) return;
-    this.terrainRoutesVisible = visible;
     this.historicalRouteLayer.setVisible(this.routesVisible);
-    this.map.setLayoutProperty(ROUTE_TERRAIN_LAYER_ID, 'visibility', 'none');
-    this.map.setFilter(ROUTE_TERRAIN_LAYER_ID, ['<=', ['get', 'windowBand'], routeWindowBand(this.effectiveRouteAgeMS())]);
-    if (refreshData) {
-      (this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource).setData(
-        visible ? this.routeCollections?.individual ?? EMPTY_LINES : EMPTY_LINES
-      );
-    }
   }
 
   private updateRouteRepresentation = (): void => {
@@ -1233,13 +1219,6 @@ export class LiveMap {
     this.historicalRouteLayer.setVisible(this.routesVisible);
     this.historicalRouteLayer.setMaximumBand(routeWindowBand(this.effectiveRouteAgeMS()));
     this.map.addLayer(this.historicalRouteLayer);
-    this.map.addLayer({
-      id: ROUTE_TERRAIN_LAYER_ID,
-      type: 'line',
-      source: ROUTE_DETAIL_SOURCE_ID,
-      layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': routeColorExpression(), 'line-width': ['get', 'width'], 'line-opacity': ['*', ['get', 'opacity'], 0.55] }
-    });
     this.map.addLayer({
       id: ROUTE_FOCUS_LAYER_IDS[0],
       type: 'line',
