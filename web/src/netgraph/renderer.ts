@@ -684,7 +684,7 @@ export class NetgraphRenderer implements ViewportProjector {
       context.setLineDash(lineDash());
       context.beginPath();
       for (const route of group.routes) this.appendRoute(context, route);
-      context.strokeStyle = colorWithAlpha(PACKET_KIND_COLORS[group.kind], (selected ? 0.1 : lightScene() ? 0.65 : 0.4) * displayPreferences().opacity);
+      context.strokeStyle = colorWithAlpha(PACKET_KIND_COLORS[group.kind], (selected ? 0.1 : lightScene() ? 0.95 : 0.5) * displayPreferences().opacity);
       context.lineWidth = displayPreferences().width;
       context.stroke();
     }

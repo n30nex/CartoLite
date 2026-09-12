@@ -1,4 +1,5 @@
 import { UI_STORAGE_KEY, type BasemapStyle, type InterfaceTheme } from './preferences';
+import { PACKET_KIND_COLORS as DARK_KINDS } from './trafficVisuals';
 
 export type LinePattern = 'solid' | 'dashed' | 'dotted';
 export type RoutePreset = 'crisp' | 'neon' | 'dashed' | 'dotted' | 'ribbon' | 'comet' | 'custom';
@@ -27,7 +28,6 @@ export const ROUTE_PRESETS = {
 } as const;
 export const DEFAULT_DISPLAY: DisplayPreferences = { basemap: 'dark', theme: 'map', preset: 'crisp', ...ROUTE_PRESETS.crisp };
 
-export const DARK_KINDS = { Advert: '#4de7c4', Trace: '#ffd15a', Text: '#ff75b5', ACK: '#78cfff', Control: '#a78bfa', Other: '#9caebd' };
 const LIGHT_KINDS = { Advert: '#006957', Trace: '#855000', Text: '#a21b58', ACK: '#075b98', Control: '#6740a0', Other: '#445760' };
 const LIGHT_COLORS: Record<string, string> = {
   ...Object.fromEntries(Object.keys(DARK_KINDS).map((kind) => [DARK_KINDS[kind as keyof typeof DARK_KINDS], LIGHT_KINDS[kind as keyof typeof LIGHT_KINDS]])),

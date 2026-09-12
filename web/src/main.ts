@@ -1,5 +1,6 @@
 import { populateSoundScenes, syncSoundScene, SOUND_SCENES } from './soundScenes';
 import { mountDisplayControls } from './displayControls';
+import { attachMapNotice } from './mapNotice';
 import { DEFAULT_DISPLAY, DISPLAY_EVENT, displayPreferences, initializeDisplay, updateDisplay, applyDisplayChrome } from './displayPreferences';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles.css';
@@ -236,6 +237,7 @@ async function start(): Promise<void> {
       },
     );
     mapView = liveMap;
+    attachMapNotice(liveMap.map, mapElement);
     const packetCanvas = required<HTMLCanvasElement>('packet-canvas');
     const liveAnimator = new PacketAnimator(liveMap.map, packetCanvas);
     animator = liveAnimator;

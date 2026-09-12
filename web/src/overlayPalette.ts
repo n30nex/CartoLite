@@ -10,7 +10,8 @@ export function applyOverlayPalette(map: MapLibreMap, originals: Map<string, unk
       const paintProperty = property as Parameters<MapLibreMap['setPaintProperty']>[1];
       const key = `${layer.id}:${property}`;
       if (!originals.has(key)) originals.set(key, map.getPaintProperty(layer.id, paintProperty));
-      map.setPaintProperty(layer.id, paintProperty, recolorPaint(originals.get(key), light));
+      const value = recolorPaint(originals.get(key), light) as Parameters<MapLibreMap['setPaintProperty']>[2];
+      map.setPaintProperty(layer.id, paintProperty, value);
     }
   }
 }
