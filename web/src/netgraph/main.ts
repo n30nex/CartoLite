@@ -1,4 +1,6 @@
 import { populateSoundScenes, syncSoundScene, SOUND_SCENES } from '../soundScenes';
+import { initializeDisplay } from '../displayPreferences';
+import { mountNetgraphDisplay } from '../displayControls';
 import './styles.css';
 import { fetchState, LiveFeed } from '../api';
 import { RouteSonifier, type SoundScene, type SoundStatus } from '../audio';
@@ -12,6 +14,8 @@ import { type NetgraphWindow } from './layout';
 import { NetgraphRenderer } from './renderer';
 
 const SETTINGS_KEY = 'cartolite:netgraph:v1';
+initializeDisplay();
+mountNetgraphDisplay();
 const app = required<HTMLElement>('netgraph-app');
 const stage = required<HTMLElement>('netgraph-stage');
 const graphCanvas = required<HTMLCanvasElement>('graph-canvas');

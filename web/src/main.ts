@@ -1,4 +1,6 @@
 import { populateSoundScenes, syncSoundScene, SOUND_SCENES } from './soundScenes';
+import { mountDisplayControls } from './displayControls';
+import { DEFAULT_DISPLAY, DISPLAY_EVENT, displayPreferences, initializeDisplay, updateDisplay, applyDisplayChrome } from './displayPreferences';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles.css';
 import { fetchState, LiveFeed } from './api';
@@ -84,7 +86,9 @@ const followCountdown = required<HTMLOutputElement>('follow-countdown');
 const followProgress = required<HTMLProgressElement>('follow-progress');
 const followPause = required<HTMLButtonElement>('follow-pause');
 
-let uiPreferences: UiPreferences = loadUiPreferences(localStorage);
+initializeDisplay();
+let uiPreferences: UiPreferences = { ...loadUiPreferences(localStorage), basemap: displayPreferences().basemap, theme: displayPreferences().theme, routeOpacity: displayPreferences().opacity };
+mountDisplayControls(layersPanel);
 let legendExpanded = uiPreferences.legendExpanded;
 let lastTrafficPulseAt = -Infinity;
 let soundPulseTimer: number | undefined;
@@ -279,6 +283,7 @@ async function start(): Promise<void> {
     const applyAppearance = (): void => {
       applyAppearanceChrome();
       liveMap.setAppearance(uiPreferences);
+      liveAnimator.refreshAppearance();
       liveAnimator.setPaused(document.hidden || !uiPreferences.livePackets);
       routeSonifier.setPaused(document.hidden || !uiPreferences.livePackets);
       packetCanvas.hidden = !uiPreferences.livePackets;
@@ -295,16 +300,19 @@ async function start(): Promise<void> {
       applyAppearance();
     });
     basemapStyle.addEventListener('change', () => {
-      persistUiPreference({ basemap: basemapStyle.value as BasemapStyle });
-      applyAppearance();
+      updateDisplay({ basemap: basemapStyle.value as BasemapStyle });
     });
     interfaceTheme.addEventListener('change', () => {
-      persistUiPreference({ theme: interfaceTheme.value as InterfaceTheme });
-      applyAppearance();
+      updateDisplay({ theme: interfaceTheme.value as InterfaceTheme });
     });
     routeOpacity.addEventListener('input', () => {
-      persistUiPreference({ routeOpacity: Number(routeOpacity.value) / 100 });
+      updateDisplay({ opacity: Number(routeOpacity.value) / 100, preset: 'custom' });
+    });
+    window.addEventListener(DISPLAY_EVENT, () => {
+      const display = displayPreferences();
+      persistUiPreference({ basemap: display.basemap, theme: display.theme, routeOpacity: display.opacity });
       applyAppearance();
+      renderRouteLegend(routeLegend);
     });
     terrainRelief.addEventListener('input', () => {
       persistUiPreference({ relief: Number(terrainRelief.value) / 100 });
@@ -322,6 +330,7 @@ async function start(): Promise<void> {
       }
       if (legendExpanded) legendToggle.click();
       persistUiPreference({ basemap: 'dark', theme: 'map', routeOpacity: 0.8, relief: 0.75, routeWindow: 'auto' });
+      updateDisplay({ ...DEFAULT_DISPLAY });
       routeWindow.value = 'auto';
       liveMap.setRouteWindow('auto');
       applyAppearance();
@@ -698,9 +707,7 @@ function required<T extends HTMLElement>(id: string): T {
 }
 
 function applyAppearanceChrome(): void {
-  const theme = uiPreferences.theme === 'map' ? (uiPreferences.basemap === 'dark' ? 'dark' : 'light') : uiPreferences.theme;
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.dataset.basemap = uiPreferences.basemap;
+  applyDisplayChrome();
   basemapStyle.value = uiPreferences.basemap;
   interfaceTheme.value = uiPreferences.theme;
   routeOpacity.value = String(Math.round(uiPreferences.routeOpacity * 100));
@@ -747,7 +754,7 @@ function renderRouteLegend(container: HTMLElement): void {
     const swatch = document.createElement('i');
     swatch.className = 'route-legend-swatch';
     swatch.setAttribute('aria-hidden', 'true');
-    swatch.style.setProperty('--route-color', PACKET_KIND_COLORS[item.kind]);
+    swatch.style.setProperty('--route-color', `var(--ui-kind-${item.kind.toLowerCase()}, ${PACKET_KIND_COLORS[item.kind]})`);
 
     const label = document.createElement('span');
     label.className = 'route-legend-label';

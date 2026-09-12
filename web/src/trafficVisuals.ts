@@ -1,3 +1,5 @@
+import { displayColor } from './displayPreferences';
+
 export type PacketKind = 'Advert' | 'Trace' | 'Text' | 'ACK' | 'Control' | 'Other';
 export type PacketSignature = 'ripple' | 'echo' | 'orbit' | 'double' | 'tick';
 
@@ -88,6 +90,7 @@ export function stableHash(value: string): number {
 }
 
 export function colorWithAlpha(color: string, alpha: number): string {
+  color = displayColor(color);
   const value = Number.parseInt(color.startsWith('#') ? color.slice(1) : 'ffffff', 16);
   return `rgba(${(value >> 16) & 255},${(value >> 8) & 255},${value & 255},${Math.max(0, Math.min(1, alpha))})`;
 }
