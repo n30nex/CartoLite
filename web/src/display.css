@@ -46,3 +46,13 @@
 :root[data-theme="light"] :is(#app, .netgraph-app)[data-traffic-kind="text"] { --traffic-rgb: 162, 27, 88; }
 :root[data-theme="light"] :is(#app, .netgraph-app)[data-traffic-kind="ack"] { --traffic-rgb: 7, 91, 152; }
 :root[data-theme="light"] :is(#app, .netgraph-app)[data-traffic-kind="control"] { --traffic-rgb: 103, 64, 160; }
+.camera-settings { border-top: 1px solid var(--panel-border); font-size: 12px; }
+.camera-settings summary { min-height: 44px; padding-block: 14px; cursor: pointer; }
+:root[data-view-class="mobile"] .camera-settings { display: none; }
+.region-legend { position: relative; color: var(--ink); font-size: 11px; }
+.region-legend[hidden] { display: none; }
+.region-legend summary { min-height: 32px; padding: 8px; cursor: pointer; white-space: nowrap; }
+.region-legend-list { position: absolute; bottom: calc(100% + 8px); left: 0; display: grid; gap: 9px; width: min(280px, calc(100vw - 32px)); max-height: min(32vh, 230px); overflow: auto; padding: 12px; border-radius: 10px; }
+.region-legend-list > span { display: flex; gap: 9px; line-height: 1.4; align-items: start; }
+.region-legend-list i { width: 12px; height: 12px; margin-top: 2px; flex: none; border: 1px solid var(--ink); border-radius: 3px; }
+@media (orientation: landscape) and (max-height: 520px) { .display-panel { top: 62px; max-height: calc(100dvh - 80px); } }

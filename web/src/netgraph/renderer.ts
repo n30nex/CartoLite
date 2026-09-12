@@ -1,5 +1,4 @@
-import { colorWithAlpha } from '../trafficVisuals';
-import { DISPLAY_EVENT, displayColor, displayPreferences, displayResidueAge, lightScene, lineDash, residueLifetime } from '../displayPreferences';
+import { canvasColorWithAlpha as colorWithAlpha, DISPLAY_EVENT, displayColor, displayPreferences, displayResidueAge, lightScene, lineDash, residueLifetime } from '../displayPreferences';
 import type { ViewportProjector } from '../audio';
 import {
   DESTINATION_BLOOM_MS,

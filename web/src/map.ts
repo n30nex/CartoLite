@@ -18,7 +18,7 @@ import regionPartitionURL from './assets/meshcore-canada-region-partition.geojso
 import { colorWithAlpha as alphaColor } from './trafficVisuals';
 import regionRegistryURL from './assets/meshcore-canada-regions.json?url';
 import { cartoVectorRequestURL, cartoVectorStyle } from './basemap';
-import { DEFAULT_UI_PREFERENCES, type UiPreferences } from './preferences';
+import { DEFAULT_UI_PREFERENCES, viewClass, type UiPreferences } from './preferences';
 import { FOLLOW_DWELL_MS, followEndpoints } from './liveFollow';
 import { longitudeDelta } from './worldGeometry';
 import {
@@ -33,6 +33,9 @@ import {
   type RegionWorkerOutput,
 } from './regions';
 import { HistoricalRouteLayer, ROUTE_WEBGL_LAYER_ID } from './routeLayer';
+import { applyOverlayPalette } from './overlayPalette';
+import { updateBuildings } from './buildings';
+import { displayPreferences } from './displayPreferences';
 import { isRecentNeighborRoute, recentNeighborRoutes } from './routeFocus';
 import type { MapChanges } from './state';
 import {
@@ -77,7 +80,7 @@ const ROUTE_DETAIL_SOURCE_ID = 'route-details';
 const ROUTE_TERRAIN_LAYER_ID = 'route-terrain';
 const ROUTE_FOCUS_SOURCE_ID = 'route-focus';
 const FOLLOW_SOURCE_ID = 'live-follow-activity';
-export const REGION_LAYER_IDS = ['meshcore-region-lines', 'meshcore-region-labels'] as const;
+export const REGION_LAYER_IDS = ['meshcore-region-lines', 'meshcore-region-labels', 'meshcore-region-fill'] as const;
 export const HEATMAP_LAYER_IDS = PACKET_KINDS.map((kind) => `activity-heat-${kind.toLowerCase()}`);
 export const HEATMAP_LAYER_ID = HEATMAP_LAYER_IDS[0]!;
 export const HILLSHADE_LAYER_ID = 'terrain-hillshade';
@@ -218,6 +221,8 @@ export class LiveMap {
   private followZoom = DEFAULT_ZOOM;
   private followedPacket?: PacketView;
   private appearance: UiPreferences = { ...DEFAULT_UI_PREFERENCES };
+  private readonly originalOverlayColors = new Map<string, unknown>();
+  private regionLegendKey = '';
   private directorTimer?: number;
   private readonly reducedMotion = prefersReducedMotion();
   private freshnessTimer: number;
@@ -260,12 +265,12 @@ export class LiveMap {
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
       minZoom: 3,
-      maxZoom: 16,
+      maxZoom: 18,
       attributionControl: false,
       pitchWithRotate: true,
       dragRotate: true,
       touchPitch: true,
-      maxPitch: 75,
+      maxPitch: 65,
       cooperativeGestures: false,
       reduceMotion: this.reducedMotion,
       pixelRatio: mapPixelRatio(window.devicePixelRatio, lowPower),
@@ -282,6 +287,14 @@ export class LiveMap {
       customAttribution: MESHCORE_REGION_ATTRIBUTION
     }), 'bottom-right');
     this.map.on('load', () => this.installLayers());
+    this.map.on('moveend', () => {
+      if (this.terrain3D && viewClass() === 'desktop') {
+        this.appearance.terrainPitch = this.map.getPitch();
+        this.appearance.terrainBearing = this.map.getBearing();
+      }
+      this.updateRegionLegend();
+    });
+    this.map.on('idle', this.updateRegionLegend);
     this.map.on('zoom', this.updateRouteRepresentation);
     this.map.on('zoomend', this.handleZoomEnd);
     this.map.on('resize', this.handleInspectorResize);
@@ -717,8 +730,8 @@ export class LiveMap {
       }
       const light = preferences.basemap !== 'dark';
       this.historicalRouteLayer.setLightBackground(light);
-      this.map.setPaintProperty(NODE_LABEL_LAYER_ID, 'text-color', light ? '#27464c' : '#c8d9df');
-      this.map.setPaintProperty(NODE_LABEL_LAYER_ID, 'text-halo-color', light ? '#f4f6ee' : '#07121a');
+      applyOverlayPalette(this.map, this.originalOverlayColors, light);
+      if (this.terrain3D) this.updateSky();
     }
     if (force || previous.basemap !== preferences.basemap || previous.mapLabels !== preferences.mapLabels || previous.roads !== preferences.roads) {
       for (const layer of cartoVectorStyle().layers) {
@@ -728,9 +741,15 @@ export class LiveMap {
     }
     this.map.setLayoutProperty(NODE_LABEL_LAYER_ID, 'visibility', preferences.nodeLabels ? 'visible' : 'none');
     this.historicalRouteLayer.setOpacity(preferences.routeOpacity);
+    this.historicalRouteLayer.refreshAppearance();
+    this.container.dataset.routePreset = displayPreferences().preset;
+    if (this.terrain3D && previous.terrainExaggeration !== preferences.terrainExaggeration) {
+      this.map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: preferences.terrainExaggeration });
+    }
+    this.updateBuildingLayer();
     this.map.setPaintProperty(ROUTE_TERRAIN_LAYER_ID, 'line-opacity', ['*', ['get', 'opacity'], preferences.routeOpacity]);
     if (this.map.getLayer(HILLSHADE_LAYER_ID)) {
-      this.map.setPaintProperty(HILLSHADE_LAYER_ID, 'hillshade-exaggeration', preferences.relief);
+      this.map.setPaintProperty(HILLSHADE_LAYER_ID, 'hillshade-exaggeration', this.hillshadeStrength());
       const light = preferences.basemap !== 'dark';
       this.map.setPaintProperty(HILLSHADE_LAYER_ID, 'hillshade-shadow-color', light ? 'rgba(47, 64, 61, 0.55)' : 'rgba(2, 9, 18, 0.86)');
       this.map.setPaintProperty(HILLSHADE_LAYER_ID, 'hillshade-highlight-color', light ? 'rgba(255, 255, 244, 0.6)' : 'rgba(177, 211, 175, 0.64)');
@@ -765,7 +784,7 @@ export class LiveMap {
     const started = performance.now();
     this.routesVisible = visible;
     this.container.dataset.routesVisible = String(visible);
-    this.historicalRouteLayer.setVisible(visible && !this.terrain3D);
+    this.historicalRouteLayer.setVisible(visible);
     if (!this.layersReady) {
       this.container.dataset.routeToggleApplyMs = (performance.now() - started).toFixed(1);
       return;
@@ -825,7 +844,10 @@ export class LiveMap {
     this.container.dataset.terrain3d = String(enabled);
     if (!this.layersReady) return;
     if (enabled) this.ensureTerrainLayers();
-    this.map.setTerrain(enabled ? { source: TERRAIN_SOURCE_ID, exaggeration: 1.35 } : null);
+    this.map.setTerrain(enabled ? { source: TERRAIN_SOURCE_ID, exaggeration: this.appearance.terrainExaggeration } : null);
+    this.updateSky();
+    this.map.setLight({ anchor: 'map', color: '#ffffff', intensity: 0.3, position: [1.5, 195, 50] });
+    this.updateBuildingLayer();
     this.updateTerrainRoutes(true);
     this.setTerrainGestures(enabled);
     const camera = this.cameraOrientation();
@@ -833,6 +855,76 @@ export class LiveMap {
     if (this.reducedMotion) this.map.jumpTo(camera);
     else this.map.easeTo({ ...camera, duration: 680, essential: false });
     this.markRendering();
+  }
+
+  setBuildingsVisible(visible: boolean): void {
+    this.appearance.buildings = visible;
+    this.updateBuildingLayer();
+  }
+
+  setCameraPitch(pitch: number): void {
+    this.appearance.terrainPitch = clamp(pitch, 0, 65);
+    if (this.terrain3D) this.map.jumpTo({ pitch: this.appearance.terrainPitch });
+  }
+
+  resetNorth(): void {
+    this.appearance.terrainBearing = 0;
+    if (this.reducedMotion) this.map.jumpTo({ bearing: 0 });
+    else this.map.easeTo({ bearing: 0, duration: 400 });
+  }
+
+  private updateBuildingLayer(): void {
+    this.container.dataset.buildingsVisible = String(this.appearance.buildings);
+    if (!this.layersReady) return;
+    updateBuildings(this.map, this.appearance.buildings, this.terrain3D, viewClass() === 'desktop', this.appearance.basemap !== 'dark');
+  }
+
+  private updateSky(): void {
+    const light = this.appearance.basemap !== 'dark';
+    this.map.setSky(this.terrain3D ? { 'sky-color': light ? '#cfe1e8' : '#14242e', 'horizon-color': light ? '#eef1ee' : '#29424a', 'fog-color': light ? '#dce7e5' : '#14242e', 'horizon-fog-blend': 0.15 } : {});
+  }
+
+  private updateRegionLegend = (): void => {
+    const legend = document.getElementById('legend');
+    if (!legend) return;
+    let details = document.getElementById('region-legend') as HTMLDetailsElement | null;
+    if (!this.regionsVisible) { if (details) details.hidden = true; this.regionLegendKey = ''; return; }
+    if (!this.layersReady || !this.map.getLayer(REGION_LAYER_IDS[2])) return;
+    const entries = new Map<string, string>();
+    for (const feature of this.map.queryRenderedFeatures({ layers: [REGION_LAYER_IDS[2]] })) {
+      if (typeof feature.properties?.tag === 'string') entries.set(feature.properties.tag, String(feature.properties.label ?? feature.properties.tag));
+    }
+    const regions = [...entries].sort(([a], [b]) => a.localeCompare(b));
+    const key = JSON.stringify(regions);
+    if (details) details.hidden = false;
+    if (key === this.regionLegendKey) return;
+    this.regionLegendKey = key;
+    if (!details) {
+      details = document.createElement('details');
+      details.id = 'region-legend';
+      details.open = viewClass() === 'desktop';
+      details.className = 'region-legend';
+      details.append(document.createElement('summary'), document.createElement('div'));
+      legend.append(details);
+    }
+    details.querySelector('summary')!.textContent = `Regions in view (${regions.length})`;
+    const list = details.querySelector('div')!;
+    list.className = 'region-legend-list glass';
+    list.replaceChildren();
+    for (const [tag, name] of regions) {
+      const row = document.createElement('span');
+      const swatch = document.createElement('i');
+      swatch.style.backgroundColor = regionTint(tag);
+      swatch.setAttribute('aria-hidden', 'true');
+      row.append(swatch, document.createTextNode(`${tag} · ${name}`));
+      list.append(row);
+    }
+    if (!regions.length) list.textContent = this.regionsLoaded ? 'No regions in view' : 'Loading region boundaries…';
+  };
+
+  private hillshadeStrength(): ExpressionSpecification {
+    const strength = this.appearance.relief;
+    return ['interpolate', ['linear'], ['zoom'], 3, strength * 0.8, 10, strength * 0.85, 14, strength * 0.42, 18, strength * 0.28];
   }
 
   setRouteWindow(window: RouteWindow): void {
@@ -857,6 +949,7 @@ export class LiveMap {
 
   setRegionsVisible(visible: boolean): void {
     this.regionsVisible = visible;
+    this.updateRegionLegend();
     this.container.dataset.regionsVisible = String(visible);
     if (!this.layersReady) return;
     let applied = false;
@@ -921,7 +1014,7 @@ export class LiveMap {
           'hillshade-method': 'multidirectional',
           'hillshade-illumination-direction': [270, 315, 0, 45],
           'hillshade-illumination-altitude': [35, 35, 35, 35],
-          'hillshade-exaggeration': this.appearance.relief,
+          'hillshade-exaggeration': this.hillshadeStrength(),
           'hillshade-shadow-color': this.appearance.basemap === 'dark' ? 'rgba(2, 9, 18, 0.86)' : 'rgba(47, 64, 61, 0.55)',
           'hillshade-highlight-color': this.appearance.basemap === 'dark' ? 'rgba(177, 211, 175, 0.64)' : 'rgba(255, 255, 244, 0.6)',
           'hillshade-accent-color': 'rgba(47, 86, 75, 0.54)'
@@ -945,7 +1038,7 @@ export class LiveMap {
   }
 
   private cameraOrientation(): { bearing: number; pitch: number } {
-    return this.terrain3D ? { bearing: -12, pitch: 52 } : { bearing: 0, pitch: 0 };
+    return this.terrain3D ? { bearing: this.appearance.terrainBearing, pitch: this.appearance.terrainPitch } : { bearing: 0, pitch: 0 };
   }
 
   private updateTerrainRoutes(refreshData = false): void {
@@ -954,8 +1047,8 @@ export class LiveMap {
     this.container.dataset.routeSurface = this.terrain3D ? 'terrain' : 'flat';
     if (!visible && !this.terrainRoutesVisible) return;
     this.terrainRoutesVisible = visible;
-    this.historicalRouteLayer.setVisible(this.routesVisible && !this.terrain3D);
-    this.map.setLayoutProperty(ROUTE_TERRAIN_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
+    this.historicalRouteLayer.setVisible(this.routesVisible);
+    this.map.setLayoutProperty(ROUTE_TERRAIN_LAYER_ID, 'visibility', 'none');
     this.map.setFilter(ROUTE_TERRAIN_LAYER_ID, ['<=', ['get', 'windowBand'], routeWindowBand(this.effectiveRouteAgeMS())]);
     if (refreshData) {
       (this.map.getSource(ROUTE_DETAIL_SOURCE_ID) as GeoJSONSource).setData(
@@ -1076,6 +1169,11 @@ export class LiveMap {
     }));
     const regionVisibility = this.regionsVisible ? 'visible' : 'none';
     this.map.addLayer({
+      id: REGION_LAYER_IDS[2], type: 'fill', source: REGION_ATTRIBUTION_SOURCE_ID,
+      layout: { visibility: regionVisibility },
+      paint: { 'fill-color': ['coalesce', ['get', 'regionTint'], '#69d1ca'], 'fill-opacity': 0.1 },
+    });
+    this.map.addLayer({
       id: REGION_LAYER_IDS[0],
       type: 'line',
       source: REGION_ATTRIBUTION_SOURCE_ID,
@@ -1086,9 +1184,8 @@ export class LiveMap {
       },
       paint: {
         'line-color': '#69d1ca',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.45, 6, 0.7, 10, 1.1, 14, 1.35],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.18, 6, 0.3, 10, 0.42, 14, 0.28],
-        'line-dasharray': [2.4, 2.4]
+        'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.5, 8, 2, 14, 3],
+        'line-opacity': 0.78
       }
     });
     this.map.addLayer({
@@ -1103,7 +1200,7 @@ export class LiveMap {
           7, ['concat', ['upcase', ['get', 'tag']], ' · ', ['get', 'label']]
         ],
         'text-font': LOCAL_FONTS,
-        'text-size': ['interpolate', ['linear'], ['zoom'], 5, 8, 9, 9.2, 13, 10.5],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 5, 10, 9, 11, 13, 12],
         'text-padding': 8,
         'text-allow-overlap': false,
         'text-ignore-placement': false,
@@ -1113,14 +1210,14 @@ export class LiveMap {
         'text-color': '#8ec5c1',
         'text-halo-color': '#02070b',
         'text-halo-width': 1.2,
-        'text-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.58, 9, 0.76, 13, 0.68]
+        'text-opacity': 0.95
       }
     });
     this.map.addSource(ROUTE_DETAIL_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 16 });
     this.map.addSource(ROUTE_FOCUS_SOURCE_ID, { type: 'geojson', data: EMPTY_LINES, maxzoom: 16 });
     this.applyRouteTimeState(Date.now(), true);
     const exactVisibility = this.routesVisible ? 'visible' : 'none';
-    this.historicalRouteLayer.setVisible(this.routesVisible && !this.terrain3D);
+    this.historicalRouteLayer.setVisible(this.routesVisible);
     this.historicalRouteLayer.setMaximumBand(routeWindowBand(this.effectiveRouteAgeMS()));
     this.map.addLayer(this.historicalRouteLayer);
     this.map.addLayer({
@@ -1376,9 +1473,9 @@ export class LiveMap {
         'text-halo-blur': 0.3,
         'text-opacity': [
           'interpolate', ['linear'], ['zoom'],
-          DETAIL_ZOOM, ['*', ['get', 'opacity'], 0.42],
-          9.5, ['*', ['get', 'opacity'], 0.82],
-          11, ['get', 'opacity']
+          DETAIL_ZOOM, 0.78,
+          9.5, 0.9,
+          11, 0.96
         ]
       }
     });
@@ -1416,6 +1513,10 @@ export class LiveMap {
       if (this.clusterFlashTimer === undefined) this.setHighlightedCluster(null);
     });
     this.map.on('click', (event) => this.handleMapClick(event));
+    this.map.on('mousemove', (event) => {
+      if (!this.terrain3D || !this.selectedNodeID) return;
+      if (!this.showRouteTooltip(event) && this.tooltip.dataset.kind === 'route' && !this.routeInspectionPinned) this.clearRouteInspection();
+    });
     this.map.on('movestart', () => {
       this.hideTooltip();
       this.clearRouteInspection();
@@ -1502,7 +1603,9 @@ export class LiveMap {
       this.failRegionWorker(new Error('regional source is unavailable'));
       return;
     }
-    source.setData(message.data);
+    source.setData({ ...message.data, features: message.data.features.map((feature) => ({
+      ...feature, properties: { ...feature.properties, regionTint: regionTint(feature.properties.tag) },
+    })) });
     this.container.dataset.regionFeatureCount = String(message.data.features.length);
     this.container.dataset.regionSourceRevision = MESHCORE_REGION_VERSION;
     this.regionMapPending = undefined;
@@ -1665,9 +1768,10 @@ export class LiveMap {
     if (this.map.queryRenderedFeatures(event.point, { layers: [NODE_HIT_LAYER_ID] }).length > 0) return false;
     const feature = this.map.queryRenderedFeatures(event.point, { layers: [ROUTE_HIT_LAYER_ID] })
       .find((candidate) => this.isSelectedRouteInspectable(String(candidate.properties?.id ?? candidate.id ?? '')));
-    if (!feature) return false;
-    const properties = feature.properties ?? {};
-    const route = this.routesByID.get(String(properties.id ?? feature.id ?? ''));
+    const terrainRouteID = this.historicalRouteLayer.pick(event.point, (id) => this.isSelectedRouteInspectable(id));
+    if (!feature && !terrainRouteID) return false;
+    const properties = feature?.properties ?? {};
+    const route = this.routesByID.get(terrainRouteID ?? String(properties.id ?? feature?.id ?? ''));
     if (!route) return false;
     const from = this.nodesByID.get(route.fromId);
     const to = this.nodesByID.get(route.toId);
@@ -1917,7 +2021,7 @@ export class LiveMap {
       layer.setOpacity(this.appearance.routeOpacity);
       layer.setLightBackground(this.appearance.basemap !== 'dark');
       layer.setRoutes([...this.routeDetailFeatures.values()]);
-      layer.setVisible(this.routesVisible && !this.terrain3D);
+      layer.setVisible(this.routesVisible);
       layer.setMaximumBand(routeWindowBand(this.effectiveRouteAgeMS()));
       this.historicalRouteLayer = layer;
       const before = this.map.getLayer(ROUTE_FOCUS_LAYER_IDS[0]) ? ROUTE_FOCUS_LAYER_IDS[0] : undefined;
@@ -2780,6 +2884,12 @@ function roleColor(role: NodeV2['role']): string {
   if (role === 'room_server') return '#ab76dc';
   if (role === 'sensor') return '#a2ad57';
   return '#8794a6';
+}
+
+export function regionTint(tag: string): string {
+  let hash = 2166136261;
+  for (const character of tag) { hash ^= character.charCodeAt(0); hash = Math.imul(hash, 16777619); }
+  return `hsl(${(hash >>> 0) % 3600 / 10}, 58%, 54%)`;
 }
 
 function freshness(timestamp: number, now: number): number {

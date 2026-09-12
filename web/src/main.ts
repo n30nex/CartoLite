@@ -44,6 +44,9 @@ const clustersButton = required<HTMLButtonElement>('clusters-button');
 const regionsButton = required<HTMLButtonElement>('regions-button');
 const hillshadeButton = required<HTMLButtonElement>('hillshade-button');
 const terrainButton = required<HTMLButtonElement>('terrain-button');
+const buildingsButton = required<HTMLButtonElement>('buildings-button');
+const cameraPitch = required<HTMLInputElement>('camera-pitch');
+const terrainHeight = required<HTMLInputElement>('terrain-height');
 const soundButton = required<HTMLButtonElement>('sound-button');
 const soundControl = required<HTMLElement>('sound-button').parentElement as HTMLElement;
 const soundPanel = required<HTMLElement>('sound-panel');
@@ -275,8 +278,13 @@ async function start(): Promise<void> {
       liveMap.setHillshadeVisible(visible);
       persistUiPreference({ hillshade: visible });
     });
+    wireLayerToggle(buildingsButton, uiPreferences.buildings, 'buildings', (visible) => {
+      liveMap.setBuildingsVisible(visible);
+      persistUiPreference({ buildings: visible });
+    });
     wireLayerToggle(terrainButton, uiPreferences.terrain3D, '3D terrain', (visible) => {
       if (visible && !uiPreferences.hillshade) hillshadeButton.click();
+      if (visible && !uiPreferences.buildings) buildingsButton.click();
       liveMap.setTerrain3D(visible);
       persistUiPreference({ terrain3D: visible });
     });
@@ -318,9 +326,24 @@ async function start(): Promise<void> {
       persistUiPreference({ relief: Number(terrainRelief.value) / 100 });
       applyAppearance();
     });
+    cameraPitch.addEventListener('input', () => {
+      pauseLiveFollow();
+      persistUiPreference({ terrainPitch: Number(cameraPitch.value) });
+      liveMap.setCameraPitch(uiPreferences.terrainPitch);
+      applyAppearanceChrome();
+    });
+    terrainHeight.addEventListener('input', () => {
+      persistUiPreference({ terrainExaggeration: Number(terrainHeight.value) });
+      applyAppearance();
+    });
+    required<HTMLButtonElement>('north-button').addEventListener('click', () => {
+      pauseLiveFollow();
+      liveMap.resetNorth();
+      persistUiPreference({ terrainBearing: 0 });
+    });
     required<HTMLButtonElement>('reset-appearance').addEventListener('click', () => {
       const toggles = [
-        ['terrain-button', 'terrain3D'], ['hillshade-button', 'hillshade'], ['routes-button', 'routes'],
+        ['terrain-button', 'terrain3D'], ['hillshade-button', 'hillshade'], ['buildings-button', 'buildings'], ['routes-button', 'routes'],
         ['heatmap-button', 'heatmap'], ['clusters-button', 'clusters'], ['regions-button', 'regions'],
         ...extraLayers.map(([id, key]) => [id, key] as const),
       ] as const;
@@ -329,7 +352,7 @@ async function start(): Promise<void> {
         if (button && uiPreferences[key] !== DEFAULT_UI_PREFERENCES[key]) button.click();
       }
       if (legendExpanded) legendToggle.click();
-      persistUiPreference({ basemap: 'dark', theme: 'map', routeOpacity: 0.8, relief: 0.75, routeWindow: 'auto' });
+      persistUiPreference({ basemap: 'dark', theme: 'map', routeOpacity: 0.8, relief: 0.75, routeWindow: 'auto', terrainExaggeration: 1, terrainPitch: 50, terrainBearing: 0 });
       updateDisplay({ ...DEFAULT_DISPLAY });
       routeWindow.value = 'auto';
       liveMap.setRouteWindow('auto');
@@ -512,6 +535,10 @@ async function start(): Promise<void> {
 
     liveMap.map.on('moveend', () => {
       if (!liveFollow) saveView(localStorage, activeViewClass, liveMap.view());
+      if (uiPreferences.terrain3D && activeViewClass === 'desktop') {
+        persistUiPreference({ terrainPitch: liveMap.map.getPitch(), terrainBearing: liveMap.map.getBearing() });
+        applyAppearanceChrome();
+      }
     });
     let resizeTimer: number | undefined;
     window.addEventListener('resize', () => {
@@ -712,6 +739,10 @@ function applyAppearanceChrome(): void {
   interfaceTheme.value = uiPreferences.theme;
   routeOpacity.value = String(Math.round(uiPreferences.routeOpacity * 100));
   terrainRelief.value = String(Math.round(uiPreferences.relief * 100));
+  cameraPitch.value = String(Math.round(uiPreferences.terrainPitch));
+  terrainHeight.value = String(uiPreferences.terrainExaggeration);
+  required<HTMLOutputElement>('camera-pitch-output').value = `${cameraPitch.value}°`;
+  required<HTMLOutputElement>('terrain-height-output').value = `${terrainHeight.value}×`;
   required<HTMLOutputElement>('route-opacity-output').value = `${routeOpacity.value}%`;
   required<HTMLOutputElement>('terrain-relief-output').value = `${terrainRelief.value}%`;
 }

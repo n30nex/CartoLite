@@ -1,5 +1,5 @@
-import { stableHash as stableVisualHash, colorWithAlpha as withAlpha } from './trafficVisuals';
-import { displayColor, displayPreferences, displayResidueAge, lightScene, lineDash, residueLifetime } from './displayPreferences';
+import { stableHash as stableVisualHash } from './trafficVisuals';
+import { canvasColorWithAlpha as withAlpha, displayColor, displayPreferences, displayResidueAge, lightScene, lineDash, residueLifetime } from './displayPreferences';
 import type * as maplibregl from 'maplibre-gl';
 import type { EndpointV2, ObserverPacketEventV2, PacketView, RoutePacketView, RouteSegmentView } from './types';
 import { TerrainProjector, surfaceArc, surfacePathPoint, surfaceTrail, traceSurfacePath, type SurfacePoint } from './terrainProjection';
@@ -810,8 +810,8 @@ export class PacketAnimator {
   }
 
   private drawStaticSegment(points: readonly ScreenPoint[], color: string, opacity: number, _signature: PacketSignature): void {
-    this.context.strokeStyle = withAlpha(color, opacity * 0.2);
-    this.context.lineWidth = 7 * displayPreferences().glow;
+    this.context.strokeStyle = withAlpha(color, opacity * 0.2 * displayPreferences().glow);
+    this.context.lineWidth = 7;
     traceSurfacePath(this.context, points);
     this.context.stroke();
     this.context.strokeStyle = withAlpha(color, opacity * 0.75);
@@ -851,7 +851,9 @@ export class PacketAnimator {
     this.context.fillStyle = glow;
     this.context.beginPath();
     this.context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    this.context.globalAlpha = displayPreferences().glow;
     this.context.fill();
+    this.context.globalAlpha = 1;
     this.context.fillStyle = displayColor(color);
     this.context.beginPath();
     this.context.arc(point.x, point.y, (quality === 'low' ? 1.5 : 1.85) * (longHaul ? 1.18 : 1) * scale, 0, Math.PI * 2);
@@ -958,8 +960,8 @@ export class PacketAnimator {
       return;
     }
     const gradient = this.context.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius);
-    gradient.addColorStop(0, withAlpha(blendWithWhite(color, 0.3), timing.opacity * 0.62));
-    gradient.addColorStop(0.2, withAlpha(color, timing.opacity * 0.5));
+    gradient.addColorStop(0, withAlpha(blendWithWhite(color, 0.3), timing.opacity * 0.62 * displayPreferences().glow));
+    gradient.addColorStop(0.2, withAlpha(color, timing.opacity * 0.5 * displayPreferences().glow));
     gradient.addColorStop(1, withAlpha(color, 0));
     this.context.fillStyle = gradient;
     this.context.beginPath();

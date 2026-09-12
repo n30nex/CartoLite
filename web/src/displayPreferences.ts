@@ -27,7 +27,7 @@ export const ROUTE_PRESETS = {
 } as const;
 export const DEFAULT_DISPLAY: DisplayPreferences = { basemap: 'dark', theme: 'map', preset: 'crisp', ...ROUTE_PRESETS.crisp };
 
-const DARK_KINDS = { Advert: '#4de7c4', Trace: '#ffd15a', Text: '#ff75b5', ACK: '#78cfff', Control: '#a78bfa', Other: '#9caebd' };
+export const DARK_KINDS = { Advert: '#4de7c4', Trace: '#ffd15a', Text: '#ff75b5', ACK: '#78cfff', Control: '#a78bfa', Other: '#9caebd' };
 const LIGHT_KINDS = { Advert: '#006957', Trace: '#855000', Text: '#a21b58', ACK: '#075b98', Control: '#6740a0', Other: '#445760' };
 const LIGHT_COLORS: Record<string, string> = {
   ...Object.fromEntries(Object.keys(DARK_KINDS).map((kind) => [DARK_KINDS[kind as keyof typeof DARK_KINDS], LIGHT_KINDS[kind as keyof typeof LIGHT_KINDS]])),
@@ -35,9 +35,13 @@ const LIGHT_COLORS: Record<string, string> = {
   '#78d5a3': '#176342', '#68b4f6': '#075b98', '#c184f6': '#6740a0',
   '#67ead2': '#006957', '#d694ff': '#6740a0', '#ffd06c': '#855000', '#a6b4bf': '#445760',
   '#eaffff': '#25454b', '#f2ffff': '#17353c',
+  '#45c27f': '#176342', '#53a7e8': '#075b98', '#ab76dc': '#6740a0', '#a2ad57': '#596500', '#8794a6': '#445760',
+  '#32c8bb': '#117066', '#08272c': '#e2eee6', '#48d5c7': '#006957', '#dffffb': '#194950',
+  '#f3b844': '#805000', '#f2bd55': '#805000', '#fff0b8': '#805000', '#f5cf76': '#805000', '#bce9e5': '#2a6362',
   '#e5fffc': '#183d40', '#edfffd': '#17464a', '#ffffff': '#172f38',
   '#d2e0ef': '#284651', '#f6d77f': '#735000', '#c8d9df': '#284651',
   '#02070b': '#f6f7f1', '#061216': '#f6f7f1', '#07121a': '#f6f7f1',
+  '#031015': '#f6f7f1',
 };
 
 let current: DisplayPreferences = { ...DEFAULT_DISPLAY };
@@ -45,9 +49,31 @@ let initialized = false;
 export function displayPreferences(): Readonly<DisplayPreferences> { return current; }
 export function lightScene(): boolean { return current.basemap !== 'dark'; }
 export function displayColor(color: string, light = lightScene()): string {
-  return light ? LIGHT_COLORS[color.toLowerCase()] ?? color : color;
+  if (!light) return color;
+  const direct = LIGHT_COLORS[color.toLowerCase()];
+  if (direct) return direct;
+  const rgba = /^rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\s*\)$/i.exec(color);
+  if (!rgba) return color;
+  const hex = '#' + rgba.slice(1, 4).map((channel) => Number(channel).toString(16).padStart(2, '0')).join('');
+  const mapped = LIGHT_COLORS[hex];
+  if (!mapped) return color;
+  const value = Number.parseInt(mapped.slice(1), 16);
+  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${rgba[4] ?? 1})`;
+}
+export function recolorPaint(value: unknown, light: boolean): unknown {
+  if (typeof value === 'string') return displayColor(value, light);
+  if (!Array.isArray(value)) return value;
+  if (light && value[0] === 'get' && typeof value[1] === 'string' && /^color(?:\d|$)/.test(value[1])) {
+    return ['match', value, ...Object.entries(LIGHT_COLORS).flat(), value];
+  }
+  return value.map((item) => recolorPaint(item, light));
 }
 export function packetPalette(light = lightScene()): typeof DARK_KINDS { return light ? LIGHT_KINDS : DARK_KINDS; }
+export function canvasColorWithAlpha(color: string, alpha: number): string {
+  const resolved = displayColor(color);
+  const value = Number.parseInt(resolved.startsWith('#') ? resolved.slice(1) : 'ffffff', 16);
+  return `rgba(${(value >> 16) & 255},${(value >> 8) & 255},${value & 255},${Math.max(0, Math.min(1, alpha))})`;
+}
 export function lineDash(width = current.width): number[] {
   return current.pattern === 'dashed' ? [width * 4, width * 3] : current.pattern === 'dotted' ? [0.01, width * 2.7] : [];
 }
