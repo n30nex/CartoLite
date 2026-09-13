@@ -1957,6 +1957,7 @@ export class LiveMap {
       .setLngLat([model.node.lng, model.node.lat])
       .setDOMContent(content);
     if (!popup.isOpen()) popup.addTo(this.map);
+    popup.getElement().querySelector('.maplibregl-popup-close-button')?.setAttribute('aria-label', 'Close node details');
   }
 
   private closeInspector(clearSelection: boolean): void {
