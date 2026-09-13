@@ -49,7 +49,9 @@ import {
 } from './trafficVisuals';
 import type { EndpointV2, NodeV2, PacketView, RouteV2, StateV2 } from './types';
 
-maplibregl.setWorkerUrl(workerURL);
+// Worker responses cache their own CSP. Refresh that cache when providers change,
+// even if the bundled worker bytes (and their content hash) stay identical.
+maplibregl.setWorkerUrl(`${workerURL}?policy=openfreemap-v1`);
 
 export const DEFAULT_CENTER: [number, number] = [-96, 56];
 export const DEFAULT_ZOOM = 3.4;
