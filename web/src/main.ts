@@ -299,7 +299,7 @@ async function start(): Promise<void> {
       if (visible && !uiPreferences.buildings) buildingsButton.click();
       liveMap.setTerrain3D(visible);
       persistUiPreference({ terrain3D: visible });
-    });
+    }, required<HTMLButtonElement>('terrain-shortcut'));
     const applyAppearance = (): void => {
       applyAppearanceChrome();
       liveMap.setAppearance(uiPreferences);
@@ -858,18 +858,22 @@ function wireLayerToggle(
   button: HTMLButtonElement,
   initiallyVisible: boolean,
   layerName: string,
-  setVisible: (visible: boolean) => void
+  setVisible: (visible: boolean) => void,
+  shortcut?: HTMLButtonElement
 ): void {
+  const buttons = shortcut ? [button, shortcut] : [button];
   let visible = initiallyVisible;
   const update = (): void => {
-    button.setAttribute('aria-pressed', String(visible));
-    button.classList.toggle('selected', visible);
-    button.title = `${visible ? 'Hide' : 'Show'} ${layerName}`;
+    for (const control of buttons) {
+      control.setAttribute('aria-pressed', String(visible));
+      control.classList.toggle('selected', visible);
+      control.title = `${visible ? 'Hide' : 'Show'} ${layerName}`;
+    }
     updateLayerChrome();
   };
   setVisible(visible);
   update();
-  button.addEventListener('click', () => {
+  for (const control of buttons) control.addEventListener('click', () => {
     visible = !visible;
     setVisible(visible);
     update();
