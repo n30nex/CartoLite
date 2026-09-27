@@ -193,3 +193,15 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 }
 
 .compact-field select { width: 142px; max-width: 100%; }
+
+/* Shared display choices apply to the shell; each experiment retains its artistic setting. */
+.labs-display { color:var(--ink); background:var(--panel-solid); border:1px solid var(--panel-border); border-radius:18px; width:min(370px,calc(100vw - 32px)); max-height:calc(100dvh - 40px); padding:16px; overflow:auto; }
+.labs-display header { display:flex; justify-content:space-between; align-items:center; }
+.labs-display header button { min-width:44px; min-height:44px; background:transparent; color:inherit; border:0; font-size:24px; }
+.labs-display::backdrop { background:#03101888; }
+:root[data-theme="light"] .labs-app .glass { color:var(--ink); background:var(--panel-solid); border-color:var(--panel-border); }
+:root[data-theme="light"] .labs-app :is(button,select,input,a,label,.labs-title,.labs-status) { color:var(--ink); }
+:root[data-theme="light"] .labs-app :is(button,select) { background:var(--field-bg); border-color:var(--panel-border); }
+:root[data-text-size="large"] .labs-app :is(button,select,label,.live-caption) { font-size:15px; }
+:root[data-effects="minimal"] .labs-stage { filter:saturate(.85); }
+@media(max-width:620px) { .labs-display { margin:auto; max-height:calc(100dvh - 24px); } }

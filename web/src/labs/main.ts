@@ -1,3 +1,6 @@
+import { initializeDisplay, DISPLAY_EVENT, displayPreferences, prefersReducedMotion } from '../displayPreferences';
+import { mountDisplayControls } from '../displayControls';
+import { mountSoundPreview } from '../soundPreview';
 import { populateSoundScenes, syncSoundScene } from '../soundScenes';
 import './styles.css';
 import { fetchState, LiveFeed } from '../api';
@@ -16,6 +19,7 @@ import {
   type LabViewport,
 } from './runtime';
 
+initializeDisplay();
 const app = required<HTMLElement>('labs-app');
 const stage = required<HTMLElement>('labs-stage');
 const status = required<HTMLElement>('labs-status');
@@ -53,6 +57,8 @@ let userPaused = false;
 let streamConnected = false;
 let frameHandle: number | undefined;
 let previousFrame = performance.now();
+let adaptiveEconomy = false;
+let expensiveFrames = 0;
 let exhibition = false;
 let exhibitionTimer: number | undefined;
 let burstTimer: number | undefined;
@@ -68,6 +74,14 @@ for (const definition of EXPERIMENTS) {
 }
 picker.value = currentDefinition.id;
 
+const displayDialog = document.createElement('dialog'); displayDialog.className='labs-display glass'; displayDialog.setAttribute('aria-label','Display settings');
+displayDialog.innerHTML='<header><strong>Display</strong><button type="button" aria-label="Close display settings">×</button></header>';
+const displayButton=document.createElement('button');displayButton.type='button';displayButton.textContent='Display';displayButton.setAttribute('aria-haspopup','dialog');
+document.querySelector('.labs-controls')!.append(displayButton);app.append(displayDialog);
+mountDisplayControls(displayDialog,true);
+displayButton.addEventListener('click',()=>displayDialog.showModal());
+displayDialog.querySelector('button')!.addEventListener('click',()=>{displayDialog.close();displayButton.focus();});
+window.addEventListener(DISPLAY_EVENT,()=>{resizeActiveExperiment();});
 void start();
 
 async function start(): Promise<void> {
@@ -87,6 +101,7 @@ async function start(): Promise<void> {
     sonifier = routeSonifier;
 
     configureSound(routeSonifier);
+    mountSoundPreview(routeSonifier, displayDialog);
     updateExperimentInformation(currentDefinition);
     await switchExperiment(currentDefinition, liveStore.snapshot);
     if (destroyed) return;
@@ -242,7 +257,7 @@ async function switchExperiment(definition: ExperimentDefinition, snapshot: Read
   next.mount({
     stage,
     project: (endpoint) => projector.project([endpoint.lng, endpoint.lat]),
-    reducedMotion: () => reducedMotionQuery.matches,
+    reducedMotion: () => prefersReducedMotion() || displayPreferences().effects === 'minimal',
     metrics: () => metrics.snapshot(),
   });
   activeExperiment = next;
@@ -315,7 +330,7 @@ function resizeActiveExperiment(): void {
   const viewport: LabViewport = {
     width: Math.max(1, stage.clientWidth),
     height: Math.max(1, stage.clientHeight),
-    pixelRatio: Math.min(devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches ? 1.5 : 2),
+    pixelRatio: Math.min(devicePixelRatio || 1, displayPreferences().quality === 'economy' || adaptiveEconomy ? 1 : matchMedia('(pointer: coarse)').matches ? 1.5 : 2),
   };
   activeExperiment.resize(viewport);
 }
@@ -328,7 +343,12 @@ function startFrames(): void {
     if (document.hidden || destroyed) return;
     const delta = Math.min(100, Math.max(0, now - previousFrame));
     previousFrame = now;
+    const started = performance.now();
     activeExperiment?.frame(now, delta);
+    if (displayPreferences().quality === 'auto' && !adaptiveEconomy) {
+      expensiveFrames = performance.now() - started > 14 ? expensiveFrames + 1 : Math.max(0, expensiveFrames - 1);
+      if (expensiveFrames >= 30) { adaptiveEconomy = true; resizeActiveExperiment(); }
+    }
     frameHandle = requestAnimationFrame(frame);
   };
   frameHandle = requestAnimationFrame(frame);
