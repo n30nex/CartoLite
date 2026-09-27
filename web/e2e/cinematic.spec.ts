@@ -50,6 +50,9 @@ test('compact map corners and dock fit desktop and touch screens', async ({page}
   await page.screenshot({path:info.outputPath('compact-netgraph-dock.png')});
 });
 
+test.describe('dock terrain controls', () => {
+// As in terrain.spec, continuous retry screencasts stall software terrain readback.
+test.use({trace:'off'});
 test('dock 3D shortcut shares layer state, persistence and reset', async ({page},info) => {
   const desktop=info.project.name==='desktop';
   await page.emulateMedia({reducedMotion:'reduce'});
@@ -63,17 +66,20 @@ test('dock 3D shortcut shares layer state, persistence and reset', async ({page}
   for(const id of ['hillshade-button','buildings-button']) await expect(page.locator('#'+id)).toHaveAttribute('aria-pressed','true');
   if(!await page.locator('.maplibregl-ctrl-attrib-inner').isVisible()) await attribution.press('Enter');
   await expect(page.locator('.maplibregl-ctrl-attrib-inner')).toContainText('Mapterhorn');
-  if(desktop) await expect.poll(async()=>{
-    const packet=await page.locator('#route-legend').boundingBox();
-    const credit=await page.locator('.maplibregl-ctrl-attrib').boundingBox();
-    return packet!.y+packet!.height < credit!.y;
-  }).toBe(true);
+  await expect(page.locator('#map')).toHaveAttribute('data-camera-moving','false');
+  await expect(page.locator('#map')).toHaveAttribute('data-render-state','idle',{timeout:15_000});
+  if(desktop) await expect.poll(()=>page.evaluate(()=>{
+    const packet=document.getElementById('route-legend')!.getBoundingClientRect();
+    const credit=document.querySelector('.maplibregl-ctrl-attrib')!.getBoundingClientRect();
+    return packet.bottom < credit.top;
+  })).toBe(true);
   await page.screenshot({path:info.outputPath('compact-map-3d.png')});
   await page.reload(); await expect(shortcut).toHaveAttribute('aria-pressed','true');
   await openMapOptions(page); await page.locator('#terrain-button').click();
   await expect(shortcut).toHaveAttribute('aria-pressed','false');
   await page.keyboard.press('Escape'); await shortcut.click(); await openMapOptions(page);
   await page.locator('#reset-layers').click(); await expect(shortcut).toHaveAttribute('aria-pressed','false');
+});
 });
 
 test('cinematic preferences migrate and layer combinations are reversible', async ({page},info) => {
