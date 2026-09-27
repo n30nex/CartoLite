@@ -291,6 +291,10 @@ export class LiveMap {
       compact: true,
       customAttribution: MESHCORE_REGION_ATTRIBUTION
     }), 'bottom-right');
+    const credits = this.container.querySelector<HTMLElement>('.maplibregl-ctrl-attrib')!;
+    const creditSize = new ResizeObserver(() => document.documentElement.style.setProperty('--map-credits-height', `${credits.offsetHeight}px`));
+    creditSize.observe(credits);
+    this.map.once('remove', () => creditSize.disconnect());
     this.map.on('load', () => this.installLayers());
     this.map.on('movestart', () => { this.container.dataset.cameraMoving = 'true'; });
     this.map.on('sourcedata', (event) => {
