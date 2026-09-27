@@ -421,6 +421,7 @@ export class LiveMap {
     this.rebuildAllRoutes = false;
     this.dirtyRouteIDs.clear();
     this.routeHydrating = true;
+    this.container.dataset.routeHydrating = 'true';
     this.routeDataDirty = false;
     this.container.dataset.exactRoutesLoaded = 'false';
     this.container.dataset.exactRoutesReady = 'false';
@@ -431,6 +432,7 @@ export class LiveMap {
     const fail = (error: unknown): void => {
       if (!active()) return;
       this.routeHydrating = false;
+      this.container.dataset.routeHydrating = 'false';
       this.routeDataDirty = true;
       this.rebuildAllRoutes = true;
       this.container.dataset.renderState = 'idle';
@@ -439,6 +441,7 @@ export class LiveMap {
     const finish = (): void => {
       if (!active()) return;
       this.routeHydrating = false;
+      this.container.dataset.routeHydrating = 'false';
       this.trackExactRouteReadiness(hydrationEpoch);
       if (this.routeDataDirty) {
         this.emitRouteWindowChange();

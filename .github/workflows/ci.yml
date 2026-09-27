@@ -244,6 +244,7 @@ jobs:
             web/playwright-report/
             web/terrain-test-results/
             web/terrain-playwright-report/
+          retention-days: ${{ github.event_name == 'pull_request' && 3 || 30 }}
           if-no-files-found: ignore
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
