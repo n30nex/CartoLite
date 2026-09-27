@@ -510,7 +510,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await openMapOptions(page);
   await routesButton.click();
   await expect(map).toHaveAttribute('data-routes-visible', 'true');
-  if (mobile) await closeLayers(page);
+  await closeLayers(page);
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
   if (!box) return;
@@ -552,7 +552,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   if (mobile) await openLayers(page);
   await openMapOptions(page);
   await page.locator('#route-window').selectOption('24h');
-  if (mobile) await closeLayers(page);
+  await closeLayers(page);
   await expect(map).toHaveAttribute('data-neighbor-route-count', '2');
   await expect(map).toHaveAttribute('data-focused-route-count', '2');
   await expect(inspector.locator('.neighbor-row')).toHaveCount(2);
@@ -596,7 +596,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await routesButton.click();
   await expect(map).toHaveAttribute('data-routes-visible', 'true');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
-  if (mobile) await closeLayers(page);
+  await closeLayers(page);
   await inspectRoute(page, alphaPoint, charliePoint, mobile);
   await expect(map).toHaveAttribute('data-hovered-route-id', 'a-c');
   await expect(tooltip).toHaveAttribute('data-kind', 'route');
@@ -608,7 +608,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await expect(tooltip).toBeHidden();
   await openMapOptions(page);
   await page.locator('#route-window').selectOption('24h');
-  if (mobile) await closeLayers(page);
+  await closeLayers(page);
 
   await clickPoint(page, bravoPoint, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'b');
