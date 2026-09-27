@@ -39,6 +39,9 @@ test('compact map corners and dock fit desktop and touch screens', async ({page}
   const attribution=page.locator('.maplibregl-ctrl-attrib-button');
   if(await page.locator('.maplibregl-ctrl-attrib-inner').isVisible()) await attribution.click();
   await attribution.press('Enter'); await expect(page.locator('.maplibregl-ctrl-attrib-inner')).toBeVisible();
+  await openMapOptions(page); await page.locator('#basemap-style').selectOption('light'); await page.keyboard.press('Escape');
+  await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+  await page.screenshot({path:info.outputPath('compact-map-daylight.png')});
   await attribution.press('Enter');
   await page.getByRole('link',{name:'Open CartoLite Netgraph',exact:true}).click();
   await expect(page.locator('#connected-count')).toHaveText('2');
