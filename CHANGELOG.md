@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.15.0 - Cinematic overhaul
+
+- Add Spectacle, Calm and Minimal effects, automatic detail/graphics, shared motion and text-size controls while retaining saved styles and sound settings.
+- Draw live packet cores, directional trails and terrain-aligned arrival effects with shared WebGL2 batches and Canvas fallback. Historical links stay still and packet/audio timing is unchanged.
+- Introduce a compact dock, fixed node inspector, selection continuity between views, reversible layer combinations and native/browser Back handling for menus.
+- Add scoped ten-second Follow with Hold, Next and Inspect; bring live directing and area/component focus to Netgraph.
+- Reduce crowded labels and animated area badges, preserve every retained route, and improve light/dark contrast and keyboard focus.
+- Add explicit voice preview and mute controls for the existing 30 sound voices.
+- Refresh Canada Labs with shared display controls and adaptive quality; prepare the Canada-only Android 1.1.0 shell with safer recovery, deep links and one navigation dock. APK publication requires separate physical acceptance.
+
 ## 0.14.1 - 2026-09-12
 
 - Cull off-screen and out-of-window historical routes before terrain projection, and reuse repeated endpoint work during mesh updates.

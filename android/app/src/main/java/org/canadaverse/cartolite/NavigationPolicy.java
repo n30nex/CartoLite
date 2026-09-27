@@ -24,7 +24,12 @@ final class NavigationPolicy {
         if (uri != null && ("/netgraph/".equals(uri.getPath()) || "/netgraph".equals(uri.getPath()))) {
             return "netgraph/";
         }
+        if (uri != null && ("/labs/".equals(uri.getPath()) || "/labs".equals(uri.getPath()))) return "labs/";
         return "";
+    }
+
+    static String lastViewUrl(String view) {
+        return CANADA_URL + ("netgraph/".equals(view) || "labs/".equals(view) ? view : "");
     }
 
     private static int effectivePort(URI uri) {

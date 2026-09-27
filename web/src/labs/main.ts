@@ -74,6 +74,14 @@ for (const definition of EXPERIMENTS) {
 }
 picker.value = currentDefinition.id;
 
+const labControls=document.querySelector<HTMLElement>('.labs-controls')!;
+const soundOptions=document.createElement('details');soundOptions.id='labs-sound-options';
+soundOptions.innerHTML='<summary>Voice & volume</summary><div class="labs-sound-body glass"></div>';
+const soundBody=soundOptions.querySelector<HTMLElement>('div')!;
+for(const label of labControls.querySelectorAll<HTMLElement>('.compact-field,.volume-field'))soundBody.append(label);
+labControls.append(soundOptions);
+document.addEventListener('pointerdown',event=>{if(event.target instanceof Node&&!soundOptions.contains(event.target))soundOptions.open=false;});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&soundOptions.open){soundOptions.open=false;soundOptions.querySelector<HTMLElement>('summary')!.focus();}});
 const displayDialog = document.createElement('dialog'); displayDialog.className='labs-display glass'; displayDialog.setAttribute('aria-label','Display settings');
 displayDialog.innerHTML='<header><strong>Display</strong><button type="button" aria-label="Close display settings">×</button></header>';
 const displayButton=document.createElement('button');displayButton.type='button';displayButton.textContent='Display';displayButton.setAttribute('aria-haspopup','dialog');
@@ -101,7 +109,7 @@ async function start(): Promise<void> {
     sonifier = routeSonifier;
 
     configureSound(routeSonifier);
-    mountSoundPreview(routeSonifier, displayDialog);
+    mountSoundPreview(routeSonifier, soundBody);
     updateExperimentInformation(currentDefinition);
     await switchExperiment(currentDefinition, liveStore.snapshot);
     if (destroyed) return;

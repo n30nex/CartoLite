@@ -42,3 +42,22 @@ Public responses never contain full public keys, observer keys, raw paths, packe
 ## License
 
 MIT
+
+## Cinematic display
+
+Map and Netgraph share effects intensity, six route presets, detail level,
+graphics quality, motion and text size. New settings default to Spectacle with
+automatic detail/quality and the system motion preference. Existing appearance,
+layer and audio choices are preserved. Sound stays opt-in; Preview voice plays
+one explicit sample without enabling live audio.
+
+The dock holds navigation, Find, Layers, Follow, Sound and Display. Network,
+Activity and Landscape combinations change layers only and include Undo.
+Follow holds each live subject for ten seconds and supports fixed-area or
+selected-node scopes, Hold, Next and Inspect. It never replays old traffic.
+Netgraph adds area/component focus without rearranging the network.
+
+GPU packet effects use the same geographic projections and hop clock as the
+Canvas fallback. Automatic detail reduces background decoration, not retained
+connections. Terrain and buildings are visual context, not RF coverage or
+measured antenna heights. A missing basemap does not prevent using Netgraph.

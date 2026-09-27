@@ -7,6 +7,12 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 public final class NavigationPolicyTest {
+    @Test public void restoresOnlyCanadaViews() {
+        assertEquals("https://carto.canadaverse.org/labs/", NavigationPolicy.lastViewUrl("labs/"));
+        assertEquals("https://carto.canadaverse.org/", NavigationPolicy.lastViewUrl("https://example.invalid"));
+        assertEquals("labs/", NavigationPolicy.viewPath("https://carto.canadaverse.org/labs/?experiment=mesh-loom"));
+    }
+
     @Test
     public void trustedOriginRequiresExactHttpsHost() {
         assertTrue(NavigationPolicy.isTrusted("https://carto.canadaverse.org/"));

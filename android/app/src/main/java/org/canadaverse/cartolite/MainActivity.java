@@ -93,7 +93,7 @@ public class MainActivity extends Activity {
         String savedUrl = savedInstanceState == null ? null : savedInstanceState.getString("current_url");
         String initialUrl = NavigationPolicy.isTrusted(savedUrl) ? savedUrl
                 : launchUri != null && NavigationPolicy.isTrusted(launchUri.toString()) ? launchUri.toString()
-                : NavigationPolicy.CANADA_URL + ("netgraph/".equals(preferences.getString("last_view", "")) ? "netgraph/" : "");
+                : NavigationPolicy.lastViewUrl(preferences.getString("last_view", ""));
         loadPage(initialUrl);
     }
 

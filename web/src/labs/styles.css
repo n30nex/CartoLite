@@ -205,3 +205,14 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 :root[data-text-size="large"] .labs-app :is(button,select,label,.live-caption) { font-size:15px; }
 :root[data-effects="minimal"] .labs-stage { filter:saturate(.85); }
 @media(max-width:620px) { .labs-display { margin:auto; max-height:calc(100dvh - 24px); } }
+
+.labs-app .labs-controls { position:fixed; top:auto; right:auto; left:50%; bottom:max(12px,env(safe-area-inset-bottom)); transform:translateX(-50%); display:flex; flex-wrap:wrap; justify-content:center; gap:6px; width:max-content; max-width:calc(100vw - 24px); border-radius:16px; background:var(--panel-solid); padding:6px; z-index:8; }
+.labs-app .labs-controls > :is(button,label,details) { min-height:44px; margin:0; }
+.labs-app .labs-controls button { border-radius:10px; }
+#labs-sound-options summary { min-height:44px; display:flex; align-items:center; padding:0 10px; cursor:pointer; color:var(--ink); font-size:12px; }
+.labs-sound-body { position:absolute; bottom:calc(100% + 10px); right:0; display:grid; gap:12px; width:min(320px,calc(100vw - 24px)); max-height:calc(100dvh - 180px); overflow:auto; border-radius:14px; padding:14px; background:var(--panel-solid); }
+.labs-sound-body .compact-field, .labs-sound-body .volume-field { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; }
+.labs-sound-body .volume-field input { width:100%; }
+.labs-app .live-caption { bottom:max(86px,calc(env(safe-area-inset-bottom) + 78px)); }
+.labs-app .loom-legend { bottom:max(86px,calc(env(safe-area-inset-bottom) + 78px)); }
+@media(max-width:700px) { .labs-app .labs-controls { width:calc(100vw - 16px); padding:4px; gap:3px; } .labs-app .labs-controls button { padding:0 7px; font-size:11px; } .labs-app .live-caption,.labs-app .loom-legend { bottom:156px; } }
