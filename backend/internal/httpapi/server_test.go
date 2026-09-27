@@ -50,7 +50,7 @@ func TestWorkspaceDeepLinksAndStaticCachePolicy(t *testing.T) {
 		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), testCase.title) {
 			t.Fatalf("%s did not serve %s: status=%d body=%q", testCase.requestPath, testCase.title, response.Code, response.Body.String())
 		}
-		if cache := response.Header().Get("Cache-Control"); cache != "no-cache, no-transform" {
+		if cache := response.Header().Get("Cache-Control"); cache != "public, no-cache, no-transform" {
 			t.Fatalf("%s HTML cache policy = %q", testCase.requestPath, cache)
 		}
 	}

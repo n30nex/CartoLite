@@ -57,7 +57,7 @@ Dirty public snapshots are capped at one per second. Dirty durable state is writ
 
 ## Proxy content integrity
 
-Preserve the HTML response's `Cache-Control: no-cache, no-transform` header at
+Preserve the HTML response's `Cache-Control: public, no-cache, no-transform` header at
 reverse proxies and CDNs. This prevents automatic script injection, including
 Cloudflare Web Analytics, without weakening CartoLite's Content Security Policy.
 Do not add analytics hosts to the script allowlist to silence CSP errors. See
