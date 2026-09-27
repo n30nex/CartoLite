@@ -110,6 +110,7 @@ html:root[data-cinematic] .director-enabled:not([data-follow-inspect="true"]) .n
 
 @media(max-width:900px),(pointer:coarse) {
  html:root[data-cinematic] .maplibregl-ctrl-bottom-right { top:max(68px,calc(env(safe-area-inset-top) + 64px)); bottom:auto; }
+ html:root[data-cinematic][data-view-class="mobile"] #app:has(.region-legend:not([hidden])) .route-legend { top:calc(max(68px,calc(env(safe-area-inset-top) + 64px)) + var(--map-credits-height,44px) + 12px); bottom:auto; }
 }
 html:root[data-cinematic] .maplibregl-ctrl-attrib-button::before { content:'©'; }
 

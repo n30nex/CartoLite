@@ -34,6 +34,11 @@ test('compact map corners and dock fit desktop and touch screens', async ({page}
   } else {
     const target=await shortcut.boundingBox();
     expect(target!.width).toBeGreaterThanOrEqual(44); expect(target!.height).toBeGreaterThanOrEqual(44);
+    await expect.poll(()=>page.evaluate(()=>{
+      const packet=document.getElementById('route-legend')!.getBoundingClientRect();
+      const credit=document.querySelector('.maplibregl-ctrl-attrib')!.getBoundingClientRect();
+      return packet.top >= credit.bottom + 8;
+    })).toBe(true);
   }
   await page.screenshot({path:info.outputPath('compact-map-dock.png')});
   const attribution=page.locator('.maplibregl-ctrl-attrib-button');
