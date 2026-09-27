@@ -357,7 +357,7 @@ function wireSearch(renderer: NetgraphRenderer, select: (nodeID: string) => void
     closeSoundPanel();
     closeDisplay();
     renderResults();
-    requestAnimationFrame(() => nodeSearch.focus());
+    nodeSearch.focus();
   });
 }
 

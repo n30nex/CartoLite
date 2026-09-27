@@ -411,7 +411,7 @@ async function start(): Promise<void> {
       closeSoundPanel();
       setLayersOpen(false);
       renderNodeSearch();
-      window.requestAnimationFrame(() => nodeSearch.focus());
+      nodeSearch.focus();
     });
     let wasHidden = document.hidden;
     document.addEventListener('visibilitychange', () => {
