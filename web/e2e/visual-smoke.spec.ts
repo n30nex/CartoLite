@@ -451,6 +451,7 @@ test('keeps a recent packet trail after stable routes are hidden', async ({ page
   await expect(page.locator('#app')).toHaveAttribute('data-traffic-kind', 'text');
   const afterglowWindow = routeDuration([{ routeId: 'route-a-b', from, to }]) + DESTINATION_BLOOM_MS + 600;
   await page.waitForTimeout(afterglowWindow);
+  await testInfo.attach('trail-state.json', { contentType: 'application/json', body: JSON.stringify(await packetCanvas.evaluate(c => ({...((c as HTMLCanvasElement).dataset),display:localStorage.getItem('cartolite:display:v1'),width:(c as HTMLCanvasElement).width,height:(c as HTMLCanvasElement).height}))) });
   await expect.poll(() => canvasHasPixels(packetCanvas), { message: '45-second trail should outlive the moving comet and afterglow', timeout: 2_000 }).toBe(true);
   await page.waitForTimeout(Math.max(0, 15_500 - afterglowWindow));
   await expect.poll(() => canvasHasPixels(packetCanvas), { message: 'recent packet trail should remain visible beyond the former 15-second lifetime', timeout: 2_000 }).toBe(true);
@@ -509,7 +510,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await openMapOptions(page);
   await routesButton.click();
   await expect(map).toHaveAttribute('data-routes-visible', 'true');
-  if (mobile) await closeLayers(page);
+  await closeLayers(page);
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
   if (!box) return;
@@ -520,7 +521,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
 
   await clickPoint(page, { x: alphaPoint.x + (mobile ? 12 : 0), y: alphaPoint.y }, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'a');
-  const inspector = mobile ? page.locator('#node-inspector-sheet') : page.locator('.node-inspector-popup');
+  const inspector = page.locator('#node-inspector-sheet');
   await expect(inspector).toBeVisible();
   await expect(inspector).toContainText('Alpha');
   // The traffic canvas normally ignores pointer hits, which can hide a paint-order bug.
@@ -551,7 +552,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   if (mobile) await openLayers(page);
   await openMapOptions(page);
   await page.locator('#route-window').selectOption('24h');
-  if (mobile) await closeLayers(page);
+  await closeLayers(page);
   await expect(map).toHaveAttribute('data-neighbor-route-count', '2');
   await expect(map).toHaveAttribute('data-focused-route-count', '2');
   await expect(inspector.locator('.neighbor-row')).toHaveCount(2);
@@ -562,6 +563,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await expect(page.locator('#legend-items')).toBeHidden();
   await expect(page.locator('#legend-toggle')).toBeHidden();
 
+  await closeLayers(page);
   await inspectRoute(page, alphaPoint, bravoPoint, mobile);
   await expect(map).toHaveAttribute('data-hovered-route-id', 'a-b');
   await expect(tooltip).toHaveAttribute('data-kind', 'route');
@@ -594,7 +596,7 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await routesButton.click();
   await expect(map).toHaveAttribute('data-routes-visible', 'true');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
-  if (mobile) await closeLayers(page);
+  await closeLayers(page);
   await inspectRoute(page, alphaPoint, charliePoint, mobile);
   await expect(map).toHaveAttribute('data-hovered-route-id', 'a-c');
   await expect(tooltip).toHaveAttribute('data-kind', 'route');
@@ -606,8 +608,11 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
   await expect(tooltip).toBeHidden();
   await openMapOptions(page);
   await page.locator('#route-window').selectOption('24h');
-  if (mobile) await closeLayers(page);
+  await closeLayers(page);
 
+  // In a short landscape view the right-hand inspector covers this fixture node.
+  // Dismiss it before testing the real map hit target.
+  if (page.viewportSize()!.height <= 520) await page.getByRole('button', {name:'Close node details',exact:true}).click();
   await clickPoint(page, bravoPoint, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', 'b');
   await expect(inspector).toContainText('Bravo');
@@ -624,14 +629,17 @@ test('focuses recent route neighbors and clears selection on the map', async ({ 
     await expect(tooltip).toBeHidden();
   }
 
-  await page.mouse.move(box.x + 30, box.y + 100);
+  const beforeWheel=Number(await map.getAttribute('data-camera-zoom'));
+  await page.mouse.move(box.x + box.width * 0.15, box.y + box.height * 0.45);
   await page.mouse.wheel(0, -120);
+  await expect.poll(()=>map.getAttribute('data-camera-zoom').then(Number)).toBeGreaterThan(beforeWheel);
+  await expect(map).toHaveAttribute('data-camera-moving','false');
   await expect(map).toHaveAttribute('data-selected-node-id', 'b');
   await expect(inspector).toBeVisible();
   await expect(inspector).toContainText('Bravo');
 
   await clickPoint(page, {
-    x: box.x + box.width * 0.84,
+    x: box.x + box.width * (page.viewportSize()!.height<=520 ? 0.22 : 0.84),
     y: box.y + box.height * (mobile ? 0.30 : 0.82),
   }, mobile);
   await expect(map).toHaveAttribute('data-selected-node-id', '');

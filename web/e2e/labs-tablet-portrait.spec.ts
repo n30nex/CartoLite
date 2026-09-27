@@ -12,7 +12,7 @@ test('keeps the Labs tablet portrait shell clear and touch sized', async ({ page
   await expect(page.locator('#labs-stage')).toHaveAttribute('data-assets', 'ready');
   await expect(page.locator('#labs-stage')).toHaveAttribute('data-reactive-water', 'true');
 
-  const targets = await page.locator('.labs-controls button, .labs-controls select, .labs-back').evaluateAll((elements) => elements.map((element) => {
+  const targets = await page.locator('.labs-controls button:visible, .labs-controls select:visible, .labs-controls summary:visible, .labs-back:visible').evaluateAll((elements) => elements.map((element) => {
     const bounds = element.getBoundingClientRect();
     return { width: bounds.width, height: bounds.height };
   }));
@@ -26,6 +26,12 @@ test('keeps the Labs tablet portrait shell clear and touch sized', async ({ page
     return bounds.left < -0.5 || bounds.right > innerWidth + 0.5 || bounds.top < -0.5 || bounds.bottom > innerHeight + 0.5;
   }));
   expect(overflow).toBe(false);
+  await page.locator('#labs-sound-options summary').click();
+  await expect(page.getByLabel('Sound voice')).toBeVisible();
+  const soundBounds = await page.locator('.labs-sound-body').boundingBox();
+  expect(soundBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(soundBounds!.y).toBeGreaterThanOrEqual(0);
+  await page.keyboard.press('Escape');
   await page.locator('#experiment-select').selectOption('little-mesh-villages');
   await expect(page.locator('#labs-stage')).toHaveAttribute('aria-label', 'Little Mesh Villages live traffic experiment');
   await expect(page.locator('.village-truth')).toBeVisible();

@@ -1,54 +1,28 @@
 # CartoLite for Android
 
-CartoLite for Android is a small, signed native shell around the public
-`https://carto.canadaverse.org/` experience. It keeps the map current while the
-web service continues to own all live data, rendering, sound scenes, settings,
-privacy boundaries, and updates.
+Canada-only native WebView shell, version 1.1.0, package `org.canadaverse.cartolite`.
+Android 8/API 26 minimum; Android 16/API 36 target. The web dock owns Map,
+Netgraph and Labs navigation; native options provide keep-awake, reload,
+external browser and app information.
 
-The native layer provides:
+## Build and acceptance
 
-- an immersive, edge-to-edge map with a branded launch and connection screen;
-- native screen-awake behavior while the app is visible;
-- Android lifecycle and network resume signals so state and SSE reconnect after sleep;
-- exact-origin HTTPS navigation with external links handed to the browser;
-- no JavaScript bridge, analytics, cookies, cleartext traffic, file access, or optional permissions;
-- Android App Link support for `carto.canadaverse.org` once the matching public
-  `/.well-known/assetlinks.json` is deployed.
+Build and test only in GitHub Actions. The main CI workflow runs strict lint,
+unit tests, release assembly and synthetic WebView instrumentation on API 26
+and 36. Fixture pages are debug-only and never contact the live site.
 
-## Toolchain
+After successful main CI, run **Sign tested Android candidate** with that CI
+run ID. It downloads the exact unsigned APK, signs without rebuilding, verifies
+the existing public certificate, and retains the APK, checksum and manifest.
+Signing secrets are repository secrets; never put keys or passwords in Git,
+arguments, logs, artifacts or the hosting directory.
 
-- Android Gradle Plugin 9.3.2
-- Gradle 9.5.0
-- JDK 17 or newer
-- Android SDK and Build Tools 36
+Physical acceptance is mandatory before publishing: preserve installed app
+data, verify package/certificate/hash, install that exact candidate, and check
+portrait/landscape, Back, deep links, sleep/resume, offline/retry and gesture-
+unlocked sound. Publish the accepted artifact and checksum at the versioned
+Canadaverse download path. Keep the previous signed APK for recovery.
 
-## Build and test
-
-Use the checked-in Gradle wrapper from this directory:
-
-```powershell
-./gradlew.bat clean test lint assembleDebug
-```
-
-Release signing is supplied only through process environment variables. The
-keystore and passwords must stay outside the repository.
-
-```text
-CARTOLITE_ANDROID_KEYSTORE
-CARTOLITE_ANDROID_STORE_PASSWORD
-CARTOLITE_ANDROID_KEY_ALIAS
-CARTOLITE_ANDROID_KEY_PASSWORD
-```
-
-With all four set, `assembleRelease` creates the signed APK under
-`app/build/outputs/apk/release/`. Without them, the release variant remains
-unsigned. Verify every hosted APK with Android Build Tools `apksigner` and
-publish its SHA-256 checksum alongside the download.
-
-## Privacy and updates
-
-The APK requests only Internet and network-state access. It does not contain
-broker credentials, the CARTO browser key, user accounts, telemetry, or live
-packet data. Most product updates arrive from the existing CartoLite web
-deployment; a new APK is needed only when the native shell or signing identity
-changes.
+The app accepts only the Canada HTTPS origin internally. It does not include
+MQTT credentials, map keys, account or analytics SDKs, a JavaScript bridge,
+background services, custom servers or downloaded audio.

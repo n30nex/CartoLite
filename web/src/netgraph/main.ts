@@ -1,3 +1,7 @@
+import { mountGraphFollow } from './follow';
+import { mountSoundPreview } from '../soundPreview';
+import { requestedNode, rememberNode, replaceInspector } from '../selection';
+import { mountCinematicDock } from '../cinematicChrome';
 import { populateSoundScenes, syncSoundScene, SOUND_SCENES } from '../soundScenes';
 import { initializeDisplay } from '../displayPreferences';
 import { mountNetgraphDisplay } from '../displayControls';
@@ -109,6 +113,7 @@ async function start(): Promise<void> {
     areaResolver = regionResolver;
     const routeSonifier = new RouteSonifier(graph, stage);
     sonifier = routeSonifier;
+    mountSoundPreview(routeSonifier, soundPanel);
     configureSound(routeSonifier);
     graph.setRouteWindow(settings.routeWindow);
 
@@ -119,9 +124,11 @@ async function start(): Promise<void> {
 
     const renderInspector = (): void => {
       const started = performance.now();
-      inspectorSheet.replaceChildren();
+      // Preserve keyboard focus when neighbour ordering changes.
+
       if (!selectedNodeID) {
-        inspectorSheet.hidden = true;
+        if (inspectorSheet.contains(document.activeElement)) findButton.focus();
+        inspectorSheet.replaceChildren(); inspectorSheet.hidden = true;
         stage.dataset.inspectorApplyMs = (performance.now() - started).toFixed(1);
         return;
       }
@@ -138,7 +145,7 @@ async function start(): Promise<void> {
         inspectorSheet.hidden = true;
         return;
       }
-      inspectorSheet.append(createNodeInspectorContent(document, model, {
+      replaceInspector(inspectorSheet, createNodeInspectorContent(document, model, {
         mobile: true,
         onClose: () => selectNode(null),
         onSelectNeighbor: (nodeID) => selectNode(nodeID, true),
@@ -150,6 +157,7 @@ async function start(): Promise<void> {
     selectNode = (nodeID: string | null, focus = false): void => {
       const started = performance.now();
       selectedNodeID = nodeID;
+      rememberNode(nodeID);
       graph.setSelectedNode(nodeID);
       renderInspector();
       if (nodeID && focus) graph.focusNode(nodeID);
@@ -182,7 +190,20 @@ async function start(): Promise<void> {
       if (changes.reset || selectedNodeChanged || adjacentRouteChanged) renderInspector();
     });
     app.dataset.loading = 'false';
+    const requestedSelection = requestedNode();
+    if (requestedSelection && graph.getNodes().has(requestedSelection)) selectNode(requestedSelection);
+    const focusControl = document.createElement('label'); focusControl.className = 'graph-focus';
+    focusControl.innerHTML = '<span>Focus</span><select aria-label="Topology focus"><option value="all">Show all</option><option value="area">Selected area</option><option value="component">Selected component</option></select><small role="status"></small>';
+    inspectorSheet.before(focusControl);
+    focusControl.querySelector('select')!.addEventListener('change', event => {
+      const select = event.target as HTMLSelectElement;
+      const applied = graph.setFocus(select.value as 'all' | 'area' | 'component');
+      focusControl.querySelector('small')!.textContent = applied ? '' : 'Select a node first';
+      if (!applied) select.value = 'all';
+    });
 
+    const director = mountGraphFollow(graph, id => selectNode(id));
+    window.addEventListener('pagehide',event=>{if(!event.persisted)director.destroy();});
     const liveFeed = new LiveFeed(initial, {
       onConnection(connected) {
         streamConnected = connected;
@@ -199,6 +220,7 @@ async function start(): Promise<void> {
         const noteCount = routeSonifier.play(packet);
         if (noteCount > 0) pulseSound(noteCount);
         pulseTraffic(packet);
+        director.offer(packet);
       },
       onStatus(event) {
         liveStore.updateStatus(event.status, event.seq);
@@ -283,7 +305,8 @@ async function start(): Promise<void> {
       updateSummary();
       if (selectedNodeID) renderInspector();
     }, 60_000);
-    window.addEventListener('beforeunload', () => {
+    window.addEventListener('pagehide', (event) => {
+      if (event.persisted) return;
       if (minuteTimer !== undefined) window.clearInterval(minuteTimer);
       if (trafficTimer !== undefined) window.clearTimeout(trafficTimer);
       if (soundPulseTimer !== undefined) window.clearTimeout(soundPulseTimer);
@@ -293,7 +316,7 @@ async function start(): Promise<void> {
       graph.destroy();
       regionResolver.destroy();
       releaseScreenAwake();
-    }, { once: true });
+    });
   } catch (error) {
     if (minuteTimer !== undefined) window.clearInterval(minuteTimer);
     feed?.stop();
@@ -318,6 +341,7 @@ function wireSearch(renderer: NetgraphRenderer, select: (nodeID: string) => void
     select(nodeID) {
       select(nodeID);
       closeFindPanel();
+      inspectorSheet.querySelector<HTMLElement>('.node-inspector-close')?.focus({preventScroll:true});
     },
     dismiss() {
       closeFindPanel();
@@ -333,7 +357,7 @@ function wireSearch(renderer: NetgraphRenderer, select: (nodeID: string) => void
     closeSoundPanel();
     closeDisplay();
     renderResults();
-    requestAnimationFrame(() => nodeSearch.focus());
+    nodeSearch.focus();
   });
 }
 
@@ -467,6 +491,7 @@ function isNetgraphWindow(value: unknown): value is NetgraphWindow {
 }
 
 function requestScreenAwake(): Promise<void> {
+  if (/CartoLiteAndroid\//.test(navigator.userAgent)) { app.dataset.screenAwake = 'native'; return Promise.resolve(); }
   screenAwakeWanted = true;
   if (!matchMedia('(pointer: coarse)').matches) {
     app.dataset.screenAwake = 'desktop';
@@ -520,3 +545,5 @@ function required<T extends HTMLElement>(id: string): T {
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
+
+mountCinematicDock();

@@ -16,7 +16,7 @@ Do not build, test, run containers, install dependencies, or generate browser ar
 - Never expose public keys, observer keys, raw path hex, packet hashes, payloads, decoded message text, credentials, or resolver reasons.
 - The only public traffic category is a sanitized kind such as Advert, Trace, Text, ACK, or Control.
 - Keep `web/src/types.ts` synchronized with the public Go state/event schema.
-- Keep stable map state in MapLibre and transient motion on Canvas2D.
+- Keep stable map state in MapLibre. Live effects may use the shared WebGL2 renderer with Canvas2D fallback; packet timing and topology remain independent of drawing.
 - Treat `backend/internal/httpapi/static` as generated Docker build input except for its placeholder.
 - Use synthetic fixtures only. Never commit live broker data, databases, captures, or `.env` files.
 

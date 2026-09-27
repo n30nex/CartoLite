@@ -1,3 +1,4 @@
+import { effectStrength } from '../../displayPreferences';
 import pondEdgeUrl from '../assets/pond-edge.webp';
 import pondWaterUrl from '../assets/pond-water.webp';
 import { PACKET_KIND_COLORS } from '../../trafficVisuals';
@@ -211,12 +212,12 @@ class PacketPond implements LabExperiment {
       canvas.strokeStyle = rgba(channel.color, 0.025 + strength * 0.08);
       canvas.lineWidth = 5 + strength * 8;
       canvas.shadowColor = channel.color;
-      canvas.shadowBlur = 15;
+      canvas.shadowBlur = (15) * effectStrength();
       canvas.beginPath();
       canvas.moveTo(channel.from.x, channel.from.y);
       canvas.lineTo(channel.to.x, channel.to.y);
       canvas.stroke();
-      canvas.shadowBlur = 0;
+      canvas.shadowBlur = (0) * effectStrength();
       canvas.setLineDash([2, 8 + channel.seed % 7]);
       canvas.lineDashOffset = reducedMotion ? 0 : -now * 0.012;
       canvas.strokeStyle = rgba(channel.color, 0.12 + strength * 0.22);
@@ -244,7 +245,7 @@ class PacketPond implements LabExperiment {
       canvas.strokeStyle = trail;
       canvas.lineWidth = 2.2;
       canvas.shadowColor = drop.color;
-      canvas.shadowBlur = 18;
+      canvas.shadowBlur = (18) * effectStrength();
       canvas.beginPath();
       canvas.moveTo(previous.x, previous.y);
       canvas.lineTo(point.x, point.y);
@@ -288,7 +289,7 @@ class PacketPond implements LabExperiment {
         canvas.strokeStyle = rgba(ripple.color, fade * (0.5 - ring * 0.075));
         canvas.lineWidth = Math.max(0.55, 2 - ring * 0.28);
         canvas.shadowColor = ripple.color;
-        canvas.shadowBlur = 9;
+        canvas.shadowBlur = (9) * effectStrength();
         canvas.beginPath();
         canvas.ellipse(0, 0, radius, radius * 0.38, 0, 0, Math.PI * 2);
         canvas.stroke();

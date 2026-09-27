@@ -1,0 +1,54 @@
+name: Verify deployed Canada visuals
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact deployed main revision
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  public-visuals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ inputs.expected_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Verify production identity without retaining traffic
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$EXPECTED_SHA" origin/main
+          curl --fail --silent https://carto.canadaverse.org/healthz | jq -e --arg sha "$EXPECTED_SHA" '.gitSha == $sha'
+          curl --fail --silent https://carto.canadaverse.org/readyz | jq -e '.ready and .mqtt and .checkpoint and .dropped == 0'
+      - name: Install browser tooling
+        working-directory: web
+        run: |
+          npm ci
+          npm exec playwright install --with-deps chromium
+      - name: Inspect deployed assets using synthetic topology and terrain
+        working-directory: web
+        env:
+          CARTOLITE_BASE_URL: https://carto.canadaverse.org
+        run: npm run test:e2e -- cinematic.spec.ts display-upgrade.spec.ts terrain.spec.ts labs.spec.ts --project=desktop --project=mobile
+      - name: Retain deployment screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: canada-deployed-visuals-${{ inputs.expected_sha }}
+          path: |
+            web/test-results/
+            web/playwright-report/
+          retention-days: 30

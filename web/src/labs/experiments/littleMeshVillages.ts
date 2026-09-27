@@ -1,3 +1,4 @@
+import { effectStrength } from '../../displayPreferences';
 import type { EndpointV2, StateV2 } from '../../types';
 import { PACKET_KIND_COLORS } from '../../trafficVisuals';
 import { CanvasSurface, easeOut, rgba } from '../canvas';
@@ -360,11 +361,11 @@ class LittleMeshVillages implements LabExperiment {
       const glow = building.observer ? '#8bdcff' : '#f0ca6d';
       canvas.fillStyle = glow;
       canvas.shadowColor = glow;
-      canvas.shadowBlur = 10;
+      canvas.shadowBlur = (10) * effectStrength();
       canvas.fillRect(footprint * 0.18, -height * 0.54, Math.max(1.4, footprint * 0.3), Math.max(1.8, height * 0.18));
     }
     if (building.role === 'repeater') {
-      canvas.shadowBlur = 0;
+      canvas.shadowBlur = (0) * effectStrength();
       canvas.strokeStyle = building.observer ? '#8bdcff' : '#72d6c5';
       canvas.lineWidth = 0.8;
       canvas.beginPath();
@@ -452,7 +453,7 @@ class LittleMeshVillages implements LabExperiment {
       canvas.strokeStyle = rgba(courier.color, 0.42);
       canvas.lineWidth = 2.2;
       canvas.shadowColor = courier.color;
-      canvas.shadowBlur = 13;
+      canvas.shadowBlur = (13) * effectStrength();
       canvas.beginPath();
       canvas.moveTo(from.x, from.y);
       canvas.lineTo(x, y);
@@ -460,7 +461,7 @@ class LittleMeshVillages implements LabExperiment {
       canvas.translate(x, y);
       canvas.rotate(Math.atan2(to.y - from.y, to.x - from.x) + Math.PI / 4);
       canvas.fillStyle = '#efffe9';
-      canvas.shadowBlur = 18;
+      canvas.shadowBlur = (18) * effectStrength();
       canvas.fillRect(-3, -3, 6, 6);
       canvas.restore();
     }

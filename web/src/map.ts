@@ -1,3 +1,6 @@
+import { followViewport } from './cinematicChrome';
+import { prefersReducedMotion as displayReducedMotion } from './displayPreferences';
+import { rememberNode, replaceInspector } from './selection';
 import * as maplibregl from 'maplibre-gl';
 import workerURL from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import {
@@ -225,7 +228,7 @@ export class LiveMap {
   private buildingSourceID?: string;
   private regionLegendKey = '';
   private directorTimer?: number;
-  private readonly reducedMotion = prefersReducedMotion();
+  private reducedMotion = prefersReducedMotion();
   private freshnessTimer: number;
   private renderEpoch = 0;
   private renderingScheduled = false;
@@ -419,6 +422,7 @@ export class LiveMap {
     this.rebuildAllRoutes = false;
     this.dirtyRouteIDs.clear();
     this.routeHydrating = true;
+    this.container.dataset.routeHydrating = 'true';
     this.routeDataDirty = false;
     this.container.dataset.exactRoutesLoaded = 'false';
     this.container.dataset.exactRoutesReady = 'false';
@@ -429,6 +433,7 @@ export class LiveMap {
     const fail = (error: unknown): void => {
       if (!active()) return;
       this.routeHydrating = false;
+      this.container.dataset.routeHydrating = 'false';
       this.routeDataDirty = true;
       this.rebuildAllRoutes = true;
       this.container.dataset.renderState = 'idle';
@@ -437,6 +442,7 @@ export class LiveMap {
     const finish = (): void => {
       if (!active()) return;
       this.routeHydrating = false;
+      this.container.dataset.routeHydrating = 'false';
       this.trackExactRouteReadiness(hydrationEpoch);
       if (this.routeDataDirty) {
         this.emitRouteWindowChange();
@@ -483,8 +489,11 @@ export class LiveMap {
     let settledFrames = 0;
     const settle = (): void => {
       if (hydrationEpoch !== this.routeHydrationEpoch) return;
-      const sourceReady = Boolean(this.map.getSource(ROUTE_DETAIL_SOURCE_ID))
-        && this.map.isSourceLoaded(ROUTE_DETAIL_SOURCE_ID);
+      // Historical geometry lives in the batched renderer. The GeoJSON source
+      // serves selected-neighbour hit targets only and may stay unloaded while hidden.
+      const detailNeeded = this.routesVisible && this.selectedNodeID !== null;
+      const sourceReady = this.container.dataset.exactRoutesLoaded === 'true'
+        && (!detailNeeded || (Boolean(this.map.getSource(ROUTE_DETAIL_SOURCE_ID)) && this.map.isSourceLoaded(ROUTE_DETAIL_SOURCE_ID)));
       if (!sourceReady || this.routeHydrating) {
         settledFrames = 0;
         window.requestAnimationFrame(settle);
@@ -614,7 +623,7 @@ export class LiveMap {
     this.map.easeTo({ center, zoom, ...orientation, duration: 520, essential: false });
   }
 
-  home(nodes: readonly NodeV2[]): void {
+  home(nodes: readonly NodeV2[], animate = true): void {
     this.lastFollowMoveAt = 0;
     const now = Date.now();
     const active = nodes.filter((node) => validEndpoint(node) && Math.max(0, now - node.lastSeen) <= ACTIVE_NODE_WINDOW_MS);
@@ -629,7 +638,7 @@ export class LiveMap {
     }
     const bounds = new maplibregl.LngLatBounds();
     for (const node of visible) bounds.extend([node.lng, node.lat]);
-    const options = { padding: this.container.clientWidth <= 620 ? 48 : 72, maxZoom: 6, duration: this.reducedMotion ? 0 : 620 };
+    const options = { padding: this.container.clientWidth <= 620 ? 48 : 72, maxZoom: 6, duration: this.reducedMotion || !animate ? 0 : 620 };
     this.map.fitBounds(bounds, options);
   }
 
@@ -658,10 +667,11 @@ export class LiveMap {
     if (endpoints.length === 0) return false;
     const container = this.map.getContainer();
     const viewport = { width: container.clientWidth, height: container.clientHeight };
-    const inside = endpoints.every((endpoint) => isPointInSafeArea(
-      this.map.project([endpoint.lng, endpoint.lat]),
-      viewport,
-    ));
+    const visible=followViewport(container);
+    const inside = endpoints.every(endpoint => {
+      const p=this.map.project([endpoint.lng,endpoint.lat]);
+      return p.x>=visible.left&&p.x<=visible.right&&p.y>=visible.top&&p.y<=visible.bottom;
+    });
     if (inside) return false;
     const now = Date.now();
     if (!canMoveLiveFollow(this.lastFollowMoveAt, now)) return false;
@@ -672,20 +682,13 @@ export class LiveMap {
       this.directorTimer = undefined;
       this.container.dataset.cameraMode = 'idle';
     }, 1500);
-    if (endpoints.length === 1) {
-      const center: [number, number] = [endpoints[0]!.lng, endpoints[0]!.lat];
-      if (this.reducedMotion) this.map.jumpTo({ center });
-      else this.map.easeTo({ center, duration: 1200, essential: false, easeId: 'cartolite-live-follow' });
-      return true;
-    }
     const bounds = new maplibregl.LngLatBounds();
     const anchor = endpoints[0]!.lng;
     for (const endpoint of endpoints) bounds.extend([anchor + longitudeDelta(anchor, endpoint.lng), endpoint.lat]);
-    const horizontal = container.clientWidth <= 620 ? 56 : 104;
     const camera = this.map.cameraForBounds(bounds, {
-      padding: { top: 96, right: horizontal, bottom: Math.min(230, viewport.height * 0.32), left: horizontal },
+      padding: { top: visible.top, right: viewport.width-visible.right, bottom: viewport.height-visible.bottom, left: visible.left },
       bearing: this.map.getBearing(),
-      maxZoom: this.followZoom,
+      maxZoom: endpoints.length===1 ? this.map.getZoom() : Math.min(this.followZoom,this.map.getZoom()),
     });
     if (!camera) return false;
     this.map.easeTo({ ...camera, duration: this.reducedMotion ? 0 : 1400, essential: false, easeId: 'cartolite-live-follow' });
@@ -723,6 +726,7 @@ export class LiveMap {
   }
 
   setAppearance(preferences: UiPreferences, force = false): void {
+    this.reducedMotion = displayReducedMotion();
     const previous = this.appearance;
     this.appearance = { ...preferences };
     this.container.dataset.basemapStyle = preferences.basemap;
@@ -750,6 +754,10 @@ export class LiveMap {
       }
     }
     this.map.setLayoutProperty(NODE_LABEL_LAYER_ID, 'visibility', preferences.nodeLabels ? 'visible' : 'none');
+    const display = displayPreferences();
+    this.map.setLayoutProperty(NODE_LABEL_LAYER_ID, 'text-padding', display.detail === 'complete' ? 2 : 7);
+    this.map.setLayoutProperty(NODE_LABEL_LAYER_ID, 'text-size', ['interpolate', ['linear'], ['zoom'], DETAIL_ZOOM, display.textSize === 'large' ? 12 : 10, 12, display.textSize === 'large' ? 15 : 12, 16, display.textSize === 'large' ? 17 : 13]);
+    this.map.setPaintProperty(NODE_LABEL_LAYER_ID, 'text-opacity', .96);
     this.historicalRouteLayer.setOpacity(preferences.routeOpacity);
     this.historicalRouteLayer.refreshAppearance();
     this.container.dataset.routePreset = displayPreferences().preset;
@@ -765,6 +773,8 @@ export class LiveMap {
     }
     this.markRendering();
   }
+
+  getSelectedNodeID(): string | null { return this.selectedNodeID; }
 
   shouldFollow(packet: PacketView): boolean {
     return packetMatchesFollow(packet, this.selectedNodeID);
@@ -915,7 +925,7 @@ export class LiveMap {
     if (!details) {
       details = document.createElement('details');
       details.id = 'region-legend';
-      details.open = viewClass() === 'desktop';
+      details.open = false;
       details.className = 'region-legend';
       details.append(document.createElement('summary'), document.createElement('div'));
       legend.append(details);
@@ -1706,6 +1716,7 @@ export class LiveMap {
     this.selectedNodeID = nodeID;
     this.selectedNodeLabel = nodeID ? label : '';
     this.container.dataset.selectedNodeId = nodeID ?? '';
+    rememberNode(nodeID);
     this.updateFocusData();
     this.applyFocusState();
     if (nodeID === null && this.tooltip.dataset.kind === 'route') this.hideTooltip();
@@ -1928,7 +1939,7 @@ export class LiveMap {
     });
     if (mobile) {
       this.closePopup(false);
-      this.inspectorSheet.replaceChildren(content);
+      replaceInspector(this.inspectorSheet, content);
       this.inspectorSheet.hidden = false;
       return;
     }
@@ -1961,9 +1972,11 @@ export class LiveMap {
   }
 
   private closeInspector(clearSelection: boolean): void {
+    const restoreFocus = this.inspectorSheet.contains(document.activeElement);
     this.closePopup(clearSelection);
     this.inspectorSheet.hidden = true;
     this.inspectorSheet.replaceChildren();
+    if (restoreFocus) document.getElementById('find-button')?.focus();
   }
 
   private closePopup(clearSelection: boolean): void {
@@ -1974,7 +1987,7 @@ export class LiveMap {
   }
 
   private isMobileInspector(): boolean {
-    return this.container.clientWidth <= 620 || window.matchMedia('(pointer: coarse)').matches;
+    return document.documentElement.dataset.cinematic === 'true' || this.container.clientWidth <= 620 || window.matchMedia('(pointer: coarse)').matches;
   }
 
   private inspectorPopupAnchor(node: NodeV2): 'left' | 'right' {
@@ -1991,11 +2004,11 @@ export class LiveMap {
 
   private centerNodeIfNeeded(node: NodeV2): void {
     const point = this.map.project([node.lng, node.lat]);
-    const mobile = this.isMobileInspector();
+    const mobile = this.container.clientWidth <= 900 || window.matchMedia('(pointer: coarse)').matches;
     const margin = 72;
     const safeBottom = this.container.clientHeight - (mobile ? Math.min(360, this.container.clientHeight * 0.48) : margin);
     const inSafeView = point.x >= margin
-      && point.x <= this.container.clientWidth - margin
+      && point.x <= this.container.clientWidth - (mobile ? margin : 390)
       && point.y >= margin
       && point.y <= safeBottom;
     if (inSafeView && this.map.getZoom() >= DETAIL_ZOOM) return;

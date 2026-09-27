@@ -201,6 +201,14 @@ jobs:
           CARTOLITE_BASE_URL: http://127.0.0.1:39476
           PLAYWRIGHT_HTML_OUTPUT_DIR: terrain-playwright-report
         run: npm run test:e2e -- --grep @terrain --output terrain-test-results
+      # The scale fixture supplies its own state/event stream. Run all of its
+      # viewports before the unrelated live publisher competes for the renderer CPU.
+      # Preserve every case, route count and timing limit; do not run it twice.
+      - name: Dense-scene performance budgets
+        working-directory: web
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: scale-playwright-report
+        run: npm run test:e2e -- scale-smoke.spec.ts --grep-invert @terrain --output scale-test-results
       - name: Desktop and mobile Playwright smoke
         working-directory: web
         env:
@@ -223,7 +231,7 @@ jobs:
             done
           ) &
           publisher_pid="$!"
-          npm run test:e2e -- --grep-invert @terrain
+          npm run test:e2e -- --grep-invert '@terrain|keeps a 4k-node / 7k-route first view responsive'
       - name: Trivy HIGH/CRITICAL gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -242,8 +250,11 @@ jobs:
             artifacts/integration/
             web/test-results/
             web/playwright-report/
+            web/scale-test-results/
+            web/scale-playwright-report/
             web/terrain-test-results/
             web/terrain-playwright-report/
+          retention-days: ${{ github.event_name == 'pull_request' && 3 || 30 }}
           if-no-files-found: ignore
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -279,10 +290,50 @@ jobs:
           docker rm --force cartolite cartolite-mqtt >/dev/null 2>&1 || true
           docker network rm cartolite-ci >/dev/null 2>&1 || true
 
+  android:
+    name: Android API ${{ matrix.api }} shell and recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [26, 36]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Unit tests, strict lint and release candidate
+        working-directory: android
+        run: bash gradlew --no-daemon testDebugUnitTest lintRelease assembleRelease assembleDebug assembleDebugAndroidTest
+      - name: Synthetic device acceptance
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: cd android && bash gradlew --no-daemon connectedDebugAndroidTest
+      - name: Upload native evidence and unsigned candidate
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cartolite-android-${{ matrix.api }}-${{ github.sha }}
+          path: |
+            android/app/build/outputs/apk/release/
+            android/app/build/reports/
+            android/app/build/outputs/androidTest-results/
+
   required:
     name: CI / Required
     if: always()
-    needs: [backend, frontend, container]
+    needs: [backend, frontend, container, android]
     runs-on: ubuntu-latest
     steps:
       - name: Require every gate
@@ -290,4 +341,5 @@ jobs:
           BACKEND: ${{ needs.backend.result }}
           FRONTEND: ${{ needs.frontend.result }}
           CONTAINER: ${{ needs.container.result }}
-        run: test "$BACKEND" = success -a "$FRONTEND" = success -a "$CONTAINER" = success
+          ANDROID: ${{ needs.android.result }}
+        run: test "$BACKEND" = success -a "$FRONTEND" = success -a "$CONTAINER" = success -a "$ANDROID" = success
