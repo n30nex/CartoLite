@@ -1,6 +1,6 @@
 # CartoLite for Android
 
-CartoLite for Android 1.0.0 is the official signed Android presentation of the
+CartoLite for Android 1.1.0 is the official signed Android presentation of the
 public live map. It uses the same production frontend and public API as the
 browser, so map, sound, privacy, and topology updates do not wait for a new APK.
 
@@ -24,7 +24,7 @@ recovery without an APK update or a broader navigation allowlist.
 ## Identity
 
 - Package: `org.canadaverse.cartolite`
-- App version: `1.0.0` (`versionCode` 1)
+- App version: `1.1.0` (`versionCode` 2)
 - Minimum Android: 8.0 / API 26
 - Target Android: 16 / API 36
 - Release certificate: `android/signing/cartolite-release-cert.pem`
@@ -42,3 +42,16 @@ and landscape, 44-pixel web controls, a 48dp native retry control, touchscreen W
 one oscillator per visible hop, screen-awake ownership, forced sleep recovery,
 network loss/recovery, external-link handoff, and no process crash or app-level
 console error.
+
+## 1.1 recovery and navigation
+
+The shared web dock owns navigation. Native options are a single 48dp overflow
+button; there is no second Map/Netgraph bar. Loading errors remain visible until
+retry succeeds, a stalled load offers retry after 30 seconds, and renderer
+failure destroys the affected WebView and waits for explicit retry. Current
+navigation survives recreation and already-running deep links are handled.
+Predictive Back is registered only while web history can consume it.
+
+Actions gates API 26 and 36 against debug-only synthetic pages. The signing
+workflow promotes the exact CI APK without rebuilding and does not publish it
+before physical-device acceptance.

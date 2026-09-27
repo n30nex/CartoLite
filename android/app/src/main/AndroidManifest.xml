@@ -18,7 +18,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.CartoLite"
         android:usesCleartextTraffic="false"
-        tools:targetApi="s">
+        tools:targetApi="tiramisu">
 
         <activity
             android:name=".MainActivity"

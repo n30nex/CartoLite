@@ -1,3 +1,4 @@
+import { effectStrength } from '../../displayPreferences';
 import meadowForegroundUrl from '../assets/meadow-foreground.webp';
 import meadowNightUrl from '../assets/meadow-night.webp';
 import type { NodeV2, StateV2 } from '../../types';
@@ -259,7 +260,7 @@ class FireflyMeadow implements LabExperiment {
       canvas.ellipse(-1.8, 1.8, 2.6, 1, 0.45, 0, Math.PI * 2);
       canvas.stroke();
       canvas.shadowColor = firefly.color;
-      canvas.shadowBlur = 22 + pulse * 8;
+      canvas.shadowBlur = (22 + pulse * 8) * effectStrength();
       const body = canvas.createRadialGradient(0, 0, 0, 0, 0, firefly.local ? 8 : 7);
       body.addColorStop(0, '#f5fff2');
       body.addColorStop(0.22, firefly.color);

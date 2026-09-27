@@ -1,3 +1,4 @@
+import { effectStrength } from '../../displayPreferences';
 import { PACKET_KIND_COLORS } from '../../trafficVisuals';
 import type { PacketKind } from '../../trafficVisuals';
 import type { EndpointV2, StateV2 } from '../../types';
@@ -236,7 +237,7 @@ class MeshLoom implements LabExperiment {
       canvas.strokeStyle = rgba(thread.color, alpha * 0.8);
       canvas.lineWidth = 1;
       canvas.shadowColor = thread.color;
-      canvas.shadowBlur = 9;
+      canvas.shadowBlur = (9) * effectStrength();
       canvas.fillRect(-4.5, -4.5, 9, 9);
       canvas.strokeRect(-5.5, -5.5, 11, 11);
       canvas.restore();
@@ -257,10 +258,10 @@ class MeshLoom implements LabExperiment {
     canvas.strokeStyle = rgba(thread.color, alpha * 0.28);
     canvas.lineWidth = background ? 2.9 : 7.6;
     canvas.shadowColor = thread.color;
-    canvas.shadowBlur = age < 2_200 ? 14 : 5;
+    canvas.shadowBlur = (age < 2_200 ? 14 : 5) * effectStrength();
     drawSmoothPath(canvas, visible);
     canvas.stroke();
-    canvas.shadowBlur = 0;
+    canvas.shadowBlur = (0) * effectStrength();
     canvas.setLineDash([1.4, 3.4]);
     canvas.lineDashOffset = thread.seed % 9;
     canvas.strokeStyle = rgba(thread.color, alpha * 0.88);
@@ -291,7 +292,7 @@ class MeshLoom implements LabExperiment {
       canvas.rotate(Math.PI / 4);
       canvas.fillStyle = '#e8f4dc';
       canvas.shadowColor = thread.color;
-      canvas.shadowBlur = 14;
+      canvas.shadowBlur = (14) * effectStrength();
       canvas.fillRect(-3.4, -3.4, 6.8, 6.8);
     }
     canvas.restore();

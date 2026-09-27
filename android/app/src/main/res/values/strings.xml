@@ -13,9 +13,6 @@
     <string name="retry">Try again</string>
     <string name="link_blocked">That link was blocked for your safety.</string>
     <string name="no_browser">No browser is available for that link.</string>
-    <string name="map_tab">Map</string>
-    <string name="netgraph_tab">Netgraph</string>
-    <string name="app_options">App</string>
     <string name="app_options_description">App options</string>
     <string name="keep_awake">Keep screen awake</string>
     <string name="reload">Reload view</string>

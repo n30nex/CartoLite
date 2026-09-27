@@ -127,7 +127,8 @@ async function start(): Promise<void> {
       // Preserve keyboard focus when neighbour ordering changes.
 
       if (!selectedNodeID) {
-        inspectorSheet.hidden = true;
+        if (inspectorSheet.contains(document.activeElement)) findButton.focus();
+        inspectorSheet.replaceChildren(); inspectorSheet.hidden = true;
         stage.dataset.inspectorApplyMs = (performance.now() - started).toFixed(1);
         return;
       }
@@ -339,6 +340,7 @@ function wireSearch(renderer: NetgraphRenderer, select: (nodeID: string) => void
     select(nodeID) {
       select(nodeID);
       closeFindPanel();
+      inspectorSheet.querySelector<HTMLElement>('.node-inspector-close')?.focus({preventScroll:true});
     },
     dismiss() {
       closeFindPanel();

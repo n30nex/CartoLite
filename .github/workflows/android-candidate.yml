@@ -1,0 +1,83 @@
+name: Sign tested Android candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Successful main CI run containing the tested unsigned APK
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify exact successful main candidate
+        id: candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.ci_run_id }}
+        shell: bash
+        run: |
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > run.json
+          jq -e --arg repo "$GITHUB_REPOSITORY" '.conclusion == "success" and .event == "push" and .head_branch == "main" and .head_repository.full_name == $repo and .path == ".github/workflows/ci.yml"' run.json >/dev/null
+          sha="$(jq -r .head_sha run.json)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ steps.candidate.outputs.sha }}
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Download the tested APK without rebuilding
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.ci_run_id }}
+          SOURCE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "cartolite-android-26-$SOURCE_SHA" --dir unsigned
+      - name: Sign with the existing release identity
+        env:
+          SIGNING_STORE: ${{ secrets.CARTOLITE_ANDROID_KEYSTORE_BASE64 }}
+          CARTOLITE_ANDROID_STORE_PASSWORD: ${{ secrets.CARTOLITE_ANDROID_STORE_PASSWORD }}
+          CARTOLITE_ANDROID_KEY_ALIAS: ${{ secrets.CARTOLITE_ANDROID_KEY_ALIAS }}
+          CARTOLITE_ANDROID_KEY_PASSWORD: ${{ secrets.CARTOLITE_ANDROID_KEY_PASSWORD }}
+          SOURCE_SHA: ${{ steps.candidate.outputs.sha }}
+        shell: bash
+        run: |
+          test -n "$SIGNING_STORE"
+          umask 077
+          store="$RUNNER_TEMP/cartolite-signing.p12"
+          trap 'rm -f "$store"' EXIT
+          printf '%s' "$SIGNING_STORE" | base64 --decode > "$store"
+          unset SIGNING_STORE
+          version="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' android/app/build.gradle)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          buildtools="$ANDROID_HOME/build-tools/36.0.0"
+          test -x "$buildtools/apksigner"
+          mkdir -p signed
+          apk="signed/CartoLite-Android-v$version.apk"
+          "$buildtools/zipalign" -f -p 4 unsigned/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$buildtools/apksigner" sign --ks "$store" --ks-key-alias "$CARTOLITE_ANDROID_KEY_ALIAS" --ks-pass env:CARTOLITE_ANDROID_STORE_PASSWORD --key-pass env:CARTOLITE_ANDROID_KEY_PASSWORD --out "$apk" "$RUNNER_TEMP/aligned.apk"
+          "$buildtools/apksigner" verify --verbose --print-certs "$apk" > signed/signature.txt
+          expected="$(tr -d ':\r\n' < android/signing/certificate-sha256.txt | tr '[:upper:]' '[:lower:]')"
+          actual="$(sed -n 's/Signer #1 certificate SHA-256 digest: //p' signed/signature.txt | tr '[:upper:]' '[:lower:]')"
+          test "$actual" = "$expected"
+          "$buildtools/aapt" dump badging "$apk" | head -1 > signed/package.txt
+          grep -F "name='org.canadaverse.cartolite'" signed/package.txt
+          grep -F "versionName='$version'" signed/package.txt
+          (cd signed && sha256sum "CartoLite-Android-v$version.apk" > "CartoLite-Android-v$version.apk.sha256")
+          jq -n --arg sha "$SOURCE_SHA" --arg version "$version" --arg cert "$actual" '{sourceRevision:$sha,version:$version,certificateSha256:$cert,physicalDeviceAcceptance:"required-before-publication"}' > signed/manifest.json
+      - name: Retain candidate for physical acceptance
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cartolite-android-signed-${{ steps.candidate.outputs.sha }}
+          path: signed/
+          if-no-files-found: error
