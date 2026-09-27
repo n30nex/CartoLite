@@ -4,36 +4,45 @@ import java.net.URI;
 import java.net.URISyntaxException;
 
 final class NavigationPolicy {
-    private static final String TRUSTED_SCHEME = "https";
-    private static final String TRUSTED_HOST = "carto.canadaverse.org";
+    static final String CANADA_URL = "https://carto.canadaverse.org/";
 
     private NavigationPolicy() {
     }
 
     static boolean isTrusted(String rawUrl) {
-        if (rawUrl == null || rawUrl.isBlank()) {
-            return false;
-        }
-        try {
-            URI uri = new URI(rawUrl);
-            return TRUSTED_SCHEME.equalsIgnoreCase(uri.getScheme())
-                    && TRUSTED_HOST.equalsIgnoreCase(uri.getHost())
-                    && uri.getUserInfo() == null
-                    && (uri.getPort() == -1 || uri.getPort() == 443);
-        } catch (URISyntaxException ignored) {
-            return false;
-        }
+        URI uri = secureUri(rawUrl);
+        return uri != null && "carto.canadaverse.org".equalsIgnoreCase(uri.getHost())
+                && effectivePort(uri) == 443;
     }
 
     static boolean isExternalWebLink(String rawUrl) {
-        if (rawUrl == null || rawUrl.isBlank()) {
-            return false;
+        return secureUri(rawUrl) != null;
+    }
+
+    static String viewPath(String rawUrl) {
+        URI uri = isTrusted(rawUrl) ? secureUri(rawUrl) : null;
+        if (uri != null && ("/netgraph/".equals(uri.getPath()) || "/netgraph".equals(uri.getPath()))) {
+            return "netgraph/";
+        }
+        return "";
+    }
+
+    private static int effectivePort(URI uri) {
+        return uri.getPort() == -1 ? 443 : uri.getPort();
+    }
+
+    private static URI secureUri(String rawUrl) {
+        if (rawUrl == null || rawUrl.trim().isEmpty()) {
+            return null;
         }
         try {
             URI uri = new URI(rawUrl);
-            return "https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null;
+            return "https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null
+                    && !uri.getHost().contains("%") && uri.getRawUserInfo() == null
+                    && (uri.getPort() == -1 || (uri.getPort() > 0 && uri.getPort() <= 65535))
+                    ? uri : null;
         } catch (URISyntaxException ignored) {
-            return false;
+            return null;
         }
     }
 }

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="web_view" type="id" />
+    <item name="connection_panel" type="id" />
+    <item name="retry_button" type="id" />
+    <item name="map_button" type="id" />
+    <item name="netgraph_button" type="id" />
+    <item name="app_button" type="id" />
+</resources>

@@ -3,7 +3,7 @@
     <string name="app_name">CartoLite</string>
     <string name="connecting_title">Entering CartoLite</string>
     <string name="connecting_detail">Connecting to the live MeshCore Canada map…</string>
-    <string name="loading_progress">Preparing live map… %1$d%%</string>
+    <string name="loading_progress">Preparing view… %1$d%%</string>
     <string name="connection_title">Connection paused</string>
     <string name="connection_detail">CartoLite could not reach the live map. Check your connection and try again.</string>
     <string name="service_title">Map temporarily unavailable</string>
@@ -13,4 +13,17 @@
     <string name="retry">Try again</string>
     <string name="link_blocked">That link was blocked for your safety.</string>
     <string name="no_browser">No browser is available for that link.</string>
+    <string name="map_tab">Map</string>
+    <string name="netgraph_tab">Netgraph</string>
+    <string name="app_options">App</string>
+    <string name="app_options_description">App options</string>
+    <string name="keep_awake">Keep screen awake</string>
+    <string name="reload">Reload view</string>
+    <string name="open_browser">Open in browser</string>
+    <string name="about_app">About CartoLite</string>
+    <string name="about_detail">Android %1$s\nMeshCore Canada\n\nMap features update from the live Canada service. Keep Android System WebView current for rendering and security fixes.</string>
+    <string name="renderer_title">The view needs to restart</string>
+    <string name="renderer_detail">Android stopped the map display. Your display preferences are still available. Try again to reopen this view.</string>
+    <string name="timeout_title">Taking longer than expected</string>
+    <string name="timeout_detail">The live map has not finished loading. Check your connection or try again.</string>
 </resources>
