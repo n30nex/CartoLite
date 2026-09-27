@@ -56,6 +56,24 @@ public class ShellTest {
             scenario.onActivity(activity -> assertEquals(View.VISIBLE,activity.findViewById(R.id.connection_panel).getVisibility()));
         }
     }
+    @Test public void staleCompletionCannotRevealANewerNavigation() throws Exception {
+        try (ActivityScenario<FixtureActivity> scenario = ActivityScenario.launch(FixtureActivity.class)) {
+            awaitPage(scenario);
+            scenario.onActivity(activity -> {
+                WebView web = activity.findViewById(R.id.web_view);
+                web.getWebViewClient().onPageStarted(web, NavigationPolicy.CANADA_URL + "netgraph/", null);
+                web.getWebViewClient().onPageCommitVisible(web, NavigationPolicy.CANADA_URL);
+                web.getWebViewClient().onPageFinished(web, NavigationPolicy.CANADA_URL);
+            });
+            Thread.sleep(600);
+            scenario.onActivity(activity -> {
+                assertEquals(View.VISIBLE, activity.findViewById(R.id.connection_panel).getVisibility());
+                WebView web = activity.findViewById(R.id.web_view);
+                web.getWebViewClient().onPageCommitVisible(web, NavigationPolicy.CANADA_URL + "netgraph/");
+            });
+            awaitPage(scenario);
+        }
+    }
     private static void awaitPage(ActivityScenario<FixtureActivity> scenario) throws Exception {
         AtomicBoolean ready = new AtomicBoolean();
         for(int i=0;i<150&&!ready.get();i++) {

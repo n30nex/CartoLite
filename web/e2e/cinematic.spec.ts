@@ -77,5 +77,12 @@ test('rapidly reopening Finder after selection keeps its input available', async
 test('the Android shell owns keep-awake instead of a second browser lock', async ({page}) => {
   await visualFixture(page);
   await page.addInitScript(()=>Object.defineProperty(navigator,'userAgent',{get:()=> 'Mozilla/5.0 CartoLiteAndroid/1.1.0'}));
-  for(const path of ['/','/netgraph/']) { await page.goto(path); await expect(page.locator(path==='/'?'#app':'#netgraph-app')).toHaveAttribute('data-screen-awake','native'); }
+  for(const path of ['/','/netgraph/']) {
+    await page.goto(path);
+    await expect(page.locator(path==='/'?'#app':'#netgraph-app')).toHaveAttribute('data-screen-awake','native');
+    if(path==='/' && page.viewportSize()!.width<=900) {
+      const legend=await page.locator('#legend-toggle').boundingBox();
+      expect(legend!.x+legend!.width).toBeLessThanOrEqual(page.viewportSize()!.width-64);
+    }
+  }
 });

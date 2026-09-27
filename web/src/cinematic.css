@@ -89,3 +89,5 @@ html:root[data-cinematic] .control-button { min-width:44px; }
  html:root[data-cinematic] #app #legend[data-focused="true"] #legend-toggle { display:none; }
  html:root[data-cinematic] #app #legend[data-collapsed="true"][data-focused="false"]:not(:has(.region-legend:not([hidden]))) { background:transparent; border-color:transparent; box-shadow:none; }
 }
+
+@media(max-width:900px),(pointer:coarse) { html:root[data-cinematic][data-native-app] #app #legend-toggle { right:68px; } }

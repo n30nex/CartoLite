@@ -440,10 +440,14 @@ public class MainActivity extends Activity {
         }
     }
 
-    private boolean isCurrentMainRequest(WebView view, WebResourceRequest request) {
-        return view == webView && request.isForMainFrame()
-                && request.getUrl().buildUpon().fragment(null).build().equals(
+    private boolean isCurrentPage(WebView view, String url) {
+        return view == webView && NavigationPolicy.isTrusted(url)
+                && Uri.parse(url).buildUpon().fragment(null).build().equals(
                         Uri.parse(currentUrl).buildUpon().fragment(null).build());
+    }
+
+    private boolean isCurrentMainRequest(WebView view, WebResourceRequest request) {
+        return request.isForMainFrame() && isCurrentPage(view, request.getUrl().toString());
     }
 
     private boolean handleNavigation(WebResourceRequest request) {
@@ -628,7 +632,7 @@ public class MainActivity extends Activity {
         @Override
         public void onPageCommitVisible(WebView view, String url) {
             super.onPageCommitVisible(view, url);
-            if (view == webView && NavigationPolicy.isTrusted(url) && !loadFailed) {
+            if (isCurrentPage(view, url) && !loadFailed) {
                 revealPage();
             }
         }
@@ -636,7 +640,7 @@ public class MainActivity extends Activity {
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
-            if (view == webView && NavigationPolicy.isTrusted(url) && !pageVisible && !loadFailed) {
+            if (isCurrentPage(view, url) && !pageVisible && !loadFailed) {
                 revealPage();
             }
         }
