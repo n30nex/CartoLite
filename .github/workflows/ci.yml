@@ -201,16 +201,17 @@ jobs:
           CARTOLITE_BASE_URL: http://127.0.0.1:39476
           PLAYWRIGHT_HTML_OUTPUT_DIR: terrain-playwright-report
         run: npm run test:e2e -- --grep @terrain --output terrain-test-results
-      - name: Dense-scene budget and CPU evidence
+      # The scale fixture supplies its own state/event stream. Run all of its
+      # viewports before the unrelated live publisher competes for the renderer CPU.
+      # Preserve every case, route count and timing limit; do not run it twice.
+      - name: Dense-scene performance budgets
         working-directory: web
         env:
-          CARTOLITE_PROFILE_ROUTES: '1'
           PLAYWRIGHT_HTML_OUTPUT_DIR: scale-playwright-report
-        run: npm run test:e2e -- scale-smoke.spec.ts --project=desktop --output scale-test-results
+        run: npm run test:e2e -- scale-smoke.spec.ts --grep-invert @terrain --output scale-test-results
       - name: Desktop and mobile Playwright smoke
         working-directory: web
         env:
-          CARTOLITE_PROFILE_ROUTES: '1'
           CARTOLITE_BASE_URL: http://127.0.0.1:39476
         shell: bash
         run: |
@@ -230,7 +231,7 @@ jobs:
             done
           ) &
           publisher_pid="$!"
-          npm run test:e2e -- --grep-invert @terrain
+          npm run test:e2e -- --grep-invert '@terrain|keeps a 4k-node / 7k-route first view responsive'
       - name: Trivy HIGH/CRITICAL gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
