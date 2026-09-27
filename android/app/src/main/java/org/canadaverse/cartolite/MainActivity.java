@@ -440,6 +440,12 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean isCurrentMainRequest(WebView view, WebResourceRequest request) {
+        return view == webView && request.isForMainFrame()
+                && request.getUrl().buildUpon().fragment(null).build().equals(
+                        Uri.parse(currentUrl).buildUpon().fragment(null).build());
+    }
+
     private boolean handleNavigation(WebResourceRequest request) {
         String url = request.getUrl().toString();
         if (NavigationPolicy.isTrusted(url)) {
@@ -638,7 +644,7 @@ public class MainActivity extends Activity {
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             super.onReceivedError(view, request, error);
-            if (view == webView && request.isForMainFrame()) {
+            if (isCurrentMainRequest(view, request)) {
                 showConnectionProblem(R.string.connection_title, R.string.connection_detail, true);
             }
         }
@@ -649,7 +655,7 @@ public class MainActivity extends Activity {
                 WebResourceRequest request,
                 WebResourceResponse errorResponse) {
             super.onReceivedHttpError(view, request, errorResponse);
-            if (view == webView && request.isForMainFrame() && errorResponse.getStatusCode() >= 400) {
+            if (isCurrentMainRequest(view, request) && errorResponse.getStatusCode() >= 400) {
                 showConnectionProblem(R.string.service_title, R.string.service_detail, false);
             }
         }

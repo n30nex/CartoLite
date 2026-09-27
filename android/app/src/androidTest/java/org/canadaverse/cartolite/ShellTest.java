@@ -36,8 +36,9 @@ public class ShellTest {
             awaitPage(scenario);
             scenario.onActivity(activity -> {
                 WebView web = activity.findViewById(R.id.web_view);
+                final Uri current = Uri.parse(web.getUrl());
                 android.webkit.WebResourceRequest request = new android.webkit.WebResourceRequest() {
-                    public Uri getUrl() { return Uri.parse(NavigationPolicy.CANADA_URL); }
+                    public Uri getUrl() { return current; }
                     public boolean isForMainFrame() { return true; }
                     public boolean isRedirect() { return false; }
                     public boolean hasGesture() { return false; }

@@ -232,7 +232,8 @@ async function start(): Promise<void> {
     showFatal(error);
   }
 
-  window.addEventListener('beforeunload', () => {
+  window.addEventListener('pagehide', (event) => {
+    if (event.persisted) return;
     destroyed = true;
     stopFrames();
     if (burstTimer !== undefined) window.clearInterval(burstTimer);
@@ -245,7 +246,7 @@ async function start(): Promise<void> {
     sonifier?.destroy();
     activeExperiment?.destroy();
     releaseWakeLock();
-  }, { once: true });
+  });
 }
 
 async function switchExperiment(definition: ExperimentDefinition, snapshot: Readonly<StateV2>): Promise<void> {
@@ -421,6 +422,7 @@ interface WakeLockSentinel extends EventTarget {
 }
 
 async function requestWakeLock(): Promise<void> {
+  if (/CartoLiteAndroid\//.test(navigator.userAgent)) { app.dataset.screenAwake = 'native'; return; }
   if (document.hidden || wakeLock && !wakeLock.released || !matchMedia('(pointer: coarse)').matches) return;
   const api = (navigator as Navigator & { wakeLock?: { request(type: 'screen'): Promise<WakeLockSentinel> } }).wakeLock;
   if (!api) return;

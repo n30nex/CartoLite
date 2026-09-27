@@ -121,6 +121,7 @@ function mobileScreenAwakeWanted(): boolean {
 }
 
 function requestScreenAwake(): Promise<void> {
+  if (/CartoLiteAndroid\//.test(navigator.userAgent)) { appElement.dataset.screenAwake = 'native'; return Promise.resolve(); }
   if (!mobileScreenAwakeWanted()) {
     appElement.dataset.screenAwake = 'desktop';
     return Promise.resolve();
@@ -436,7 +437,8 @@ async function start(): Promise<void> {
       void requestScreenAwake();
       void feed?.resume();
     });
-    window.addEventListener('beforeunload', () => {
+    window.addEventListener('pagehide', (event) => {
+      if (event.persisted) return;
       if (trafficWakeTimer !== undefined) window.clearTimeout(trafficWakeTimer);
       if (followTimer !== undefined) window.clearInterval(followTimer);
       feed?.stop();
@@ -445,7 +447,7 @@ async function start(): Promise<void> {
       sonifier?.destroy();
       mapView?.destroy();
       releaseScreenAwake();
-    }, { once: true });
+    });
 
     const initial = await fetchState();
     const requestedSelection = requestedNode();
