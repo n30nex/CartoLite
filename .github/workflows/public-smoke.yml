@@ -33,6 +33,9 @@ jobs:
           git merge-base --is-ancestor "$EXPECTED_SHA" origin/main
           curl --fail --silent https://carto.canadaverse.org/healthz | jq -e --arg sha "$EXPECTED_SHA" '.gitSha == $sha'
           curl --fail --silent https://carto.canadaverse.org/readyz | jq -e '.ready and .mqtt and .checkpoint and .dropped == 0'
+          curl --fail --silent --dump-header "$RUNNER_TEMP/carto-headers" https://carto.canadaverse.org/ --output "$RUNNER_TEMP/carto-page"
+          grep -qi '^cache-control:.*no-transform' "$RUNNER_TEMP/carto-headers"
+          ! grep -q 'static.cloudflareinsights.com/beacon' "$RUNNER_TEMP/carto-page"
       - name: Install browser tooling
         working-directory: web
         run: |
