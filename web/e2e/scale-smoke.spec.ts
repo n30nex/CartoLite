@@ -79,6 +79,8 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await expect(heatmapButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'true');
   const routesButton = page.locator('#routes-button');
+  const profiler=process.env.CARTOLITE_PROFILE_ROUTES ? await page.context().newCDPSession(page) : undefined;
+  if(profiler){await profiler.send('Profiler.enable');await profiler.send('Profiler.start');}
   await resetLongTasks(page);
   await openMapOptions(page);
   await routesButton.click();
@@ -86,6 +88,12 @@ test('keeps a 4k-node / 7k-route first view responsive', async ({ page }, testIn
   await expect(map).toHaveAttribute('data-routes-visible', 'true');
   await expect(map).toHaveAttribute('data-route-representation', 'individual-routes');
   await expect(map).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+  if(profiler){
+    const result=await profiler.send('Profiler.stop');
+    await testInfo.attach('route-toggle-cpu',{body:JSON.stringify(result.profile),contentType:'application/json'});
+    await testInfo.attach('route-toggle-state',{body:JSON.stringify(await map.evaluate(element=>({...((element as HTMLElement).dataset)}))),contentType:'application/json'});
+    await profiler.detach();
+  }
   expect(Number(await map.getAttribute('data-route-toggle-apply-ms')), 'the Routes interaction itself must finish within 100 ms').toBeLessThan(100);
   expect(
     await maximumLongTask(page),

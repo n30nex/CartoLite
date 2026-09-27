@@ -201,6 +201,12 @@ jobs:
           CARTOLITE_BASE_URL: http://127.0.0.1:39476
           PLAYWRIGHT_HTML_OUTPUT_DIR: terrain-playwright-report
         run: npm run test:e2e -- --grep @terrain --output terrain-test-results
+      - name: Dense-scene budget and CPU evidence
+        working-directory: web
+        env:
+          CARTOLITE_PROFILE_ROUTES: '1'
+          PLAYWRIGHT_HTML_OUTPUT_DIR: scale-playwright-report
+        run: npm run test:e2e -- scale-smoke.spec.ts --project=desktop --output scale-test-results
       - name: Desktop and mobile Playwright smoke
         working-directory: web
         env:
@@ -242,6 +248,8 @@ jobs:
             artifacts/integration/
             web/test-results/
             web/playwright-report/
+            web/scale-test-results/
+            web/scale-playwright-report/
             web/terrain-test-results/
             web/terrain-playwright-report/
           retention-days: ${{ github.event_name == 'pull_request' && 3 || 30 }}
