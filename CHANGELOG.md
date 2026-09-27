@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.1 - Edge content integrity
+
+- Prevent automatic proxy/CDN script injection into Map, Netgraph and Labs HTML with `Cache-Control: public, no-cache, no-transform`; keep the existing strict Content Security Policy and traffic API unchanged.
+
 ## 0.15.0 - Cinematic overhaul
 
 - Add Spectacle, Calm and Minimal effects, automatic detail/graphics, shared motion and text-size controls while retaining saved styles and sound settings.

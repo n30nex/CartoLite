@@ -54,3 +54,11 @@ If any check fails before cleanup, stop CartoLite, restart the old service, and 
 `healthz` answers whether the process lives. `readyz` answers whether it is safe to serve current data. A disconnected broker, corrupt checkpoint, subscription failure, queue drops, or missing frontend assets must fail readiness. A connected but quiet RF feed remains ready and reports `activity: quiet`. See [operations](operations.md) for the optional Pi watchdog, DigitalOcean Spaces/restic schedule, Cloudflare region cache rule, and release cutover/rollback proof.
 
 Dirty public snapshots are capped at one per second. Dirty durable state is written no more than once every five minutes and on clean shutdown; packet volume must not trigger extra checkpoints. Each checkpoint removes routes older than 24 hours and nodes unreferenced for more than 30 days. The process logs a bounded operational summary every five minutes with ingest count, sequence, queue depth, drops, SSE clients, public counts, snapshot bytes, checkpoint bytes and duration, and cumulative pruning counts. Alert on failed readiness, any drops, restart growth, checkpoint failures, or an unexpected rise in checkpoint size or duration.
+
+## Proxy content integrity
+
+Preserve the HTML response's `Cache-Control: public, no-cache, no-transform` header at
+reverse proxies and CDNs. This prevents automatic script injection, including
+Cloudflare Web Analytics, without weakening CartoLite's Content Security Policy.
+Do not add analytics hosts to the script allowlist to silence CSP errors. See
+[Cloudflare's automatic setup documentation](https://developers.cloudflare.com/web-analytics/get-started/).
