@@ -1,11 +1,9 @@
 package org.canadaverse.cartolite;
 
-import android.content.Intent;
 import android.net.Uri;
 import android.view.View;
 import android.webkit.WebView;
 import androidx.test.core.app.ActivityScenario;
-import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -34,15 +32,25 @@ public class ShellTest {
         }
     }
     @Test public void httpErrorIsNotHiddenByPageFinished() throws Exception {
-        Intent intent = new Intent(ApplicationProvider.getApplicationContext(), FixtureActivity.class);
-        intent.setData(Uri.parse(NavigationPolicy.CANADA_URL + "fixture-error"));
-        try (ActivityScenario<FixtureActivity> scenario = ActivityScenario.launch(intent)) {
-            AtomicBoolean failed = new AtomicBoolean();
-            for (int i=0;i<100&&!failed.get();i++) {
-                scenario.onActivity(activity -> failed.set(activity.findViewById(R.id.retry_button).getVisibility()==View.VISIBLE));
-                Thread.sleep(100);
-            }
-            assertTrue("HTTP failure should offer retry", failed.get());
+        try (ActivityScenario<FixtureActivity> scenario = ActivityScenario.launch(FixtureActivity.class)) {
+            awaitPage(scenario);
+            scenario.onActivity(activity -> {
+                WebView web = activity.findViewById(R.id.web_view);
+                android.webkit.WebResourceRequest request = new android.webkit.WebResourceRequest() {
+                    public Uri getUrl() { return Uri.parse(NavigationPolicy.CANADA_URL); }
+                    public boolean isForMainFrame() { return true; }
+                    public boolean isRedirect() { return false; }
+                    public boolean hasGesture() { return false; }
+                    public String getMethod() { return "GET"; }
+                    public java.util.Map<String,String> getRequestHeaders() { return java.util.Collections.emptyMap(); }
+                };
+                android.webkit.WebResourceResponse response = new android.webkit.WebResourceResponse("text/html", "UTF-8", 503, "Unavailable", java.util.Collections.emptyMap(), null);
+                // Intercepted synthetic responses do not generate the platform HTTP callback.
+                // Exercise the real installed client's error -> finish ordering explicitly.
+                web.getWebViewClient().onReceivedHttpError(web, request, response);
+                web.getWebViewClient().onPageFinished(web, NavigationPolicy.CANADA_URL);
+                assertEquals(View.VISIBLE, activity.findViewById(R.id.retry_button).getVisibility());
+            });
             Thread.sleep(600);
             scenario.onActivity(activity -> assertEquals(View.VISIBLE,activity.findViewById(R.id.connection_panel).getVisibility()));
         }
