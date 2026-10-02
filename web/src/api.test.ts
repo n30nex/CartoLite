@@ -79,7 +79,7 @@ describe('LiveFeed recovery', () => {
 
     expect(recover).toHaveBeenCalledTimes(1);
     expect(onPacket).toHaveBeenCalledTimes(6);
-    expect(onPacket).toHaveBeenCalledWith(expect.objectContaining({ seq: 26 }));
+    expect(onPacket).toHaveBeenCalledWith(expect.objectContaining({ seq: 26 }), false);
     feed.stop();
   });
 
@@ -102,6 +102,22 @@ describe('LiveFeed recovery', () => {
     await settle();
     expect(recover).toHaveBeenCalledTimes(2);
     expect(MockEventSource.instances).toHaveLength(2);
+    feed.stop();
+  });
+
+  it('marks catch-up packets for state-only application on initial connection and native reconnect', () => {
+    const onPacket = vi.fn();
+    const feed = new LiveFeed(initial, handlers({ onPacket }));
+    feed.start();
+    const source = MockEventSource.instances[0]!;
+    source.send('hello', { bootId: initial.bootId, seq: 9 });
+    for (const seq of [8, 9, 10]) source.send('packet', observerPacket(seq));
+    expect(onPacket.mock.calls.map(call => [call[0].seq, call[1]])).toEqual([[8, true], [9, true], [10, false]]);
+    source.onerror?.(new Event('error'));
+    source.onopen?.(new Event('open'));
+    source.send('hello', { bootId: initial.bootId, seq: 12 });
+    for (const seq of [11, 12, 13]) source.send('packet', observerPacket(seq));
+    expect(onPacket.mock.calls.slice(3).map(call => [call[0].seq, call[1]])).toEqual([[11, true], [12, true], [13, false]]);
     feed.stop();
   });
 

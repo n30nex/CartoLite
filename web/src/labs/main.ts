@@ -120,9 +120,9 @@ async function start(): Promise<void> {
       updateConnectionStatus(liveStore.snapshot);
     });
 
-    const handlePacket = (event: PacketEventV2): void => {
+    const handlePacket = (event: PacketEventV2, replayed = false): void => {
       const packetView = liveStore.applyPacket(event);
-      if (!packetView) return;
+      if (!packetView || replayed) return;
       const packet = normalizeLabPacket(packetView);
       metrics.record(packet);
       liveCaption.textContent = captionFor(packet);
