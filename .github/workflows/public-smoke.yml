@@ -45,7 +45,7 @@ jobs:
         working-directory: web
         env:
           CARTOLITE_BASE_URL: https://carto.canadaverse.org
-        run: npm run test:e2e -- cinematic.spec.ts dock-terrain.spec.ts display-upgrade.spec.ts terrain.spec.ts labs.spec.ts --project=desktop --project=mobile
+        run: npm run test:e2e -- recovery.spec.ts cinematic.spec.ts dock-terrain.spec.ts display-upgrade.spec.ts terrain.spec.ts labs.spec.ts --project=desktop --project=mobile
       - name: Retain deployment screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

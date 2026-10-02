@@ -41,6 +41,9 @@ jobs:
       - name: Race detector
         working-directory: backend
         run: go test -race ./...
+      - name: Synthetic ingest index benchmark
+        working-directory: backend
+        run: go test ./internal/engine -run '^$' -bench BenchmarkNodeRepresentative -benchmem -benchtime=200ms -count=3
       - name: Watchdog transition tests
         run: python3 -m unittest deploy.watchdog.test_cartolite_watchdog deploy.backup.test_cartolite_backup deploy.cloudflare.test_region_cache_rule
       - name: Compose region defaults and overrides
@@ -271,7 +274,8 @@ jobs:
           candidate="${IMAGE_NAME}:sha-${GITHUB_SHA}"
           docker tag cartolite:ci "$candidate"
           docker push "$candidate"
-          digest="$(docker buildx imagetools inspect "$candidate" | awk '$1 == "Digest:" {print $2; exit}')"
+          docker buildx imagetools inspect "$candidate" > "$RUNNER_TEMP/candidate-inspect.txt"
+          digest="$(awk '$1 == "Digest:" {print $2; exit}' "$RUNNER_TEMP/candidate-inspect.txt")"
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
       - name: Attest exact-SHA candidate

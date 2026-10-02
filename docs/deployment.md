@@ -26,6 +26,8 @@ The production defaults publish `0.0.0.0:80` for an edge proxy and `127.0.0.1:39
 
 ## Upgrade
 
+From 0.15.3, an empty `MQTT_CLIENT_ID` generates a unique clean-session identity at startup. Explicit IDs are preserved. If several installations copied the same old default, clear that setting or give each instance a different broker-approved ID; shared IDs disconnect one another.
+
 When upgrading from 0.12.1 or earlier, install the release's `compose.yml` and clear a copied national `REGION_ALLOWLIST` in `.env` to adopt the maintained defaults. Previously shipped lists omitted active regions, including Muskoka (`YQA`). Preserve intentional regional restrictions. Outside Compose, an unset/blank `REGION_ALLOWLIST` still honors the legacy `PUBLIC_REGIONS` setting before using the defaults. See [MQTT coverage](data-sources.md#canada-mqtt-coverage).
 
 1. Record the current `CARTOLITE_IMAGE` digest and copy the named `cartolite-data` volume using your normal encrypted backup process.
