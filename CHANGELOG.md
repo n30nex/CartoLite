@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.4 - Full motion in the Android app
+
+- Default the Canada Android app to Full motion and Spectacle when no motion choice is saved, including older profiles without a motion setting. Existing Full, System and Reduced choices remain intact.
+- Apply Full motion consistently to Map, Netgraph and Labs chrome even when Android requests reduced animation; ordinary browsers continue to follow their system setting by default.
+- Make map camera actions respect the shared motion choice, stop a running camera transition when Reduced is selected, and update Netgraph's motion mode immediately.
+- Deliver the changes through the live frontend to existing signed APKs; sound remains opt-in and graphics quality remains automatic.
+
 ## 0.15.3 - Reliability and ingest performance
 
 - Replace full-table node identity scans on every update with an incremental index; retain known positions across coordinate-free region aliases and prevent stale alias events from moving nodes backwards.
