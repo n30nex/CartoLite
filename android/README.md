@@ -5,6 +5,13 @@ Android 8/API 26 minimum; Android 16/API 36 target. The web dock owns Map,
 Netgraph and Labs navigation; native options provide keep-awake, reload,
 external browser and app information.
 
+The live frontend defaults the Android app to **Full motion** and **Spectacle**.
+Saved Full, System or Reduced choices take precedence; change them in Display.
+Ordinary browsers retain their system-motion default. This behavior uses the
+existing app user-agent marker, so the published 1.0.0 APK also receives the
+update without reinstalling. Sound stays opt-in and graphics quality stays
+automatic. It does not change the publication/physical-acceptance gate below.
+
 ## Build and acceptance
 
 Build and test only in GitHub Actions. The main CI workflow runs strict lint,

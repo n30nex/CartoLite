@@ -218,7 +218,7 @@ export class NetgraphRenderer implements ViewportProjector {
     this.residueProjectionDirty = true;
     this.stage.dataset.routePreset = displayPreferences().preset;
     this.requestStaticDraw();
-    this.requestMotionFrame();
+    this.handleMotionPreference();
   };
 
   render(state: Readonly<StateV2>, changes: MapChanges | null): void {

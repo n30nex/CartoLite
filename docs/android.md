@@ -4,6 +4,20 @@ CartoLite for Android 1.1.0 is the official signed Android presentation of the
 public live map. It uses the same production frontend and public API as the
 browser, so map, sound, privacy, and topology updates do not wait for a new APK.
 
+## Motion and animation defaults
+
+From the Canada 0.15.4 frontend, the Android app defaults to **Full motion** with
+**Spectacle** effects across Map, Netgraph and Labs. This also applies to existing
+profiles that have no motion setting. Saved Full, System and Reduced choices
+are preserved; use **Display → Motion → Full** to change an existing choice.
+Sound remains opt-in, graphics quality remains automatic, and the initial
+camera stays still until the user navigates or enables Follow.
+
+The existing native user-agent marker selects this default before the view starts.
+No JavaScript bridge or new permission is added, and the published 1.0.0 wrapper
+receives the behavior through the live frontend. Ordinary browser visits still
+respect system reduced-motion settings unless the user selects Full.
+
 ## Native experience
 
 - immersive edge-to-edge portrait and landscape presentation;

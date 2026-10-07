@@ -31,7 +31,10 @@ export const ROUTE_PRESETS = {
   ribbon: { pattern: 'solid', width: 3.5, opacity: 0.75, glow: 0.1, packetSize: 1.35, trailLength: 1, residueSeconds: 12 },
   comet: { pattern: 'solid', width: 1.4, opacity: 0.8, glow: 0.5, packetSize: 1.4, trailLength: 2, residueSeconds: 30 },
 } as const;
-export const DEFAULT_DISPLAY: DisplayPreferences = { effects: 'spectacle', detail: 'auto', quality: 'auto', motion: 'system', textSize: 'standard', basemap: 'dark', theme: 'map', preset: 'crisp', ...ROUTE_PRESETS.crisp };
+// The existing Android shell identifies itself before loading any view.
+// This changes a default only; saved Full/System/Reduced choices still win.
+const defaultMotion = typeof navigator !== 'undefined' && /CartoLiteAndroid\//.test(navigator.userAgent) ? 'full' : 'system';
+export const DEFAULT_DISPLAY: DisplayPreferences = { effects: 'spectacle', detail: 'auto', quality: 'auto', motion: defaultMotion, textSize: 'standard', basemap: 'dark', theme: 'map', preset: 'crisp', ...ROUTE_PRESETS.crisp };
 
 const LIGHT_KINDS = { Advert: '#006957', Trace: '#855000', Text: '#a21b58', ACK: '#075b98', Control: '#6740a0', Other: '#445760' };
 const LIGHT_COLORS: Record<string, string> = {
@@ -95,7 +98,7 @@ export function normalizeDisplay(value: unknown): DisplayPreferences {
     effects: v.effects === 'calm' || v.effects === 'minimal' ? v.effects : 'spectacle',
     detail: v.detail === 'complete' ? 'complete' : 'auto',
     quality: v.quality === 'high' || v.quality === 'economy' ? v.quality : 'auto',
-    motion: v.motion === 'full' || v.motion === 'reduced' ? v.motion : 'system',
+    motion: v.motion === 'full' || v.motion === 'reduced' || v.motion === 'system' ? v.motion : DEFAULT_DISPLAY.motion,
     textSize: v.textSize === 'large' ? 'large' : 'standard',
     basemap: v.basemap === 'light' || v.basemap === 'streets' ? v.basemap : 'dark',
     theme: v.theme === 'light' || v.theme === 'dark' ? v.theme : 'map',

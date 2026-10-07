@@ -23,7 +23,7 @@ html:root[data-cinematic] .map-notice { bottom: calc(var(--dock-bottom) + 64px);
 .layer-combinations p { font-size: 11px; color: var(--muted); line-height: 1.5; margin-bottom: 0; }
 .follow-actions { display: flex; gap: 6px; }
 .follow-scope { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; margin-block: 8px; }
-:root[data-motion="reduced"] *, :root[data-effects="minimal"] .traffic-meter { animation: none !important; transition-duration: 0s !important; }
+:root[data-motion="reduced"] *, :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after, :root[data-effects="minimal"] .traffic-meter { animation: none !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
 :root[data-text-size="large"] :is(.display-settings label,.control-button,.node-inspector,.node-search-result,.follow-card,.layer-hint,.map-option,.map-slider,.scene-control,.volume-control) { font-size: 15px; }
 :root[data-text-size="large"] :is(.display-note,.sound-description,.neighbor-meta,.follow-detail,.node-role) { font-size: 13px; }
 html:root[data-cinematic] .control-button:disabled { opacity: .65; cursor: not-allowed; }

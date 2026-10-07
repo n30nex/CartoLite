@@ -624,7 +624,7 @@ export class LiveMap {
       this.map.jumpTo({ center, zoom, ...orientation });
       return;
     }
-    this.map.easeTo({ center, zoom, ...orientation, duration: 520, essential: false });
+    this.map.easeTo({ center, zoom, ...orientation, duration: 520, essential: true });
   }
 
   home(nodes: readonly NodeV2[], animate = true): void {
@@ -642,7 +642,7 @@ export class LiveMap {
     }
     const bounds = new maplibregl.LngLatBounds();
     for (const node of visible) bounds.extend([node.lng, node.lat]);
-    const options = { padding: this.container.clientWidth <= 620 ? 48 : 72, maxZoom: 6, duration: this.reducedMotion || !animate ? 0 : 620 };
+    const options = { padding: this.container.clientWidth <= 620 ? 48 : 72, maxZoom: 6, duration: this.reducedMotion || !animate ? 0 : 620, essential: !this.reducedMotion };
     this.map.fitBounds(bounds, options);
   }
 
@@ -695,7 +695,7 @@ export class LiveMap {
       maxZoom: endpoints.length===1 ? this.map.getZoom() : Math.min(this.followZoom,this.map.getZoom()),
     });
     if (!camera) return false;
-    this.map.easeTo({ ...camera, duration: this.reducedMotion ? 0 : 1400, essential: false, easeId: 'cartolite-live-follow' });
+    this.map.easeTo({ ...camera, duration: this.reducedMotion ? 0 : 1400, essential: !this.reducedMotion, easeId: 'cartolite-live-follow' });
     return true;
   }
 
@@ -730,7 +730,9 @@ export class LiveMap {
   }
 
   setAppearance(preferences: UiPreferences, force = false): void {
-    this.reducedMotion = displayReducedMotion();
+    const reduced = displayReducedMotion();
+    if (reduced && !this.reducedMotion) this.map.stop();
+    this.reducedMotion = reduced;
     const previous = this.appearance;
     this.appearance = { ...preferences };
     this.container.dataset.basemapStyle = preferences.basemap;
@@ -876,7 +878,7 @@ export class LiveMap {
     const camera = this.cameraOrientation();
     this.container.dataset.cameraPitch = String(camera.pitch);
     if (this.reducedMotion) this.map.jumpTo(camera);
-    else this.map.easeTo({ ...camera, duration: 680, essential: false });
+    else this.map.easeTo({ ...camera, duration: 680, essential: true });
     this.markRendering();
   }
 
@@ -896,7 +898,7 @@ export class LiveMap {
   resetNorth(): void {
     this.appearance.terrainBearing = 0;
     if (this.reducedMotion) this.map.jumpTo({ bearing: 0 });
-    else this.map.easeTo({ bearing: 0, duration: 400 });
+    else this.map.easeTo({ bearing: 0, duration: 400, essential: true });
   }
 
   private updateBuildingLayer(): void {
@@ -1679,7 +1681,7 @@ export class LiveMap {
       if (this.reducedMotion) {
         this.map.jumpTo({ center, zoom });
       } else {
-        this.map.easeTo({ center, zoom, duration: 460, essential: false });
+        this.map.easeTo({ center, zoom, duration: 460, essential: true });
       }
     }
   }
@@ -2018,7 +2020,7 @@ export class LiveMap {
     if (inSafeView && this.map.getZoom() >= DETAIL_ZOOM) return;
     const camera = { center: [node.lng, node.lat] as [number, number], zoom: Math.max(DETAIL_ZOOM + 0.4, this.map.getZoom()) };
     if (this.reducedMotion) this.map.jumpTo(camera);
-    else this.map.easeTo({ ...camera, duration: 520, essential: false, easeId: 'cartolite-node-selection' });
+    else this.map.easeTo({ ...camera, duration: 520, essential: true, easeId: 'cartolite-node-selection' });
   }
 
   private handleInspectorResize = (): void => {
@@ -2400,9 +2402,7 @@ export function nodeLabelPriority(node: Pick<NodeV2, 'role' | 'observer' | 'last
 }
 
 export function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return displayReducedMotion();
 }
 
 function focusMembership(focusIDs: readonly string[]): ExpressionSpecification {
