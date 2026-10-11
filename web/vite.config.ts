@@ -14,7 +14,12 @@ export default defineConfig({
       output: {
         // Keep shared controls, projections and effects together. Entry points
         // and MapLibre stay separate, so Netgraph never loads the basemap.
-        codeSplitting: { groups: [{ name: 'shared', test: /[\\/]src[\\/]/, minShareCount: 2 }] },
+        codeSplitting: { groups: [
+          { name: 'shared', test: /[\\/]src[\\/]/, minShareCount: 2, priority: 10 },
+          // A single lazy art library shares compression across the four Labs.
+          // Images still load only when their selected experience mounts.
+          { name: 'lab-experiments', test: /[\\/]labs[\\/]experiments[\\/]/, includeDependenciesRecursively: false },
+        ] },
       },
       input: {
         main: inputPath('index.html'),
