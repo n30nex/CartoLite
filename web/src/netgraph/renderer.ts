@@ -42,6 +42,7 @@ import { NetgraphQuality } from './quality';
 import {
   buildNetgraphLayout,
   extendNetgraphLayout,
+  focusedNodeIDs,
   graphTopologyChanged,
   netgraphWindowMS,
   routeTopology,
@@ -150,6 +151,8 @@ export class NetgraphRenderer implements ViewportProjector {
   private selectedNodeID: string | null = null;
   private selectedRouteID: string | null = null;
   private focusIDs: Set<string> | undefined;
+  private focusMode: 'all' | 'area' | 'component' = 'all';
+  private focusAnchorID: string | null = null;
   private hoveredNodeID: string | null = null;
   private activeRoutes: ActiveRoute[] = [];
   private observerWakes: ObserverWake[] = [];
@@ -280,6 +283,7 @@ export class NetgraphRenderer implements ViewportProjector {
         this.layout = extendNetgraphLayout(this.layout, state.nodes, state.routes, this.assignedAreas);
       }
       this.topology = routeTopology(state.routes);
+      this.refreshFocus();
       this.rebuildAdjacency(state.routes);
       this.resetProjection();
       this.residueProjectionDirty = true;
@@ -346,7 +350,9 @@ export class NetgraphRenderer implements ViewportProjector {
   }
 
   setSelectedRoute(id: string | null): void {
-    this.selectedRouteID = id && this.getRoute(id) ? id : null;
+    const next = id && this.getRoute(id) ? id : null;
+    if (this.selectedRouteID === next) return;
+    this.selectedRouteID = next;
     this.stage.dataset.selectedRouteId = this.selectedRouteID ?? '';
     this.nodesDirty = true; this.requestStaticDraw();
   }
@@ -365,6 +371,7 @@ export class NetgraphRenderer implements ViewportProjector {
     }
     if (!changed) return;
     this.layout = extendNetgraphLayout(this.layout, [...this.nodesByID.values()], [...this.routesByID.values()], this.assignedAreas);
+    this.refreshFocus();
     this.nodesDirty = true; this.viewChanged();
     this.stage.dataset.regionAssignments = String(this.assignedAreas.size);
     this.stage.dataset.areas = String(this.layout.areas.length);
@@ -417,11 +424,18 @@ export class NetgraphRenderer implements ViewportProjector {
   setFocus(mode: 'all' | 'area' | 'component'): boolean {
     const anchor = this.selectedNodeID ? this.layout.positions.get(this.selectedNodeID) : undefined;
     if (mode !== 'all' && !anchor) return false;
-    this.focusIDs = mode === 'all' ? undefined : new Set([...this.layout.positions.values()].filter(point => mode === 'area' ? point.areaCode === anchor!.areaCode : point.component === anchor!.component).map(point => point.id));
+    this.focusMode = mode; this.focusAnchorID = this.selectedNodeID;
+    this.refreshFocus();
     this.screenPoints.clear(); this.screenPaths.clear(); this.nodesDirty = true; this.residueProjectionDirty = true;
-    this.stage.dataset.focusMode = mode;
     this.requestStaticDraw(); this.requestMotionFrame();
     return true;
+  }
+
+  private refreshFocus(): void {
+    this.focusIDs = focusedNodeIDs(this.layout, this.focusMode, this.focusAnchorID);
+    if (!this.focusIDs) this.focusMode = 'all';
+    this.stage.dataset.focusMode = this.focusMode;
+    this.callbacks.onViewChange?.();
   }
 
   focusNode(nodeID: string): void {
@@ -547,6 +561,7 @@ export class NetgraphRenderer implements ViewportProjector {
       [...routes.values()],
       this.assignedAreas,
     );
+    this.refreshFocus();
     this.resetProjection();
     this.residueProjectionDirty = true;
     this.residueDirty = true;

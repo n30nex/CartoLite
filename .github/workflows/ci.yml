@@ -86,6 +86,16 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
+      # Temporary PR-only lockfile generation on the required Actions build host.
+      - name: Resolve pinned build minifier
+        working-directory: web
+        run: npm install --package-lock-only --ignore-scripts --save-dev --save-exact terser@5.51.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: minifier-lockfile
+          path: |
+            web/package.json
+            web/package-lock.json
       - name: Install from lockfile
         working-directory: web
         run: npm ci

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { NodeV2, RouteV2 } from '../types';
 import { NETGRAPH_AREA_ANCHORS, nearestNetgraphArea } from './areas';
-import { buildNetgraphLayout, extendNetgraphLayout, graphTopologyChanged, routesInWindow, routeTopology } from './layout';
+import { buildNetgraphLayout, extendNetgraphLayout, focusedNodeIDs, graphTopologyChanged, routesInWindow, routeTopology } from './layout';
 
 function node(id: string, label = id, lat = 45, lng = -75): NodeV2 {
   return { id, label, lat, lng, role: 'repeater', observer: false, lastSeen: 2_000_000 };
@@ -12,6 +12,22 @@ function route(id: string, fromId: string, toId: string, lastHeard = 2_000_000):
 }
 
 describe('netgraph layout', () => {
+  it('refreshes area and component focus when a node moves or components merge', () => {
+    const nodes = ['a', 'b', 'c', 'd'].map(id => node(id));
+    const west = { code: 'WEST', name: 'West', lat: 45, lng: -120 };
+    const east = { code: 'EAST', name: 'East', lat: 45, lng: -75 };
+    const assignments = new Map([['a', west], ['b', west], ['c', east], ['d', east]]);
+    const routes = [route('ab', 'a', 'b'), route('cd', 'c', 'd')];
+    const before = buildNetgraphLayout(nodes, routes, assignments);
+    expect(focusedNodeIDs(before, 'area', 'a')).toEqual(new Set(['a', 'b']));
+    assignments.set('a', east);
+    const after = extendNetgraphLayout(before, nodes, [...routes, route('bc', 'b', 'c')], assignments);
+    expect(focusedNodeIDs(after, 'area', 'a')).toEqual(new Set(['a', 'c', 'd']));
+    expect(focusedNodeIDs(after, 'component', 'a')).toEqual(new Set(['a', 'b', 'c', 'd']));
+    expect(focusedNodeIDs(after, 'area', 'missing')).toBeUndefined();
+    expect(after.positions.get('b')!.x).toBe(before.positions.get('b')!.x);
+  });
+
   it('moves a reassigned node into its new area without moving established peers', () => {
     const nodes = [node('a'), node('b'), node('c')];
     const routes = [route('ab', 'a', 'b'), route('bc', 'b', 'c')];
