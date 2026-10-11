@@ -2,7 +2,7 @@
 
 ## v0.13.0 packet sound acceptance
 
-Build and test through GitHub Actions, then promote the exact tested image digest. Verify the [30-voice catalog](sound-voices.md), grouped Voice selector, descriptions and saved selection on Map, Netgraph and Labs. Native offline audio checks must pass for all 30 voices, including audible finite output, distinct signals, bounded peaks, oscillator completion and silent tails. Existing opt-in, volume, visible-hop timing and hidden-page muting checks still apply. After deployment, confirm the public selector and live sound activity, then retain the standard five-minute health, checkpoint and resource observation.
+Build and test through GitHub Actions, then promote the exact tested image digest. Verify the [31-voice catalog](sound-voices.md), grouped Voice selector, descriptions and saved selection on Map, Netgraph and Labs. Native offline audio checks must pass for all 31 voices, including audible finite output, distinct signals, bounded peaks, oscillator completion and silent tails. Existing opt-in, volume, visible-hop timing and hidden-page muting checks still apply. After deployment, confirm the public selector and live sound activity, then retain the standard five-minute health, checkpoint and resource observation.
 
 ## v0.11.0 terrain and visual acceptance
 

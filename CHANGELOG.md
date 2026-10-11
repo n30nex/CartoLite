@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.5 - Dial-up packet sound
+
+- Add **Dial-up** under Sound → Voice → Signals & percussion: a short modem carrier, answer sweep and scratchy handshake chatter.
+- Expand the shared Map and Netgraph catalog to 31 voices, with explicit preview and saved selection. Canada Labs uses the same voice.
+- Preserve opt-in sound, volume, visible-hop timing, stereo positioning and one oscillator per hop. No samples, downloads or audio dependencies.
+- Extend Actions audio checks and retain a synthetic Dial-up WAV for listening review.
+- Update the Go build/runtime to 1.26.9 and x/net to 0.60.0 for the October HTTP/TLS security fixes, retaining the existing image scan gate.
+
 ## 0.15.4 - Full motion in the Android app
 
 - Default the Canada Android app to Full motion and Spectacle when no motion choice is saved, including older profiles without a motion setting. Existing Full, System and Reduced choices remain intact.
