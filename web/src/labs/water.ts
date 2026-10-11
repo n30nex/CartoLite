@@ -107,12 +107,12 @@ void main() {
 
 export class ReactiveWaterSurface {
   readonly canvas: HTMLCanvasElement;
-  private readonly gl: WebGL2RenderingContext;
-  private readonly program: WebGLProgram;
-  private readonly buffer: WebGLBuffer;
-  private readonly texture: WebGLTexture;
-  private readonly image: HTMLImageElement;
-  private readonly uniforms: {
+  readonly #gl: WebGL2RenderingContext;
+  readonly #program: WebGLProgram;
+  readonly #buffer: WebGLBuffer;
+  readonly #texture: WebGLTexture;
+  readonly #image: HTMLImageElement;
+  readonly #uniforms: {
     texture: WebGLUniformLocation;
     resolution: WebGLUniformLocation;
     time: WebGLUniformLocation;
@@ -121,9 +121,9 @@ export class ReactiveWaterSurface {
     rippleCount: WebGLUniformLocation;
     ripples: WebGLUniformLocation;
   };
-  private textureReady = false;
-  private width = 1;
-  private height = 1;
+  #textureReady = false;
+  #width = 1;
+  #height = 1;
 
   static create(stage: HTMLElement, image: HTMLImageElement): ReactiveWaterSurface | undefined {
     const canvas = document.createElement('canvas');
@@ -149,83 +149,83 @@ export class ReactiveWaterSurface {
 
   private constructor(canvas: HTMLCanvasElement, gl: WebGL2RenderingContext, image: HTMLImageElement) {
     this.canvas = canvas;
-    this.gl = gl;
-    this.image = image;
-    this.program = createProgram(gl, WATER_VERTEX_SHADER, WATER_FRAGMENT_SHADER);
+    this.#gl = gl;
+    this.#image = image;
+    this.#program = createProgram(gl, WATER_VERTEX_SHADER, WATER_FRAGMENT_SHADER);
     const buffer = gl.createBuffer();
     const texture = gl.createTexture();
     if (!buffer || !texture) throw new Error('WebGL water resources are unavailable');
-    this.buffer = buffer;
-    this.texture = texture;
-    this.uniforms = {
-      texture: uniform(gl, this.program, 'u_texture'),
-      resolution: uniform(gl, this.program, 'u_resolution'),
-      time: uniform(gl, this.program, 'u_time'),
-      motion: uniform(gl, this.program, 'u_motion'),
-      burst: uniform(gl, this.program, 'u_burst'),
-      rippleCount: uniform(gl, this.program, 'u_ripple_count'),
-      ripples: uniform(gl, this.program, 'u_ripples[0]'),
+    this.#buffer = buffer;
+    this.#texture = texture;
+    this.#uniforms = {
+      texture: uniform(gl, this.#program, 'u_texture'),
+      resolution: uniform(gl, this.#program, 'u_resolution'),
+      time: uniform(gl, this.#program, 'u_time'),
+      motion: uniform(gl, this.#program, 'u_motion'),
+      burst: uniform(gl, this.#program, 'u_burst'),
+      rippleCount: uniform(gl, this.#program, 'u_ripple_count'),
+      ripples: uniform(gl, this.#program, 'u_ripples[0]'),
     };
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.#buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.bindTexture(gl.TEXTURE_2D, this.#texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([3, 23, 29, 255]));
-    image.addEventListener('load', this.uploadTexture, { once: true });
-    if (image.complete && image.naturalWidth > 0) this.uploadTexture();
+    image.addEventListener('load', this.#uploadTexture, { once: true });
+    if (image.complete && image.naturalWidth > 0) this.#uploadTexture();
   }
 
   resize(viewport: LabViewport): void {
-    this.width = Math.max(1, viewport.width);
-    this.height = Math.max(1, viewport.height);
+    this.#width = Math.max(1, viewport.width);
+    this.#height = Math.max(1, viewport.height);
     // One render pixel per CSS pixel keeps water detailed without paying the
     // two-to-four-times Retina cost of the crisp packet overlay above it.
     const pixelRatio = Math.min(viewport.pixelRatio, 1);
-    this.canvas.width = Math.round(this.width * pixelRatio);
-    this.canvas.height = Math.round(this.height * pixelRatio);
-    this.canvas.style.width = `${this.width}px`;
-    this.canvas.style.height = `${this.height}px`;
-    this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    this.canvas.width = Math.round(this.#width * pixelRatio);
+    this.canvas.height = Math.round(this.#height * pixelRatio);
+    this.canvas.style.width = `${this.#width}px`;
+    this.canvas.style.height = `${this.#height}px`;
+    this.#gl.viewport(0, 0, this.canvas.width, this.canvas.height);
   }
 
   render(now: number, ripples: readonly ReactiveWaterRipple[], reducedMotion: boolean, burst: boolean): void {
-    const gl = this.gl;
-    const packed = packWaterRipples(ripples, now, this.width, this.height);
-    if (!this.textureReady && this.image.complete && this.image.naturalWidth > 0) this.uploadTexture();
-    gl.useProgram(this.program);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+    const gl = this.#gl;
+    const packed = packWaterRipples(ripples, now, this.#width, this.#height);
+    if (!this.#textureReady && this.#image.complete && this.#image.naturalWidth > 0) this.#uploadTexture();
+    gl.useProgram(this.#program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.#buffer);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    gl.uniform1i(this.uniforms.texture, 0);
-    gl.uniform2f(this.uniforms.resolution, this.width, this.height);
-    gl.uniform1f(this.uniforms.time, now / 1_000);
-    gl.uniform1f(this.uniforms.motion, reducedMotion ? 0 : 1);
-    gl.uniform1f(this.uniforms.burst, burst ? 1 : 0);
-    gl.uniform1i(this.uniforms.rippleCount, packed.count);
-    gl.uniform4fv(this.uniforms.ripples, packed.values);
+    gl.bindTexture(gl.TEXTURE_2D, this.#texture);
+    gl.uniform1i(this.#uniforms.texture, 0);
+    gl.uniform2f(this.#uniforms.resolution, this.#width, this.#height);
+    gl.uniform1f(this.#uniforms.time, now / 1_000);
+    gl.uniform1f(this.#uniforms.motion, reducedMotion ? 0 : 1);
+    gl.uniform1f(this.#uniforms.burst, burst ? 1 : 0);
+    gl.uniform1i(this.#uniforms.rippleCount, packed.count);
+    gl.uniform4fv(this.#uniforms.ripples, packed.values);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
   destroy(): void {
-    this.image.removeEventListener('load', this.uploadTexture);
-    this.gl.deleteTexture(this.texture);
-    this.gl.deleteBuffer(this.buffer);
-    this.gl.deleteProgram(this.program);
+    this.#image.removeEventListener('load', this.#uploadTexture);
+    this.#gl.deleteTexture(this.#texture);
+    this.#gl.deleteBuffer(this.#buffer);
+    this.#gl.deleteProgram(this.#program);
     this.canvas.remove();
   }
 
-  private readonly uploadTexture = (): void => {
-    if (!this.image.complete || this.image.naturalWidth === 0) return;
-    const gl = this.gl;
-    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+  readonly #uploadTexture = (): void => {
+    if (!this.#image.complete || this.#image.naturalWidth === 0) return;
+    const gl = this.#gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.#texture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.image);
-    this.textureReady = true;
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.#image);
+    this.#textureReady = true;
   };
 }
 

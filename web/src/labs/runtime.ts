@@ -89,26 +89,26 @@ export class CanadaProjector implements ViewportProjector {
 }
 
 export class RollingMetrics {
-  private eventTimes: number[] = [];
-  private routeCounts = new Map<string, { count: number; lastAt: number }>();
+  #eventTimes: number[] = [];
+  #routeCounts = new Map<string, { count: number; lastAt: number }>();
 
   record(packet: LabPacket): void {
-    this.eventTimes.push(packet.at);
-    if (this.eventTimes.length > MAX_SESSION_EVENTS) {
-      this.eventTimes.splice(0, this.eventTimes.length - MAX_SESSION_EVENTS);
+    this.#eventTimes.push(packet.at);
+    if (this.#eventTimes.length > MAX_SESSION_EVENTS) {
+      this.#eventTimes.splice(0, this.#eventTimes.length - MAX_SESSION_EVENTS);
     }
     for (const hop of packet.hops) {
-      const previous = this.routeCounts.get(hop.routeId);
-      this.routeCounts.set(hop.routeId, { count: (previous?.count ?? 0) + 1, lastAt: packet.at });
+      const previous = this.#routeCounts.get(hop.routeId);
+      this.#routeCounts.set(hop.routeId, { count: (previous?.count ?? 0) + 1, lastAt: packet.at });
     }
-    this.evict(packet.at);
+    this.#evict(packet.at);
   }
 
   snapshot(now = Date.now()): LabMetricSnapshot {
-    this.evict(now);
+    this.#evict(now);
     let events10s = 0;
     let events60s = 0;
-    for (const at of this.eventTimes) {
+    for (const at of this.#eventTimes) {
       const age = Math.max(0, now - at);
       if (age <= 10_000) events10s += 1;
       if (age <= 60_000) events60s += 1;
@@ -116,27 +116,27 @@ export class RollingMetrics {
     return {
       events10s,
       events60s,
-      events5m: this.eventTimes.length,
-      routeReuse: new Map([...this.routeCounts].map(([id, value]) => [id, value.count])),
+      events5m: this.#eventTimes.length,
+      routeReuse: new Map([...this.#routeCounts].map(([id, value]) => [id, value.count])),
       burst: events10s >= 40,
     };
   }
 
   reset(): void {
-    this.eventTimes = [];
-    this.routeCounts.clear();
+    this.#eventTimes = [];
+    this.#routeCounts.clear();
   }
 
-  private evict(now: number): void {
+  #evict(now: number): void {
     const cutoff = now - FIVE_MINUTES_MS;
-    this.eventTimes = this.eventTimes.filter((at) => at >= cutoff);
-    for (const [routeID, value] of this.routeCounts) {
-      if (value.lastAt < cutoff) this.routeCounts.delete(routeID);
+    this.#eventTimes = this.#eventTimes.filter((at) => at >= cutoff);
+    for (const [routeID, value] of this.#routeCounts) {
+      if (value.lastAt < cutoff) this.#routeCounts.delete(routeID);
     }
-    if (this.routeCounts.size <= MAX_ROUTE_COUNTS) return;
-    const oldest = [...this.routeCounts].sort((left, right) => left[1].lastAt - right[1].lastAt);
+    if (this.#routeCounts.size <= MAX_ROUTE_COUNTS) return;
+    const oldest = [...this.#routeCounts].sort((left, right) => left[1].lastAt - right[1].lastAt);
     for (let index = 0; index < oldest.length - MAX_ROUTE_COUNTS; index += 1) {
-      this.routeCounts.delete(oldest[index]![0]);
+      this.#routeCounts.delete(oldest[index]![0]);
     }
   }
 }
