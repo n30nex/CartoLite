@@ -71,6 +71,9 @@ test('3D starts top-down, frames neighbours, inspects the drawn curve and preser
   }
   const midpoint = (await stage.getAttribute('data-selected-route-screen'))!.split(',').map(Number);
   if (info.project.name === 'mobile') {
+    await info.attach('dock-layout', { contentType: 'application/json', body: JSON.stringify(await page.locator('.controls .control-button,.controls .route-window').evaluateAll(items => items.map(item => {
+      const box = item.getBoundingClientRect(); return { name: item.getAttribute('aria-label') ?? item.textContent?.trim(), x: box.x, y: box.y, width: box.width, height: box.height };
+    }))) });
     expect((await page.locator('.controls').boundingBox())!.height).toBeLessThanOrEqual(100);
     expect(midpoint[1]).toBeLessThan((await inspector.boundingBox())!.y - 8);
   }
