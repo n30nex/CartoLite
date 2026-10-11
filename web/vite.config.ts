@@ -8,9 +8,6 @@ function inputPath(relative: string): string {
 export default defineConfig({
   build: {
     target: 'es2022',
-    // Spend a little more CI time to keep all three experiences within the download budget.
-    minify: 'terser',
-    terserOptions: { compress: { passes: 3 } },
     assetsInlineLimit: 0,
     chunkSizeWarningLimit: 500,
     rolldownOptions: {

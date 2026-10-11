@@ -9,6 +9,7 @@ Every fresh visit starts top-down. **3D** tilts the same geographic layout into 
 Selecting a node frames that node and its confirmed neighbours heard within the current route window, accounting for the inspector and dock. It happens on deliberate selection, never on each incoming observation. Selecting a connection opens endpoint details; nearby overlapping lines offer a bounded chooser. Cards show last-heard time, sanitized category, retained observation totals and approximate geographic endpoint separation. These totals can include observations older than the selected window. Height and arches are diagram presentation, not measured antenna elevation or a radio propagation model.
 
 Drawing, packet heads, residue, route picking and audio viewport checks use the same cached projected path. Sampling is bounded and retains route progress. Camera/quality changes never restart a hop or alter its sound schedule. Existing individual connections, six route presets, 31 voices, themes and privacy boundaries are retained. A selected connection uses a neutral endpoint pair; live packet motion carries observed direction. Netgraph remains usable through its Canvas fallback without a basemap.
+
 ## What it shows
 
 - Every public node that participates in at least one current 24-hour route. Isolated nodes remain available on the geographic map but are omitted because a topology graph has no edge on which to place them.
