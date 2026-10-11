@@ -99,6 +99,9 @@ jobs:
         run: node scripts/check-meshcore-canada-regions.mjs
       - name: Production build
         working-directory: web
+        env:
+          # Measure the same browser-visible configuration as the published image.
+          VITE_CARTO_BASEMAP_API_KEY: ${{ secrets.CARTO_BASEMAP_API_KEY }}
         run: npm run build
       - name: Total frontend and worker budgets
         run: node scripts/check-frontend-budget.mjs web/dist

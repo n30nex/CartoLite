@@ -2,13 +2,21 @@
 
 `/netgraph/` is CartoLite's live topology view. It is a third frontend entry inside the existing binary and uses the same public schema v2 snapshot, SSE stream, recovery behavior, privacy boundary, and sound preference as the geographic map.
 
+## Top-down and 3D inspection
+
+Every fresh visit starts top-down. **3D** tilts the same geographic layout into a schematic scene with raised nodes, regional platforms and arched connections. Drag to pan; Shift-drag/right-drag rotates on desktop, and two-finger pinch/twist zooms and rotates on touch devices. Display contains accessible rotation buttons, a tilt slider and Top-down. Arrow keys pan, Shift-arrows rotate/tilt, plus/minus zoom and Home fits the graph. Motion preferences remain shared with Map.
+
+Selecting a node frames that node and its confirmed neighbours heard within the current route window, accounting for the inspector and dock. It happens on deliberate selection, never on each incoming observation. Selecting a connection opens endpoint details; nearby overlapping lines offer a bounded chooser. Cards show last-heard time, sanitized category, retained observation totals and approximate geographic endpoint separation. These totals can include observations older than the selected window. Height and arches are diagram presentation, not measured antenna elevation or a radio propagation model.
+
+Drawing, packet heads, residue, route picking and audio viewport checks use the same cached projected path. Sampling is bounded and retains route progress. Camera/quality changes never restart a hop or alter its sound schedule. Existing individual connections, six route presets, 31 voices, themes and privacy boundaries are retained. A selected connection uses a neutral endpoint pair; live packet motion carries observed direction. Netgraph remains usable through its Canvas fallback without a basemap.
+
 ## What it shows
 
 - Every public node that participates in at least one current 24-hour route. Isolated nodes remain available on the geographic map but are omitted because a topology graph has no edge on which to place them.
 - Every route inside the visitor's 15-minute (default), one-hour, six-hour, or 24-hour window. There is no display-count limit and no trunk aggregation. An explicitly saved window still takes precedence over the default.
 - Deterministic geographic-area packing. Canadian nodes are resolved in a Web Worker against the published 193-leaf MeshCore.ca partition also used by the main map. Nodes outside that partition use a small browser-local nearby-metro catalogue. Nodes are arranged with generous spacing around the region seed and high-degree nodes near the centre. Area labels show the canonical on-air tag, region name, and node count. This is geographic grouping, not a claim about MQTT origin or RF propagation.
-- Intermittent inter-area links never merge city clusters. They remain individual, quieter dashed historical links, while their live animation and musical hops cross the full straight segment normally.
-- Straight topology links coloured by the latest sanitized packet kind. Selecting a node dims unrelated links and gives all active-window neighbour links a clear glow.
+- Intermittent inter-area links never merge city clusters. They remain individual, quieter dashed historical links, while their live animation and musical hops follow that same confirmed connection in either view.
+- Topology links (straight top-down, arched in 3D) coloured by the latest sanitized packet kind. Selecting a node dims unrelated links and gives all active-window neighbour links a clear glow.
 - The existing public node details and newest-first neighbour list, plus an in-memory Finder that searches only downloaded public labels.
 
 ## Live motion and sound
@@ -23,7 +31,7 @@ The mobile canvas pixel ratio is capped at 1.25 (desktop 1.5), matching the map'
 
 Netgraph starts at full detail and samples its own active-frame intervals and drawing cost. Sustained pressure steps decoration through balanced and low modes; twelve seconds of headroom restores one level. Background/idle gaps are excluded. Low mode uses one physical pixel per CSS pixel for transient effects, fewer secondary sparkles, a simpler coloured packet trail, and slower refreshes of fading residue. It never caps frame cadence or removes a visible live hop, its musical articulation, a node, or a matching historical route. Samples are held only in memory, with no stored preference or transmitted telemetry. The geographic map is unaffected.
 
-Regional label artwork is cached in a bounded 64-entry cache. Residue remains on a separate composited canvas instead of being copied into every moving frame, and expires or clears on backgrounding. Under pressure, touch gestures transform the rendered topology with the same affine projection as packet heads and hit testing; the graph repaints when the last finger releases or cancels. Reset and button zoom skip camera easing only in low mode. Full mode retains the normal camera transitions and visual effects.
+Regional label artwork is cached in a bounded 64-entry cache. Residue remains on a separate composited canvas instead of being copied into every moving frame, and expires or clears on backgrounding. Under pressure, top-down touch gestures reuse the rendered topology with the same affine projection as packet heads and hit testing; the graph repaints when the last finger releases or cancels. Tilted gestures refresh the shared perspective projection. Reset and button zoom skip camera easing only in low mode. Full mode retains the normal camera transitions and visual effects.
 
 Drag with one finger to pan; pinch with two fingers to zoom and pan together in Android Chrome and the APK. Lifting one finger continues the drag without jumping or clearing selection. Cancelled touches and backgrounding release all gesture state. Desktop wheel/trackpad and double-click zoom remain available, alongside 44-pixel Zoom in/out buttons. Reset fits all components. Finder and selection never send or persist queries. The page stores only its route-window choice under `cartolite:netgraph:v1`; audio continues to use `cartolite:sound:v2`.
 

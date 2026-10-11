@@ -23,138 +23,138 @@ interface Lantern extends LabPoint {
 
 class LittleMeshVillages implements LabExperiment {
   readonly soundCharacter = 'village' as const;
-  private context?: LabContext;
-  private surface?: CanvasSurface;
-  private cache?: HTMLCanvasElement;
-  private model?: VillageModel;
-  private pendingSnapshot?: Readonly<StateV2>;
-  private layout = new Map<string, LabPoint>();
-  private settlementCenters = new Map<string, LabPoint>();
-  private couriers: VillageCourier[] = [];
-  private lanterns: Lantern[] = [];
-  private truthNote?: HTMLParagraphElement;
-  private viewport: LabViewport = { width: 1, height: 1, pixelRatio: 1 };
-  private lastModelAt = Number.NEGATIVE_INFINITY;
-  private cacheDirty = true;
-  private paused = false;
+  #context?: LabContext;
+  #surface?: CanvasSurface;
+  #cache?: HTMLCanvasElement;
+  #model?: VillageModel;
+  #pendingSnapshot?: Readonly<StateV2>;
+  #layout = new Map<string, LabPoint>();
+  #settlementCenters = new Map<string, LabPoint>();
+  #couriers: VillageCourier[] = [];
+  #lanterns: Lantern[] = [];
+  #truthNote?: HTMLParagraphElement;
+  #viewport: LabViewport = { width: 1, height: 1, pixelRatio: 1 };
+  #lastModelAt = Number.NEGATIVE_INFINITY;
+  #cacheDirty = true;
+  #paused = false;
 
   mount(context: LabContext): void {
-    this.context = context;
-    this.surface = new CanvasSurface(context.stage);
-    this.cache = document.createElement('canvas');
-    this.truthNote = document.createElement('p');
-    this.truthNote.className = 'village-truth glass';
-    this.truthNote.textContent = 'Settlement size represents recently observed MeshCore nodes and connectivity, not real-world population or permanent network coverage.';
-    context.stage.append(this.truthNote);
+    this.#context = context;
+    this.#surface = new CanvasSurface(context.stage);
+    this.#cache = document.createElement('canvas');
+    this.#truthNote = document.createElement('p');
+    this.#truthNote.className = 'village-truth glass';
+    this.#truthNote.textContent = 'Settlement size represents recently observed MeshCore nodes and connectivity, not real-world population or permanent network coverage.';
+    context.stage.append(this.#truthNote);
     context.stage.dataset.renderer = 'canvas2d';
   }
 
   applySnapshot(snapshot: Readonly<StateV2>): void {
-    this.pendingSnapshot = snapshot;
-    if (!this.model) this.rebuildModel(performance.now());
+    this.#pendingSnapshot = snapshot;
+    if (!this.#model) this.#rebuildModel(performance.now());
   }
 
   handlePacket(packet: LabPacket): void {
-    if (!this.context || this.paused) return;
+    if (!this.#context || this.#paused) return;
     const now = performance.now();
     const color = PACKET_KIND_COLORS[packet.kind];
     if (packet.mode === 'observer' && packet.observer) {
-      const point = this.pointFor(packet.observer);
-      this.couriers.push({ points: [point], start: now, hopDuration: 900, color, seed: packet.seed, observer: true });
-      this.lanterns.push({ ...point, start: now, duration: 5_500, color, seed: packet.seed });
+      const point = this.#pointFor(packet.observer);
+      this.#couriers.push({ points: [point], start: now, hopDuration: 900, color, seed: packet.seed, observer: true });
+      this.#lanterns.push({ ...point, start: now, duration: 5_500, color, seed: packet.seed });
     } else {
       const endpoints = [packet.hops[0]?.from, ...packet.hops.map((hop) => hop.to)]
         .filter((endpoint): endpoint is EndpointV2 => endpoint !== undefined);
-      const points = endpoints.map((endpoint) => this.pointFor(endpoint));
+      const points = endpoints.map((endpoint) => this.#pointFor(endpoint));
       const hopDuration = clamp(430 + packet.totalDistanceKm / Math.max(1, packet.hopCount) * 0.65, 460, 980);
-      this.couriers.push({ points, start: now, hopDuration, color, seed: packet.seed, observer: false });
+      this.#couriers.push({ points, start: now, hopDuration, color, seed: packet.seed, observer: false });
       points.slice(1).forEach((point, index) => {
-        this.lanterns.push({ ...point, start: now + (index + 1) * hopDuration - 100, duration: 8_500, color, seed: packet.seed + index });
+        this.#lanterns.push({ ...point, start: now + (index + 1) * hopDuration - 100, duration: 8_500, color, seed: packet.seed + index });
       });
     }
-    if (this.couriers.length > 220) this.couriers.splice(0, this.couriers.length - 220);
-    if (this.lanterns.length > 420) this.lanterns.splice(0, this.lanterns.length - 420);
+    if (this.#couriers.length > 220) this.#couriers.splice(0, this.#couriers.length - 220);
+    if (this.#lanterns.length > 420) this.#lanterns.splice(0, this.#lanterns.length - 420);
   }
 
   resize(viewport: LabViewport): void {
-    const changed = this.viewport.width !== viewport.width || this.viewport.height !== viewport.height || this.viewport.pixelRatio !== viewport.pixelRatio;
-    this.viewport = viewport;
-    this.surface?.resize(viewport);
+    const changed = this.#viewport.width !== viewport.width || this.#viewport.height !== viewport.height || this.#viewport.pixelRatio !== viewport.pixelRatio;
+    this.#viewport = viewport;
+    this.#surface?.resize(viewport);
     if (!changed) return;
-    this.couriers = [];
-    this.lanterns = [];
-    this.cacheDirty = true;
+    this.#couriers = [];
+    this.#lanterns = [];
+    this.#cacheDirty = true;
   }
 
   frame(now: number): void {
-    const surface = this.surface;
-    if (!surface || !this.context || this.paused) return;
-    if (this.pendingSnapshot && now - this.lastModelAt >= 4_000) this.rebuildModel(now);
-    if (this.cacheDirty) this.rebuildCache();
+    const surface = this.#surface;
+    if (!surface || !this.#context || this.#paused) return;
+    if (this.#pendingSnapshot && now - this.#lastModelAt >= 4_000) this.#rebuildModel(now);
+    if (this.#cacheDirty) this.#rebuildCache();
     const canvas = surface.context;
     canvas.clearRect(0, 0, surface.width, surface.height);
-    if (this.cache) canvas.drawImage(this.cache, 0, 0, surface.width, surface.height);
-    this.drawLanterns(canvas, now, this.context.reducedMotion());
-    this.drawCouriers(canvas, now, this.context.reducedMotion());
+    if (this.#cache) canvas.drawImage(this.#cache, 0, 0, surface.width, surface.height);
+    this.#drawLanterns(canvas, now, this.#context.reducedMotion());
+    this.#drawCouriers(canvas, now, this.#context.reducedMotion());
   }
 
   setPaused(paused: boolean): void {
-    this.paused = paused;
+    this.#paused = paused;
   }
 
   reset(): void {
-    this.couriers = [];
-    this.lanterns = [];
+    this.#couriers = [];
+    this.#lanterns = [];
   }
 
   destroy(): void {
     this.reset();
-    this.truthNote?.remove();
-    this.surface?.destroy();
-    this.model = undefined;
-    this.pendingSnapshot = undefined;
-    this.cache = undefined;
-    this.layout.clear();
-    this.settlementCenters.clear();
-    this.truthNote = undefined;
-    this.surface = undefined;
-    this.context = undefined;
+    this.#truthNote?.remove();
+    this.#surface?.destroy();
+    this.#model = undefined;
+    this.#pendingSnapshot = undefined;
+    this.#cache = undefined;
+    this.#layout.clear();
+    this.#settlementCenters.clear();
+    this.#truthNote = undefined;
+    this.#surface = undefined;
+    this.#context = undefined;
   }
 
-  private rebuildModel(now: number): void {
-    if (!this.pendingSnapshot) return;
-    this.model = buildVillageModel(this.pendingSnapshot);
-    this.pendingSnapshot = undefined;
-    this.lastModelAt = now;
-    this.cacheDirty = true;
+  #rebuildModel(now: number): void {
+    if (!this.#pendingSnapshot) return;
+    this.#model = buildVillageModel(this.#pendingSnapshot);
+    this.#pendingSnapshot = undefined;
+    this.#lastModelAt = now;
+    this.#cacheDirty = true;
   }
 
-  private rebuildCache(): void {
-    const cache = this.cache;
-    const context = this.context;
-    const model = this.model;
+  #rebuildCache(): void {
+    const cache = this.#cache;
+    const context = this.#context;
+    const model = this.#model;
     if (!cache || !context || !model) return;
-    const width = Math.max(1, this.viewport.width);
-    const height = Math.max(1, this.viewport.height);
-    const pixelRatio = this.viewport.pixelRatio;
+    const width = Math.max(1, this.#viewport.width);
+    const height = Math.max(1, this.#viewport.height);
+    const pixelRatio = this.#viewport.pixelRatio;
     cache.width = Math.round(width * pixelRatio);
     cache.height = Math.round(height * pixelRatio);
     const canvas = cache.getContext('2d');
     if (!canvas) return;
     canvas.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    this.layout.clear();
-    this.settlementCenters.clear();
-    this.layoutSettlements(model.settlements, width, height);
-    this.drawNight(canvas, width, height);
-    this.drawRoads(canvas, model);
-    this.drawSettlements(canvas, model.settlements);
-    this.drawSettlementLabels(canvas, model.settlements, width, height);
-    this.drawVignette(canvas, width, height);
-    this.cacheDirty = false;
+    this.#layout.clear();
+    this.#settlementCenters.clear();
+    this.#layoutSettlements(model.settlements, width, height);
+    this.#drawNight(canvas, width, height);
+    this.#drawRoads(canvas, model);
+    this.#drawSettlements(canvas, model.settlements);
+    this.#drawSettlementLabels(canvas, model.settlements, width, height);
+    this.#drawVignette(canvas, width, height);
+    this.#cacheDirty = false;
   }
 
-  private layoutSettlements(settlements: readonly VillageSettlementModel[], width: number, height: number): void {
-    const context = this.context!;
+  #layoutSettlements(settlements: readonly VillageSettlementModel[], width: number, height: number): void {
+    const context = this.#context!;
     const safeTop = Math.max(88, height * 0.1);
     const safeBottom = Math.max(safeTop + 120, height - Math.max(58, height * 0.07));
     const safeLeft = Math.max(42, width * 0.035);
@@ -184,7 +184,7 @@ class LittleMeshVillages implements LabExperiment {
           x: clamp(gridX + (geographicX - 0.5) * cellWidth * 0.18, safeLeft + 16, safeRight - 16),
           y: clamp(gridY + (geographicY - 0.5) * cellHeight * 0.14, safeTop + 22, safeBottom - 16),
         };
-        this.settlementCenters.set(settlement.id, center);
+        this.#settlementCenters.set(settlement.id, center);
         const maximumHorizontal = Math.max(1, ...settlement.buildings.map((building) => Math.abs(building.localX - building.localY)));
         const maximumVertical = Math.max(1, ...settlement.buildings.map((building) => Math.abs((building.localX + building.localY) * 0.46)));
         const cell = clamp(Math.min(
@@ -194,13 +194,13 @@ class LittleMeshVillages implements LabExperiment {
         for (const building of settlement.buildings) {
           const x = center.x + (building.localX - building.localY) * cell;
           const y = center.y + (building.localX + building.localY) * cell * 0.46;
-          this.layout.set(building.nodeId, { x, y });
+          this.#layout.set(building.nodeId, { x, y });
         }
       }
     }
   }
 
-  private drawNight(canvas: CanvasRenderingContext2D, width: number, height: number): void {
+  #drawNight(canvas: CanvasRenderingContext2D, width: number, height: number): void {
     const sky = canvas.createLinearGradient(0, 0, 0, height);
     sky.addColorStop(0, '#050c18');
     sky.addColorStop(0.48, '#0a1a24');
@@ -239,10 +239,10 @@ class LittleMeshVillages implements LabExperiment {
     canvas.restore();
   }
 
-  private drawRoads(canvas: CanvasRenderingContext2D, model: VillageModel): void {
+  #drawRoads(canvas: CanvasRenderingContext2D, model: VillageModel): void {
     for (const road of model.roads) {
-      const from = this.layout.get(road.fromId);
-      const to = this.layout.get(road.toId);
+      const from = this.#layout.get(road.fromId);
+      const to = this.#layout.get(road.toId);
       if (!from || !to) continue;
       const color = PACKET_KIND_COLORS[road.kind];
       const strength = clamp(road.traffic / 20, 0.08, 1);
@@ -262,9 +262,9 @@ class LittleMeshVillages implements LabExperiment {
     }
   }
 
-  private drawSettlements(canvas: CanvasRenderingContext2D, settlements: readonly VillageSettlementModel[]): void {
+  #drawSettlements(canvas: CanvasRenderingContext2D, settlements: readonly VillageSettlementModel[]): void {
     for (const settlement of settlements) {
-      const center = this.settlementCenters.get(settlement.id);
+      const center = this.#settlementCenters.get(settlement.id);
       if (!center) continue;
       const radius = clamp(17 + Math.sqrt(settlement.buildings.length) * 5.2, 21, 76);
       const ground = canvas.createRadialGradient(center.x, center.y, 0, center.x, center.y, radius);
@@ -274,20 +274,20 @@ class LittleMeshVillages implements LabExperiment {
       canvas.beginPath();
       canvas.ellipse(center.x, center.y + 4, radius, radius * 0.47, 0, 0, Math.PI * 2);
       canvas.fill();
-      this.drawSettlementTrees(canvas, settlement, center, radius);
+      this.#drawSettlementTrees(canvas, settlement, center, radius);
       const ordered = settlement.buildings.slice().sort((left, right) => {
-        const leftPoint = this.layout.get(left.nodeId)?.y ?? 0;
-        const rightPoint = this.layout.get(right.nodeId)?.y ?? 0;
+        const leftPoint = this.#layout.get(left.nodeId)?.y ?? 0;
+        const rightPoint = this.#layout.get(right.nodeId)?.y ?? 0;
         return leftPoint - rightPoint || left.seed - right.seed;
       });
       for (const building of ordered) {
-        const point = this.layout.get(building.nodeId);
-        if (point) this.drawBuilding(canvas, building, point);
+        const point = this.#layout.get(building.nodeId);
+        if (point) this.#drawBuilding(canvas, building, point);
       }
     }
   }
 
-  private drawSettlementTrees(
+  #drawSettlementTrees(
     canvas: CanvasRenderingContext2D,
     settlement: VillageSettlementModel,
     center: LabPoint,
@@ -315,7 +315,7 @@ class LittleMeshVillages implements LabExperiment {
     canvas.restore();
   }
 
-  private drawBuilding(canvas: CanvasRenderingContext2D, building: VillageBuildingModel, point: LabPoint): void {
+  #drawBuilding(canvas: CanvasRenderingContext2D, building: VillageBuildingModel, point: LabPoint): void {
     const footprint = clamp(4.5 + building.degree * 0.38, 4.5, 8.6);
     const roleHeight = building.role === 'repeater' ? 18
       : building.role === 'room_server' ? 15
@@ -383,7 +383,7 @@ class LittleMeshVillages implements LabExperiment {
     canvas.restore();
   }
 
-  private drawSettlementLabels(
+  #drawSettlementLabels(
     canvas: CanvasRenderingContext2D,
     settlements: readonly VillageSettlementModel[],
     width: number,
@@ -397,7 +397,7 @@ class LittleMeshVillages implements LabExperiment {
       .filter((settlement) => settlement.buildings.length >= 4 || settlement.routeCount > 0)
       .slice(0, width < 700 ? 4 : 8);
     for (const settlement of labelled) {
-      const center = this.settlementCenters.get(settlement.id);
+      const center = this.#settlementCenters.get(settlement.id);
       if (!center || center.y < 72 || center.y > height - 48) continue;
       const label = `${settlement.tier} · ${settlement.buildings.length} observed nodes`;
       const textWidth = canvas.measureText(label).width;
@@ -409,9 +409,9 @@ class LittleMeshVillages implements LabExperiment {
     canvas.restore();
   }
 
-  private drawLanterns(canvas: CanvasRenderingContext2D, now: number, reducedMotion: boolean): void {
-    this.lanterns = this.lanterns.filter((lantern) => now <= lantern.start + lantern.duration);
-    for (const lantern of this.lanterns) {
+  #drawLanterns(canvas: CanvasRenderingContext2D, now: number, reducedMotion: boolean): void {
+    this.#lanterns = this.#lanterns.filter((lantern) => now <= lantern.start + lantern.duration);
+    for (const lantern of this.#lanterns) {
       if (now < lantern.start) continue;
       const progress = clamp((now - lantern.start) / lantern.duration, 0, 1);
       const pulse = reducedMotion ? 0.72 : 0.7 + Math.sin(progress * Math.PI * 9 + lantern.seed) * 0.25;
@@ -426,9 +426,9 @@ class LittleMeshVillages implements LabExperiment {
     }
   }
 
-  private drawCouriers(canvas: CanvasRenderingContext2D, now: number, reducedMotion: boolean): void {
-    this.couriers = this.couriers.filter((courier) => now <= courier.start + Math.max(1, courier.points.length - 1) * courier.hopDuration + 600);
-    for (const courier of this.couriers) {
+  #drawCouriers(canvas: CanvasRenderingContext2D, now: number, reducedMotion: boolean): void {
+    this.#couriers = this.#couriers.filter((courier) => now <= courier.start + Math.max(1, courier.points.length - 1) * courier.hopDuration + 600);
+    for (const courier of this.#couriers) {
       if (courier.points.length === 0 || now < courier.start) continue;
       if (courier.observer || courier.points.length === 1) {
         const point = courier.points[0]!;
@@ -467,7 +467,7 @@ class LittleMeshVillages implements LabExperiment {
     }
   }
 
-  private drawVignette(canvas: CanvasRenderingContext2D, width: number, height: number): void {
+  #drawVignette(canvas: CanvasRenderingContext2D, width: number, height: number): void {
     const vignette = canvas.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.15, width / 2, height / 2, Math.max(width, height) * 0.75);
     vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
     vignette.addColorStop(1, 'rgba(0, 4, 9, 0.56)');
@@ -475,8 +475,8 @@ class LittleMeshVillages implements LabExperiment {
     canvas.fillRect(0, 0, width, height);
   }
 
-  private pointFor(endpoint: EndpointV2): LabPoint {
-    return this.layout.get(endpoint.id) ?? this.context!.project(endpoint);
+  #pointFor(endpoint: EndpointV2): LabPoint {
+    return this.#layout.get(endpoint.id) ?? this.#context!.project(endpoint);
   }
 }
 

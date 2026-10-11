@@ -30,25 +30,25 @@ const THREAD_LIFETIME_MS = 72_000;
 
 class MeshLoom implements LabExperiment {
   readonly soundCharacter = 'loom' as const;
-  private context?: LabContext;
-  private surface?: CanvasSurface;
-  private threads: LoomThread[] = [];
-  private topologyThreads: LoomThread[] = [];
-  private legend?: HTMLElement;
-  private paused = false;
+  #context?: LabContext;
+  #surface?: CanvasSurface;
+  #threads: LoomThread[] = [];
+  #topologyThreads: LoomThread[] = [];
+  #legend?: HTMLElement;
+  #paused = false;
 
   mount(context: LabContext): void {
-    this.context = context;
-    this.surface = new CanvasSurface(context.stage);
-    this.legend = createLegend();
-    context.stage.append(this.legend);
+    this.#context = context;
+    this.#surface = new CanvasSurface(context.stage);
+    this.#legend = createLegend();
+    context.stage.append(this.#legend);
     context.stage.dataset.renderer = 'canvas2d';
     context.stage.dataset.loomRegionLanes = String(LOOM_REGIONS.length);
   }
 
   applySnapshot(snapshot: Readonly<StateV2>): void {
     const nodes = new Map(snapshot.nodes.map((node) => [node.id, node]));
-    this.topologyThreads = snapshot.routes
+    this.#topologyThreads = snapshot.routes
       .filter((route) => nodes.has(route.fromId) && nodes.has(route.toId))
       .sort((left, right) => stableHash(left.id) - stableHash(right.id))
       .slice(0, 96)
@@ -67,11 +67,11 @@ class MeshLoom implements LabExperiment {
           region: loomRegionForEndpoints([from, to]),
         };
       });
-    if (this.context) this.context.stage.dataset.topologyThreadCount = String(this.topologyThreads.length);
+    if (this.#context) this.#context.stage.dataset.topologyThreadCount = String(this.#topologyThreads.length);
   }
 
   handlePacket(packet: LabPacket): void {
-    if (this.paused) return;
+    if (this.#paused) return;
     const points = packet.mode === 'route'
       ? [packet.hops[0]?.from, ...packet.hops.map((hop) => hop.to)]
         .filter((point): point is EndpointV2 => point !== undefined)
@@ -80,7 +80,7 @@ class MeshLoom implements LabExperiment {
     const endpoints = packet.mode === 'route'
       ? [packet.hops[0]?.from, ...packet.hops.map((hop) => hop.to)].filter((point): point is EndpointV2 => point !== undefined)
       : packet.observer ? [packet.observer] : [];
-    this.threads.push({
+    this.#threads.push({
       at: performance.now(),
       color: PACKET_KIND_COLORS[packet.kind],
       points,
@@ -88,31 +88,31 @@ class MeshLoom implements LabExperiment {
       seed: packet.seed,
       region: loomRegionForEndpoints(endpoints),
     });
-    if (this.threads.length > 240) this.threads.splice(0, this.threads.length - 240);
+    if (this.#threads.length > 240) this.#threads.splice(0, this.#threads.length - 240);
   }
 
   resize(viewport: LabViewport): void {
-    this.surface?.resize(viewport);
+    this.#surface?.resize(viewport);
   }
 
   frame(now: number): void {
-    const surface = this.surface;
-    const context = this.context;
-    if (!surface || !context || this.paused) return;
+    const surface = this.#surface;
+    const context = this.#context;
+    if (!surface || !context || this.#paused) return;
     const canvas = surface.context;
-    this.drawCloth(canvas, surface.width, surface.height, now, context.reducedMotion());
+    this.#drawCloth(canvas, surface.width, surface.height, now, context.reducedMotion());
     const loomTop = Math.max(70, surface.height * 0.075);
     const loomBottom = Math.max(loomTop + 70, surface.height - 54);
     const laneHeight = (loomBottom - loomTop) / LOOM_REGIONS.length;
-    this.topologyThreads.forEach((thread) => {
+    this.#topologyThreads.forEach((thread) => {
       const lane = LOOM_REGIONS.findIndex((region) => region.code === thread.region);
       const y = loomTop + laneHeight * (lane + 0.18 + (thread.seed % 650) / 1_000);
       const alpha = 0.18 + (thread.seed % 5) * 0.018;
-      this.drawThread(canvas, thread, y, surface.width, alpha, 4_000, true, true);
+      this.#drawThread(canvas, thread, y, surface.width, alpha, 4_000, true, true);
     });
-    this.threads = this.threads.filter((thread) => now - thread.at <= THREAD_LIFETIME_MS);
+    this.#threads = this.#threads.filter((thread) => now - thread.at <= THREAD_LIFETIME_MS);
     const reducedMotion = context.reducedMotion();
-    this.threads.forEach((thread) => {
+    this.#threads.forEach((thread) => {
       const age = now - thread.at;
       const lane = LOOM_REGIONS.findIndex((region) => region.code === thread.region);
       const laneTop = loomTop + lane * laneHeight;
@@ -120,30 +120,30 @@ class MeshLoom implements LabExperiment {
       const travel = reducedMotion ? (thread.seed % 1_000) / 1_000 : clamp(age / THREAD_LIFETIME_MS, 0, 1);
       const y = laneBottom - 9 - travel * Math.max(8, laneHeight - 18) + ((thread.seed % 7) - 3) * 0.45;
       const alpha = clamp(1 - age / THREAD_LIFETIME_MS, 0.07, 0.94);
-      this.drawThread(canvas, thread, y, surface.width, alpha, age, reducedMotion);
+      this.#drawThread(canvas, thread, y, surface.width, alpha, age, reducedMotion);
     });
-    this.drawFrame(canvas, surface.width, surface.height);
+    this.#drawFrame(canvas, surface.width, surface.height);
   }
 
   setPaused(paused: boolean): void {
-    this.paused = paused;
+    this.#paused = paused;
   }
 
   reset(): void {
-    this.threads = [];
+    this.#threads = [];
   }
 
   destroy(): void {
     this.reset();
-    this.topologyThreads = [];
-    this.legend?.remove();
-    this.surface?.destroy();
-    this.legend = undefined;
-    this.surface = undefined;
-    this.context = undefined;
+    this.#topologyThreads = [];
+    this.#legend?.remove();
+    this.#surface?.destroy();
+    this.#legend = undefined;
+    this.#surface = undefined;
+    this.#context = undefined;
   }
 
-  private drawCloth(
+  #drawCloth(
     canvas: CanvasRenderingContext2D,
     width: number,
     height: number,
@@ -211,7 +211,7 @@ class MeshLoom implements LabExperiment {
     canvas.fillRect(0, 28, width, Math.max(1, height - 52));
   }
 
-  private drawThread(
+  #drawThread(
     canvas: CanvasRenderingContext2D,
     thread: LoomThread,
     y: number,
@@ -298,7 +298,7 @@ class MeshLoom implements LabExperiment {
     canvas.restore();
   }
 
-  private drawFrame(canvas: CanvasRenderingContext2D, width: number, height: number): void {
+  #drawFrame(canvas: CanvasRenderingContext2D, width: number, height: number): void {
     const beam = canvas.createLinearGradient(0, 0, 0, 26);
     beam.addColorStop(0, '#142b31');
     beam.addColorStop(0.45, '#0d1f25');

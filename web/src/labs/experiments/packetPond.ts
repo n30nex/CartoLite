@@ -35,55 +35,55 @@ interface Channel {
 }
 
 class PacketPond implements LabExperiment {
-  private context?: LabContext;
-  private surface?: CanvasSurface;
-  private waterSurface?: ReactiveWaterSurface;
-  private readonly water = loadCanvasImage(pondWaterUrl);
-  private readonly pondEdge = loadCanvasImage(pondEdgeUrl);
-  private droplets: Droplet[] = [];
-  private ripples: Ripple[] = [];
-  private channels = new Map<string, Channel>();
-  private paused = false;
+  #context?: LabContext;
+  #surface?: CanvasSurface;
+  #waterSurface?: ReactiveWaterSurface;
+  readonly #water = loadCanvasImage(pondWaterUrl);
+  readonly #pondEdge = loadCanvasImage(pondEdgeUrl);
+  #droplets: Droplet[] = [];
+  #ripples: Ripple[] = [];
+  #channels = new Map<string, Channel>();
+  #paused = false;
 
   mount(context: LabContext): void {
-    this.context = context;
-    this.waterSurface = ReactiveWaterSurface.create(context.stage, this.water.image);
-    this.surface = new CanvasSurface(context.stage, 'lab-canvas lab-overlay-canvas');
-    context.stage.dataset.renderer = this.waterSurface ? 'webgl2+canvas2d' : 'canvas2d-fallback';
-    context.stage.dataset.reactiveWater = String(Boolean(this.waterSurface));
+    this.#context = context;
+    this.#waterSurface = ReactiveWaterSurface.create(context.stage, this.#water.image);
+    this.#surface = new CanvasSurface(context.stage, 'lab-canvas lab-overlay-canvas');
+    context.stage.dataset.renderer = this.#waterSurface ? 'webgl2+canvas2d' : 'canvas2d-fallback';
+    context.stage.dataset.reactiveWater = String(Boolean(this.#waterSurface));
     context.stage.dataset.assets = 'loading';
     const stage = context.stage;
-    void Promise.all([this.water.ready, this.pondEdge.ready]).then(
-      () => { if (this.context?.stage === stage) stage.dataset.assets = 'ready'; },
-      () => { if (this.context?.stage === stage) stage.dataset.assets = 'fallback'; },
+    void Promise.all([this.#water.ready, this.#pondEdge.ready]).then(
+      () => { if (this.#context?.stage === stage) stage.dataset.assets = 'ready'; },
+      () => { if (this.#context?.stage === stage) stage.dataset.assets = 'fallback'; },
     );
   }
 
   applySnapshot(): void {}
 
   handlePacket(packet: LabPacket): void {
-    if (!this.context || this.paused) return;
+    if (!this.#context || this.#paused) return;
     const now = performance.now();
     const color = PACKET_KIND_COLORS[packet.kind];
     if (packet.mode === 'observer' && packet.observer) {
-      const point = this.context.project(packet.observer);
-      this.ripples.push({ ...point, start: now, duration: 3_600, color, strength: 1.05, seed: packet.seed });
-      this.trim();
+      const point = this.#context.project(packet.observer);
+      this.#ripples.push({ ...point, start: now, duration: 3_600, color, strength: 1.05, seed: packet.seed });
+      this.#trim();
       return;
     }
     let handoffAt = now;
     packet.hops.forEach((hop) => {
-      const from = this.context!.project(hop.from);
-      const to = this.context!.project(hop.to);
+      const from = this.#context!.project(hop.from);
+      const to = this.#context!.project(hop.to);
       const duration = clamp(420 + Math.sqrt(hop.distanceKm) * 20, 440, 1_120);
       const seed = stableHash(`${packet.id}|${hop.routeId}`);
       const bend = ((seed % 201) - 100) / 460;
       const droplet = { from, to, start: handoffAt, duration, color, bend, seed };
-      this.droplets.push(droplet);
-      this.ripples.push({ ...from, start: handoffAt, duration: 2_400, color, strength: 0.36, seed });
+      this.#droplets.push(droplet);
+      this.#ripples.push({ ...from, start: handoffAt, duration: 2_400, color, strength: 0.36, seed });
       [0.28, 0.56, 0.79].forEach((fraction, index) => {
         const point = dropletPoint(droplet, fraction);
-        this.ripples.push({
+        this.#ripples.push({
           ...point,
           start: handoffAt + duration * fraction,
           duration: 2_250 + index * 180,
@@ -92,7 +92,7 @@ class PacketPond implements LabExperiment {
           seed: seed + index + 1,
         });
       });
-      this.ripples.push({
+      this.#ripples.push({
         ...to,
         start: handoffAt + duration,
         duration: 3_800,
@@ -100,57 +100,57 @@ class PacketPond implements LabExperiment {
         strength: clamp(0.82 + hop.distanceKm / 1_100, 0.82, 1.38),
         seed,
       });
-      this.channels.set(hop.routeId, { from, to, color, lastAt: now, seed });
+      this.#channels.set(hop.routeId, { from, to, color, lastAt: now, seed });
       handoffAt += duration;
     });
-    this.trim();
+    this.#trim();
   }
 
   resize(viewport: LabViewport): void {
-    if (this.surface && this.surface.width > 1 && (this.surface.width !== viewport.width || this.surface.height !== viewport.height)) {
+    if (this.#surface && this.#surface.width > 1 && (this.#surface.width !== viewport.width || this.#surface.height !== viewport.height)) {
       this.reset();
     }
-    this.surface?.resize(viewport);
-    this.waterSurface?.resize(viewport);
+    this.#surface?.resize(viewport);
+    this.#waterSurface?.resize(viewport);
   }
 
   frame(now: number): void {
-    const surface = this.surface;
-    const context = this.context;
-    if (!surface || !context || this.paused) return;
+    const surface = this.#surface;
+    const context = this.#context;
+    if (!surface || !context || this.#paused) return;
     const { context: canvas, width, height } = surface;
     const reducedMotion = context.reducedMotion();
     const metrics = context.metrics();
     canvas.clearRect(0, 0, width, height);
-    if (this.waterSurface) this.waterSurface.render(now, this.ripples, reducedMotion, metrics.burst);
-    else this.drawWaterFallback(canvas, width, height, now, reducedMotion);
-    this.drawChannels(canvas, now, metrics.routeReuse, reducedMotion);
-    this.drawDroplets(canvas, now, reducedMotion);
-    this.drawRipples(canvas, now, reducedMotion, metrics.burst);
-    drawImageCover(canvas, this.pondEdge.image, width, height, 0.68, 1.015);
-    this.drawVignette(canvas, width, height);
+    if (this.#waterSurface) this.#waterSurface.render(now, this.#ripples, reducedMotion, metrics.burst);
+    else this.#drawWaterFallback(canvas, width, height, now, reducedMotion);
+    this.#drawChannels(canvas, now, metrics.routeReuse, reducedMotion);
+    this.#drawDroplets(canvas, now, reducedMotion);
+    this.#drawRipples(canvas, now, reducedMotion, metrics.burst);
+    drawImageCover(canvas, this.#pondEdge.image, width, height, 0.68, 1.015);
+    this.#drawVignette(canvas, width, height);
   }
 
   setPaused(paused: boolean): void {
-    this.paused = paused;
+    this.#paused = paused;
   }
 
   reset(): void {
-    this.droplets = [];
-    this.ripples = [];
-    this.channels.clear();
+    this.#droplets = [];
+    this.#ripples = [];
+    this.#channels.clear();
   }
 
   destroy(): void {
     this.reset();
-    this.waterSurface?.destroy();
-    this.surface?.destroy();
-    this.waterSurface = undefined;
-    this.surface = undefined;
-    this.context = undefined;
+    this.#waterSurface?.destroy();
+    this.#surface?.destroy();
+    this.#waterSurface = undefined;
+    this.#surface = undefined;
+    this.#context = undefined;
   }
 
-  private drawWaterFallback(canvas: CanvasRenderingContext2D, width: number, height: number, now: number, reducedMotion: boolean): void {
+  #drawWaterFallback(canvas: CanvasRenderingContext2D, width: number, height: number, now: number, reducedMotion: boolean): void {
     const background = canvas.createLinearGradient(0, 0, 0, height);
     background.addColorStop(0, '#031117');
     background.addColorStop(0.52, '#08272e');
@@ -160,11 +160,11 @@ class PacketPond implements LabExperiment {
 
     const driftX = reducedMotion ? 0 : Math.sin(now * 0.000055) * 7;
     const driftY = reducedMotion ? 0 : Math.cos(now * 0.000043) * 5;
-    drawImageCover(canvas, this.water.image, width, height, 0.7, 1.075, driftX, driftY);
+    drawImageCover(canvas, this.#water.image, width, height, 0.7, 1.075, driftX, driftY);
 
     canvas.save();
     canvas.globalCompositeOperation = 'screen';
-    const rows = this.context?.metrics().burst ? 8 : 13;
+    const rows = this.#context?.metrics().burst ? 8 : 13;
     for (let row = 0; row < rows; row += 1) {
       const y = height * (0.11 + row / Math.max(1, rows - 1) * 0.8);
       const phase = row * 1.37 + (reducedMotion ? 0 : now * 0.00016);
@@ -180,7 +180,7 @@ class PacketPond implements LabExperiment {
       canvas.stroke();
     }
 
-    const glints = this.context?.metrics().burst ? 12 : 26;
+    const glints = this.#context?.metrics().burst ? 12 : 26;
     for (let index = 0; index < glints; index += 1) {
       const seed = stableHash(`pond-glint-${index}`);
       const x = (seed % 10_000) / 10_000 * width;
@@ -194,16 +194,16 @@ class PacketPond implements LabExperiment {
     canvas.restore();
   }
 
-  private drawChannels(
+  #drawChannels(
     canvas: CanvasRenderingContext2D,
     now: number,
     reuse: ReadonlyMap<string, number>,
     reducedMotion: boolean,
   ): void {
-    for (const [routeID, channel] of this.channels) {
+    for (const [routeID, channel] of this.#channels) {
       const age = now - channel.lastAt;
       if (age > 45_000) {
-        this.channels.delete(routeID);
+        this.#channels.delete(routeID);
         continue;
       }
       const strength = (1 - age / 45_000) * clamp((reuse.get(routeID) ?? 1) / 8, 0.15, 1);
@@ -227,9 +227,9 @@ class PacketPond implements LabExperiment {
     }
   }
 
-  private drawDroplets(canvas: CanvasRenderingContext2D, now: number, reducedMotion: boolean): void {
-    this.droplets = this.droplets.filter((drop) => now <= drop.start + drop.duration + 350);
-    for (const drop of this.droplets) {
+  #drawDroplets(canvas: CanvasRenderingContext2D, now: number, reducedMotion: boolean): void {
+    this.#droplets = this.#droplets.filter((drop) => now <= drop.start + drop.duration + 350);
+    for (const drop of this.#droplets) {
       const raw = (now - drop.start) / drop.duration;
       if (raw < 0 || raw > 1) continue;
       const progress = reducedMotion ? 1 : easeOut(raw);
@@ -269,9 +269,9 @@ class PacketPond implements LabExperiment {
     }
   }
 
-  private drawRipples(canvas: CanvasRenderingContext2D, now: number, reducedMotion: boolean, burst: boolean): void {
-    this.ripples = this.ripples.filter((ripple) => now <= ripple.start + ripple.duration);
-    const visible = this.ripples.slice(-(burst ? 96 : 240));
+  #drawRipples(canvas: CanvasRenderingContext2D, now: number, reducedMotion: boolean, burst: boolean): void {
+    this.#ripples = this.#ripples.filter((ripple) => now <= ripple.start + ripple.duration);
+    const visible = this.#ripples.slice(-(burst ? 96 : 240));
     for (const ripple of visible) {
       if (now < ripple.start) continue;
       const progress = clamp((now - ripple.start) / ripple.duration, 0, 1);
@@ -309,7 +309,7 @@ class PacketPond implements LabExperiment {
     }
   }
 
-  private drawVignette(canvas: CanvasRenderingContext2D, width: number, height: number): void {
+  #drawVignette(canvas: CanvasRenderingContext2D, width: number, height: number): void {
     const vignette = canvas.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.16, width / 2, height / 2, Math.max(width, height) * 0.72);
     vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
     vignette.addColorStop(1, 'rgba(0, 8, 11, 0.55)');
@@ -317,12 +317,12 @@ class PacketPond implements LabExperiment {
     canvas.fillRect(0, 0, width, height);
   }
 
-  private trim(): void {
-    if (this.droplets.length > 360) this.droplets.splice(0, this.droplets.length - 360);
-    if (this.ripples.length > 720) this.ripples.splice(0, this.ripples.length - 720);
-    if (this.channels.size <= 256) return;
-    const oldest = [...this.channels].sort((left, right) => left[1].lastAt - right[1].lastAt);
-    for (let index = 0; index < oldest.length - 256; index += 1) this.channels.delete(oldest[index]![0]);
+  #trim(): void {
+    if (this.#droplets.length > 360) this.#droplets.splice(0, this.#droplets.length - 360);
+    if (this.#ripples.length > 720) this.#ripples.splice(0, this.#ripples.length - 720);
+    if (this.#channels.size <= 256) return;
+    const oldest = [...this.#channels].sort((left, right) => left[1].lastAt - right[1].lastAt);
+    for (let index = 0; index < oldest.length - 256; index += 1) this.#channels.delete(oldest[index]![0]);
   }
 }
 

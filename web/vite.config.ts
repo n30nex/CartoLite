@@ -11,6 +11,16 @@ export default defineConfig({
     assetsInlineLimit: 0,
     chunkSizeWarningLimit: 500,
     rolldownOptions: {
+      output: {
+        // Keep shared controls, projections and effects together. Entry points
+        // and MapLibre stay separate, so Netgraph never loads the basemap.
+        codeSplitting: { groups: [
+          { name: 'shared', test: /[\\/]src[\\/]/, minShareCount: 2, priority: 10 },
+          // A single lazy art library shares compression across the four Labs.
+          // Images still load only when their selected experience mounts.
+          { name: 'lab-experiments', test: /[\\/]labs[\\/](?:experiments[\\/]|water\.ts$|villageModel\.ts$)/, includeDependenciesRecursively: false },
+        ] },
+      },
       input: {
         main: inputPath('index.html'),
         labs: inputPath('labs/index.html'),

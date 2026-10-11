@@ -26,50 +26,50 @@ interface PlantWake extends LabPoint {
 const DAY_MS = 24 * 60 * 60_000;
 
 class FireflyMeadow implements LabExperiment {
-  private context?: LabContext;
-  private surface?: CanvasSurface;
-  private readonly backdrop = loadCanvasImage(meadowNightUrl);
-  private readonly foreground = loadCanvasImage(meadowForegroundUrl);
-  private plantCandidates: NodeV2[] = [];
-  private plants: NodeV2[] = [];
-  private fireflies: Firefly[] = [];
-  private wakes: PlantWake[] = [];
-  private paused = false;
+  #context?: LabContext;
+  #surface?: CanvasSurface;
+  readonly #backdrop = loadCanvasImage(meadowNightUrl);
+  readonly #foreground = loadCanvasImage(meadowForegroundUrl);
+  #plantCandidates: NodeV2[] = [];
+  #plants: NodeV2[] = [];
+  #fireflies: Firefly[] = [];
+  #wakes: PlantWake[] = [];
+  #paused = false;
 
   mount(context: LabContext): void {
-    this.context = context;
-    this.surface = new CanvasSurface(context.stage);
+    this.#context = context;
+    this.#surface = new CanvasSurface(context.stage);
     context.stage.dataset.renderer = 'canvas2d';
     context.stage.dataset.assets = 'loading';
     const stage = context.stage;
-    void Promise.all([this.backdrop.ready, this.foreground.ready]).then(
-      () => { if (this.context?.stage === stage) stage.dataset.assets = 'ready'; },
-      () => { if (this.context?.stage === stage) stage.dataset.assets = 'fallback'; },
+    void Promise.all([this.#backdrop.ready, this.#foreground.ready]).then(
+      () => { if (this.#context?.stage === stage) stage.dataset.assets = 'ready'; },
+      () => { if (this.#context?.stage === stage) stage.dataset.assets = 'fallback'; },
     );
   }
 
   applySnapshot(snapshot: Readonly<StateV2>): void {
     const recent = snapshot.nodes.filter((node) => snapshot.serverTime - node.lastSeen <= DAY_MS);
-    this.plantCandidates = [...(recent.length > 0 ? recent : snapshot.nodes)];
-    this.rebuildPlants();
+    this.#plantCandidates = [...(recent.length > 0 ? recent : snapshot.nodes)];
+    this.#rebuildPlants();
   }
 
   handlePacket(packet: LabPacket): void {
-    if (!this.context || this.paused) return;
+    if (!this.#context || this.#paused) return;
     const color = PACKET_KIND_COLORS[packet.kind];
     const now = performance.now();
     if (packet.mode === 'observer' && packet.observer) {
-      const point = this.context.project(packet.observer);
-      this.fireflies.push({ from: point, to: point, start: now, duration: 1_450, color, seed: packet.seed, local: true });
-      this.wakes.push({ ...point, start: now + 180, duration: 3_200, color, seed: packet.seed });
+      const point = this.#context.project(packet.observer);
+      this.#fireflies.push({ from: point, to: point, start: now, duration: 1_450, color, seed: packet.seed, local: true });
+      this.#wakes.push({ ...point, start: now + 180, duration: 3_200, color, seed: packet.seed });
     } else {
       let handoffAt = now;
       packet.hops.forEach((hop) => {
         const duration = clamp(620 + Math.sqrt(hop.distanceKm) * 23, 660, 1_620);
         const seed = stableHash(`${packet.id}|${hop.routeId}`);
-        const to = this.context!.project(hop.to);
-        this.fireflies.push({
-          from: this.context!.project(hop.from),
+        const to = this.#context!.project(hop.to);
+        this.#fireflies.push({
+          from: this.#context!.project(hop.from),
           to,
           start: handoffAt,
           duration,
@@ -77,55 +77,55 @@ class FireflyMeadow implements LabExperiment {
           seed,
           local: false,
         });
-        this.wakes.push({ ...to, start: handoffAt + duration - 80, duration: 4_600, color, seed });
+        this.#wakes.push({ ...to, start: handoffAt + duration - 80, duration: 4_600, color, seed });
         handoffAt += duration;
       });
     }
-    if (this.fireflies.length > 380) this.fireflies.splice(0, this.fireflies.length - 380);
-    if (this.wakes.length > 460) this.wakes.splice(0, this.wakes.length - 460);
+    if (this.#fireflies.length > 380) this.#fireflies.splice(0, this.#fireflies.length - 380);
+    if (this.#wakes.length > 460) this.#wakes.splice(0, this.#wakes.length - 460);
   }
 
   resize(viewport: LabViewport): void {
-    if (this.surface && this.surface.width > 1 && (this.surface.width !== viewport.width || this.surface.height !== viewport.height)) {
+    if (this.#surface && this.#surface.width > 1 && (this.#surface.width !== viewport.width || this.#surface.height !== viewport.height)) {
       this.reset();
     }
-    this.surface?.resize(viewport);
-    this.rebuildPlants();
+    this.#surface?.resize(viewport);
+    this.#rebuildPlants();
   }
 
   frame(now: number): void {
-    const surface = this.surface;
-    const context = this.context;
-    if (!surface || !context || this.paused) return;
+    const surface = this.#surface;
+    const context = this.#context;
+    if (!surface || !context || this.#paused) return;
     const canvas = surface.context;
     const reducedMotion = context.reducedMotion();
-    this.drawBackdrop(canvas, surface.width, surface.height, now, reducedMotion);
-    this.drawPlants(canvas, context, surface.height, now);
-    this.drawWakes(canvas, now, reducedMotion);
-    drawImageCover(canvas, this.foreground.image, surface.width, surface.height, 0.44, 1, 0, surface.height * 0.055);
-    this.drawFireflies(canvas, context, now);
-    this.drawAtmosphere(canvas, surface.width, surface.height);
+    this.#drawBackdrop(canvas, surface.width, surface.height, now, reducedMotion);
+    this.#drawPlants(canvas, context, surface.height, now);
+    this.#drawWakes(canvas, now, reducedMotion);
+    drawImageCover(canvas, this.#foreground.image, surface.width, surface.height, 0.44, 1, 0, surface.height * 0.055);
+    this.#drawFireflies(canvas, context, now);
+    this.#drawAtmosphere(canvas, surface.width, surface.height);
   }
 
   setPaused(paused: boolean): void {
-    this.paused = paused;
+    this.#paused = paused;
   }
 
   reset(): void {
-    this.fireflies = [];
-    this.wakes = [];
+    this.#fireflies = [];
+    this.#wakes = [];
   }
 
   destroy(): void {
     this.reset();
-    this.plantCandidates = [];
-    this.plants = [];
-    this.surface?.destroy();
-    this.surface = undefined;
-    this.context = undefined;
+    this.#plantCandidates = [];
+    this.#plants = [];
+    this.#surface?.destroy();
+    this.#surface = undefined;
+    this.#context = undefined;
   }
 
-  private drawBackdrop(
+  #drawBackdrop(
     canvas: CanvasRenderingContext2D,
     width: number,
     height: number,
@@ -135,7 +135,7 @@ class FireflyMeadow implements LabExperiment {
     canvas.fillStyle = '#061119';
     canvas.fillRect(0, 0, width, height);
     const offsetX = reducedMotion ? 0 : Math.sin(now * 0.000025) * 6;
-    drawImageCover(canvas, this.backdrop.image, width, height, 0.88, 1.035, offsetX);
+    drawImageCover(canvas, this.#backdrop.image, width, height, 0.88, 1.035, offsetX);
     const sky = canvas.createLinearGradient(0, 0, 0, height);
     sky.addColorStop(0, 'rgba(2, 9, 20, 0.18)');
     sky.addColorStop(0.55, 'rgba(7, 24, 29, 0.12)');
@@ -157,10 +157,10 @@ class FireflyMeadow implements LabExperiment {
     canvas.restore();
   }
 
-  private drawPlants(canvas: CanvasRenderingContext2D, context: LabContext, height: number, now: number): void {
+  #drawPlants(canvas: CanvasRenderingContext2D, context: LabContext, height: number, now: number): void {
     canvas.save();
     canvas.lineCap = 'round';
-    for (const node of this.plants) {
+    for (const node of this.#plants) {
       const point = context.project(node);
       const seed = stableHash(node.id);
       const stem = 9 + seed % 20 + (node.role === 'repeater' ? 7 : 0);
@@ -203,9 +203,9 @@ class FireflyMeadow implements LabExperiment {
     canvas.restore();
   }
 
-  private drawWakes(canvas: CanvasRenderingContext2D, now: number, reducedMotion: boolean): void {
-    this.wakes = this.wakes.filter((wake) => now <= wake.start + wake.duration);
-    for (const wake of this.wakes) {
+  #drawWakes(canvas: CanvasRenderingContext2D, now: number, reducedMotion: boolean): void {
+    this.#wakes = this.#wakes.filter((wake) => now <= wake.start + wake.duration);
+    for (const wake of this.#wakes) {
       if (now < wake.start) continue;
       const progress = clamp((now - wake.start) / wake.duration, 0, 1);
       const pulse = reducedMotion ? 0.65 : 0.72 + Math.sin(progress * Math.PI * 8 + wake.seed) * 0.22;
@@ -226,10 +226,10 @@ class FireflyMeadow implements LabExperiment {
     }
   }
 
-  private drawFireflies(canvas: CanvasRenderingContext2D, context: LabContext, now: number): void {
-    this.fireflies = this.fireflies.filter((firefly) => now <= firefly.start + firefly.duration + 160);
+  #drawFireflies(canvas: CanvasRenderingContext2D, context: LabContext, now: number): void {
+    this.#fireflies = this.#fireflies.filter((firefly) => now <= firefly.start + firefly.duration + 160);
     const secondaryDetail = context.metrics().burst ? 6 : 13;
-    for (const firefly of this.fireflies) {
+    for (const firefly of this.#fireflies) {
       const raw = clamp((now - firefly.start) / firefly.duration, 0, 1);
       if (now < firefly.start) continue;
       const progress = context.reducedMotion() || firefly.local ? 1 : easeOut(raw);
@@ -273,7 +273,7 @@ class FireflyMeadow implements LabExperiment {
     }
   }
 
-  private drawAtmosphere(canvas: CanvasRenderingContext2D, width: number, height: number): void {
+  #drawAtmosphere(canvas: CanvasRenderingContext2D, width: number, height: number): void {
     const vignette = canvas.createRadialGradient(width / 2, height * 0.46, Math.min(width, height) * 0.1, width / 2, height * 0.5, Math.max(width, height) * 0.72);
     vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
     vignette.addColorStop(1, 'rgba(1, 8, 12, 0.48)');
@@ -281,13 +281,13 @@ class FireflyMeadow implements LabExperiment {
     canvas.fillRect(0, 0, width, height);
   }
 
-  private rebuildPlants(): void {
-    const context = this.context;
-    if (!context || this.plantCandidates.length === 0) return;
+  #rebuildPlants(): void {
+    const context = this.#context;
+    if (!context || this.#plantCandidates.length === 0) return;
     const minimumDistance = clamp(Math.min(context.stage.clientWidth, context.stage.clientHeight) / 15, 34, 68);
     const limit = context.stage.clientWidth < 700 ? 52 : 88;
-    this.plants = spatiallySpacedNodes(this.plantCandidates, (node) => context.project(node), minimumDistance, limit);
-    context.stage.dataset.plantCount = String(this.plants.length);
+    this.#plants = spatiallySpacedNodes(this.#plantCandidates, (node) => context.project(node), minimumDistance, limit);
+    context.stage.dataset.plantCount = String(this.#plants.length);
     context.stage.dataset.plantGap = String(Math.round(minimumDistance));
   }
 }
