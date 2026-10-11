@@ -18,7 +18,7 @@ export default defineConfig({
           { name: 'shared', test: /[\\/]src[\\/]/, minShareCount: 2, priority: 10 },
           // A single lazy art library shares compression across the four Labs.
           // Images still load only when their selected experience mounts.
-          { name: 'lab-experiments', test: /[\\/]labs[\\/]experiments[\\/]/, includeDependenciesRecursively: false },
+          { name: 'lab-experiments', test: /[\\/]labs[\\/](?:experiments[\\/]|water\.ts$|villageModel\.ts$)/, includeDependenciesRecursively: false },
         ] },
       },
       input: {
