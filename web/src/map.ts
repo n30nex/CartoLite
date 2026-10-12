@@ -236,12 +236,19 @@ export class LiveMap {
   private renderingSources = new Set<string>();
   #layersReady = false;
 
+  readonly #tooltip: HTMLElement;
+  readonly #inspectorSheet: HTMLElement;
+  readonly #options: LiveMapOptions;
+
   constructor(
     private readonly container: HTMLElement,
-    private readonly tooltip: HTMLElement,
-    private readonly inspectorSheet: HTMLElement,
-    private readonly options: LiveMapOptions
+    tooltip: HTMLElement,
+    inspectorSheet: HTMLElement,
+    options: LiveMapOptions
   ) {
+    this.#tooltip = tooltip;
+    this.#inspectorSheet = inspectorSheet;
+    this.#options = options;
     this.#appearance = { ...DEFAULT_UI_PREFERENCES, ...options.appearance };
     const lowPower = window.matchMedia('(max-width: 620px), (pointer: coarse)').matches;
     this.container.dataset.renderState = 'loading';
@@ -1083,7 +1090,7 @@ export class LiveMap {
     const representation = routeRepresentationForZoom(this.map.getZoom());
     if (this.container.dataset.routeRepresentation === representation) return;
     this.container.dataset.routeRepresentation = representation;
-    this.options.onRouteRepresentationChange?.(representation);
+    this.#options.onRouteRepresentationChange?.(representation);
   };
 
   #handleZoomEnd = (): void => {
@@ -1152,7 +1159,7 @@ export class LiveMap {
   }
 
   #emitRouteWindowChange(): void {
-    this.options.onRouteWindowChange?.(routeWindowLabel('auto', this.map.getZoom()));
+    this.#options.onRouteWindowChange?.(routeWindowLabel('auto', this.map.getZoom()));
   }
 
   #effectiveRouteAgeMS(): number {
@@ -1514,7 +1521,7 @@ export class LiveMap {
     this.map.on('mouseleave', NODE_HIT_LAYER_ID, () => {
       // Touch browsers can synthesize this after a route tap. Do not let a
       // late node leave hide the route tooltip that has just replaced it.
-      if (this.tooltip.dataset.kind === 'node') this.#hideTooltip();
+      if (this.#tooltip.dataset.kind === 'node') this.#hideTooltip();
     });
     this.map.on('mousemove', ROUTE_HIT_LAYER_ID, (event) => {
       if (!this.#routeInspectionPinned) this.#showRouteTooltip(event);
@@ -1530,7 +1537,7 @@ export class LiveMap {
     this.map.on('click', (event) => this.#handleMapClick(event));
     this.map.on('mousemove', (event) => {
       if (!this.#terrain3D || !this.#selectedNodeID) return;
-      if (!this.#showRouteTooltip(event) && this.tooltip.dataset.kind === 'route' && !this.#routeInspectionPinned) this.#clearRouteInspection();
+      if (!this.#showRouteTooltip(event) && this.#tooltip.dataset.kind === 'route' && !this.#routeInspectionPinned) this.#clearRouteInspection();
     });
     this.map.on('movestart', () => {
       this.#hideTooltip();
@@ -1726,7 +1733,7 @@ export class LiveMap {
     rememberNode(nodeID);
     this.#updateFocusData();
     this.#applyFocusState();
-    if (nodeID === null && this.tooltip.dataset.kind === 'route') this.#hideTooltip();
+    if (nodeID === null && this.#tooltip.dataset.kind === 'route') this.#hideTooltip();
     this.markRendering();
   }
 
@@ -1752,7 +1759,7 @@ export class LiveMap {
     const signature = focus ? `${this.#selectedNodeID}:${focus.label}:${focus.neighborCount}` : '';
     if (signature === this.#lastFocusSignature) return;
     this.#lastFocusSignature = signature;
-    this.options.onFocusChange?.(focus);
+    this.#options.onFocusChange?.(focus);
   }
 
   #applyFocusState(updateRouteFilter = true): void {
@@ -1814,7 +1821,7 @@ export class LiveMap {
   #clearRouteInspection(): void {
     this.#routeInspectionPinned = false;
     this.#setHoveredRoute(null);
-    if (this.tooltip.dataset.kind === 'route') this.#hideTooltip();
+    if (this.#tooltip.dataset.kind === 'route') this.#hideTooltip();
   }
 
   #highlightCluster(event: MapMouseEvent): void {
@@ -1846,26 +1853,26 @@ export class LiveMap {
       title.textContent = heading;
       const detail = document.createElement('span');
       detail.textContent = details;
-      this.tooltip.replaceChildren(title, detail);
+      this.#tooltip.replaceChildren(title, detail);
       this.#tooltipSignature = signature;
     }
-    this.tooltip.dataset.kind = kind;
-    this.tooltip.hidden = false;
+    this.#tooltip.dataset.kind = kind;
+    this.#tooltip.hidden = false;
     if (contentChanged || this.#tooltipSize.width <= 0 || this.#tooltipSize.height <= 0) {
-      this.#tooltipSize = { width: this.tooltip.offsetWidth, height: this.tooltip.offsetHeight };
+      this.#tooltipSize = { width: this.#tooltip.offsetWidth, height: this.#tooltip.offsetHeight };
     }
     const position = tooltipPosition(
       event.point,
       { width: this.container.clientWidth, height: this.container.clientHeight },
       this.#tooltipSize
     );
-    this.tooltip.style.left = `${position.x}px`;
-    this.tooltip.style.top = `${position.y}px`;
+    this.#tooltip.style.left = `${position.x}px`;
+    this.#tooltip.style.top = `${position.y}px`;
   }
 
   #hideTooltip(): void {
-    this.tooltip.hidden = true;
-    delete this.tooltip.dataset.kind;
+    this.#tooltip.hidden = true;
+    delete this.#tooltip.dataset.kind;
   }
 
   #adjacentRoutes(nodeID: string | null): RouteV2[] {
@@ -1946,12 +1953,12 @@ export class LiveMap {
     });
     if (mobile) {
       this.#closePopup(false);
-      replaceInspector(this.inspectorSheet, content);
-      this.inspectorSheet.hidden = false;
+      replaceInspector(this.#inspectorSheet, content);
+      this.#inspectorSheet.hidden = false;
       return;
     }
-    this.inspectorSheet.hidden = true;
-    this.inspectorSheet.replaceChildren();
+    this.#inspectorSheet.hidden = true;
+    this.#inspectorSheet.replaceChildren();
     const popupAnchor = this.#inspectorPopupAnchor(model.node);
     if (!this.#nodeInspectorPopup || this.#nodeInspectorPopupAnchor !== popupAnchor) {
       this.#closePopup(false);
@@ -1979,10 +1986,10 @@ export class LiveMap {
   }
 
   #closeInspector(clearSelection: boolean): void {
-    const restoreFocus = this.inspectorSheet.contains(document.activeElement);
+    const restoreFocus = this.#inspectorSheet.contains(document.activeElement);
     this.#closePopup(clearSelection);
-    this.inspectorSheet.hidden = true;
-    this.inspectorSheet.replaceChildren();
+    this.#inspectorSheet.hidden = true;
+    this.#inspectorSheet.replaceChildren();
     if (restoreFocus) document.getElementById('find-button')?.focus();
   }
 
