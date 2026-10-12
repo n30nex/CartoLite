@@ -30,6 +30,7 @@ export interface RegionAreaAssignment {
     name: string;
     lat: number;
     lng: number;
+    aliases?: readonly string[];
   };
 }
 
@@ -69,12 +70,14 @@ export function regionDataset(partitionValue: unknown, registryValue: unknown): 
       throw new Error('invalid region seed');
     }
     const tag = candidate.tag;
+    const aliases = isRecord(registryValue.aliases) ? registryValue.aliases[tag] : undefined;
     if (seedByTag.has(tag)) throw new Error(`region registry contains duplicate tag ${tag}`);
     seedByTag.set(tag, {
       code: tag.toUpperCase(),
       name: '',
       lat: candidate.lat,
       lng: candidate.lon,
+      ...(Array.isArray(aliases) ? { aliases: aliases.filter((a): a is string => typeof a === 'string' && a.length <= 100).slice(0, 32) } : {}),
     });
   }
   if (seedByTag.size !== EXPECTED_REGION_COUNT) {

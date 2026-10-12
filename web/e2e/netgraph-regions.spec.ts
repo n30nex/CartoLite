@@ -59,9 +59,11 @@ test('spacing and dragging survive refresh while live packets keep their routes 
   const touch = info.project.name !== 'desktop' ? await context.newCDPSession(page) : null;
   if (touch) {
     await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, ...point }] });
+    await expect(stage).toHaveAttribute('data-moving-region', code);
     await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, x: point.x + 30, y: point.y + 24 }] });
   } else {
     await page.mouse.move(point.x, point.y); await page.mouse.down();
+    await expect(stage).toHaveAttribute('data-moving-region', code);
     await page.mouse.move(point.x + 30, point.y + 24, { steps: 4 });
   }
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('visual-packet', { detail: { seq: 1, id: 'new-connection', at: Date.now(), payloadType: 'Text', mode: 'route', segments: [{ routeId: 'reverse-hop', fromId: 'visual-b', toId: 'visual-a' }] } })));
@@ -120,7 +122,8 @@ test('checkbox regions filter topology, search and Follow and retain their devic
   const index = labels.findIndex(text => text.includes('Toronto') || text.includes('43.5'));
   expect(index).toBeGreaterThanOrEqual(0);
   const region = codes[index]!;
-  await page.getByLabel('Search regions', { exact: true }).fill(region);
+  await page.getByLabel('Search regions', { exact: true }).fill('YYZ');
+  await expect(page.locator('.region-checks label:visible')).toHaveCount(1);
   await page.locator('.region-checks input').nth(index).check();
   await expect(stage).toHaveAttribute('data-visible-routes', '1');
   await expect(stage).toHaveAttribute('data-connected-nodes', '2');

@@ -77,6 +77,14 @@ describe('MeshCore Canada region partition', () => {
     expect(assignments.get('kitchener')).toMatchObject({ code: 'WAT', name: 'Waterloo' });
   });
 
+  it('keeps public IATA aliases without changing geographic assignment', () => {
+    const dataset = regionDataset(partition, registry);
+    const [toronto] = resolveRegionAreas(dataset, [{ id: 'alias-fixture', lat: 43.65, lng: -79.4 }]);
+    expect(toronto!.area.code).toBe('TOR');
+    expect(toronto!.area.aliases).toContain('YYZ');
+    expect(toronto!.area.aliases).toContain('YTZ');
+  });
+
   it('preserves source attribution for the shared main-map layer', () => {
     expect(MESHCORE_REGION_ATTRIBUTION).toContain('MeshCore Canada');
     expect(MESHCORE_REGION_ATTRIBUTION).toContain('Statistics Canada Open Licence');

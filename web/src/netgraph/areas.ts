@@ -8,6 +8,7 @@ export interface NetgraphAreaAnchor {
   name: string;
   lat: number;
   lng: number;
+  aliases?: readonly string[];
 }
 
 interface PendingResolution {
