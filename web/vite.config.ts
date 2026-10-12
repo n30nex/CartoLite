@@ -8,6 +8,8 @@ function inputPath(relative: string): string {
 export default defineConfig({
   build: {
     target: 'es2022',
+    // Preload links remain native; ordinary ESM loading also works without them.
+    modulePreload: { polyfill: false },
     assetsInlineLimit: 0,
     chunkSizeWarningLimit: 500,
     rolldownOptions: {
