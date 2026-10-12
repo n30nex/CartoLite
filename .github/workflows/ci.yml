@@ -206,7 +206,7 @@ jobs:
         env:
           CARTOLITE_BASE_URL: http://127.0.0.1:39476
           PLAYWRIGHT_HTML_OUTPUT_DIR: terrain-playwright-report
-        run: npm run test:e2e -- --grep @terrain --output terrain-test-results
+        run: npm run test:e2e -- --grep '@terrain|@regions' --output terrain-test-results
       # The scale fixture supplies its own state/event stream. Run all of its
       # viewports before the unrelated live publisher competes for the renderer CPU.
       # Preserve every case, route count and timing limit; do not run it twice.
@@ -237,7 +237,7 @@ jobs:
             done
           ) &
           publisher_pid="$!"
-          npm run test:e2e -- --grep-invert '@terrain|keeps a 4k-node / 7k-route first view responsive'
+          npm run test:e2e -- --grep-invert '@terrain|@regions|keeps a 4k-node / 7k-route first view responsive'
       - name: Trivy HIGH/CRITICAL gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

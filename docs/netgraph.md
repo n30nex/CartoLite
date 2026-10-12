@@ -53,3 +53,5 @@ Only connections with both endpoints in the selected regions are shown. Search
 and Follow respect this selection. Use **Routes** to hide standing connections;
 live packets still illuminate their paths and leave a brief fading trace.
 Layout, region choices and route visibility are remembered in this browser.
+
+Canada region search also matches the published registry aliases: for example, YYZ finds Toronto and YVR finds Metro Vancouver. Aliases select the existing geographic region; they do not change its boundary or node assignments.

@@ -18,10 +18,6 @@ export default defineConfig({
         // and MapLibre stay separate, so Netgraph never loads the basemap.
         codeSplitting: { groups: [
           { name: 'shared', test: /[\\/]src[\\/]/, minShareCount: 2, priority: 10 },
-          // Labs always opens the art library. Bundle its shell/runtime with it
-          // instead of sharing Labs-only helpers with Map and Netgraph. Images
-          // still load only when their selected experience mounts.
-          { name: 'labs', test: /[\\/]src[\\/]labs[\\/]/, priority: 20, includeDependenciesRecursively: false },
         ] },
       },
       input: {
