@@ -33,8 +33,25 @@ Netgraph starts at full detail and samples its own active-frame intervals and dr
 
 Regional label artwork is cached in a bounded 64-entry cache. Residue remains on a separate composited canvas instead of being copied into every moving frame, and expires or clears on backgrounding. Under pressure, top-down touch gestures reuse the rendered topology with the same affine projection as packet heads and hit testing; the graph repaints when the last finger releases or cancels. Tilted gestures refresh the shared perspective projection. Reset and button zoom skip camera easing only in low mode. Full mode retains the normal camera transitions and visual effects.
 
-Drag with one finger to pan; pinch with two fingers to zoom and pan together in Android Chrome and the APK. Lifting one finger continues the drag without jumping or clearing selection. Cancelled touches and backgrounding release all gesture state. Desktop wheel/trackpad and double-click zoom remain available, alongside 44-pixel Zoom in/out buttons. Reset fits all components. Finder and selection never send or persist queries. The page stores only its route-window choice under `cartolite:netgraph:v1`; audio continues to use `cartolite:sound:v2`.
+Drag open canvas with one finger to pan; pinch with two fingers to zoom and pan together in Android Chrome and the APK. Drag a region label to move that group. Lifting one finger continues the drag without jumping or clearing selection. Cancelled touches and backgrounding release all gesture state. Desktop wheel/trackpad and double-click zoom remain available, alongside 44-pixel Zoom in/out buttons. Reset fits the selected regions. Finder and selection never send or persist queries. The route-window choice uses `cartolite:netgraph:v1`, region controls use `cartolite:netgraph-layout:v1`, and audio continues to use `cartolite:sound:v2`.
 
 The content-hashed partition and registry are bundled with CartoLite, fetched from the same origin, and never receive a node, query, or visitor identifier. They load once before the first layout and are reused by the worker for recovery snapshots, so classification cannot visibly jump after the graph appears.
 
 On coarse-pointer devices, controls move to their own row, the inspector becomes a bounded bottom sheet, and the page requests a screen wake lock while visible. Returning from sleep, the back-forward cache, or an offline period replaces public state and reconnects the single SSE stream without creating parallel streams.
+
+### Arrange and filter regions
+
+In Netgraph, open **Display → Region layout** to spread region centres from 100% to
+400%. Drag a region label to move its whole bubble, or choose a region and use
+the arrow buttons. **Reset region layout** restores the geographic arrangement.
+Nodes keep their positions inside each bubble; routes and live packets follow
+when the bubble moves. These controls change the diagram, not reported locations.
+
+Use **Regions** to search IATA/region codes or names and select multiple regions.
+**None** followed by one checkbox isolates a region; **All** restores the full mesh.
+Only connections with both endpoints in the selected regions are shown. Search
+and Follow respect this selection. Use **Routes** to hide standing connections;
+live packets still illuminate their paths and leave a brief fading trace.
+Layout, region choices and route visibility are remembered in this browser.
+
+Canada region search also matches the published registry aliases: for example, YYZ finds Toronto and YVR finds Metro Vancouver. Aliases select the existing geographic region; they do not change its boundary or node assignments.

@@ -14,7 +14,7 @@ MeshCore MQTT
       +---- GET /api/events (SSE)
       +---- embedded MapLibre map
       +---- embedded Canvas2D Netgraph
-      +---- embedded lazy-loaded Labs experiments
+      +---- optional Labs page and mount-loaded artwork
 ```
 
 The engine alone owns nodes, observers, prefix indexes, routes, sequence numbers, and counters. Each route retains only its newest sanitized packet kind and one activity scalar capped at 64 with a 15-minute half-life; there is no traffic history. MQTT callbacks decode and enqueue bounded input. Slow SSE clients are disconnected, so they cannot apply backpressure to ingest. Dirty public state is serialized at most once per second. Routes reference node IDs instead of embedding repeated endpoint objects.
@@ -51,7 +51,7 @@ The static topology and transient traffic use separate Canvas2D layers. All acti
 
 `/labs/` is a second Vite HTML entry embedded in the same Go binary, not a second service. It imports the existing state validator, `LiveStore`, single-flight `LiveFeed`, packet-kind vocabulary, and route sonifier. One active experiment receives normalized public hops with derived distance, bearing, hop count, and a stable visual seed. Bounded 10-second, 60-second, and five-minute in-memory windows drive density and route-reuse effects and are discarded on an explicit reset or stream recovery.
 
-Experiment modules are dynamic imports. Switching destroys the previous renderer before mounting one replacement, while a single shell owns SSE, animation frames, sound, visibility recovery, resize, wake lock, and controls. Firefly Meadow, Mesh Loom, and Little Mesh Villages use Canvas2D. Packet Pond layers a dependency-free WebGL2 water surface beneath its Canvas effects and falls back to Canvas water when WebGL2 is unavailable. Pond and Meadow request their hashed artwork only with their experiment module. Villages bounds and geographically groups the newest node set, splits dense cells, and caches its static roads and buildings offscreen so live couriers are the only continuously repainted layer. Every renderer caps retained objects, reduces device pixel ratio on coarse pointers, stops frames while hidden, and exposes a static reduced-motion interpretation.
+The optional Labs page bundles its shell, runtime and four experiment factories together; Map and Netgraph do not load this bundle. Switching destroys the previous renderer before mounting one replacement, while a single shell owns SSE, animation frames, sound, visibility recovery, resize, wake lock, and controls. Firefly Meadow, Mesh Loom, and Little Mesh Villages use Canvas2D. Packet Pond layers a dependency-free WebGL2 water surface beneath its Canvas effects and falls back to Canvas water when WebGL2 is unavailable. Pond and Meadow request their hashed artwork only when mounted. Villages bounds and geographically groups the newest node set, splits dense cells, and caches its static roads and buildings offscreen so live couriers are the only continuously repainted layer. Every renderer caps retained objects, reduces device pixel ratio on coarse pointers, stops frames while hidden, and exposes a static reduced-motion interpretation.
 
 The Labs page receives exactly the public information already available to the map. Observer-only traffic remains an isolated visual cue, never a fabricated route. Its hidden `?demo=1` fixture is deterministic synthetic data and does not contact `/api/state` or `/api/events`.
 

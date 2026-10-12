@@ -8,6 +8,7 @@ export interface NetgraphAreaAnchor {
   name: string;
   lat: number;
   lng: number;
+  aliases?: readonly string[];
 }
 
 interface PendingResolution {
@@ -16,36 +17,36 @@ interface PendingResolution {
 }
 
 export class NetgraphRegionResolver {
-  private readonly worker: Worker;
-  private readonly pending = new Map<number, PendingResolution>();
-  private nextRequestID = 1;
+  readonly #worker: Worker;
+  readonly #pending = new Map<number, PendingResolution>();
+  #nextRequestID = 1;
 
   constructor() {
-    this.worker = new Worker(new URL('../regionWorker.ts', import.meta.url), {
+    this.#worker = new Worker(new URL('../regionWorker.ts', import.meta.url), {
       type: 'module',
     });
-    this.worker.onmessage = (event: MessageEvent<RegionWorkerOutput>): void => {
+    this.#worker.onmessage = (event: MessageEvent<RegionWorkerOutput>): void => {
       const message = event.data;
       if (message.type === 'error') {
         const error = new Error(message.message);
-        if (message.requestId !== undefined) this.reject(message.requestId, error);
-        else this.rejectAll(error);
+        if (message.requestId !== undefined) this.#reject(message.requestId, error);
+        else this.#rejectAll(error);
         return;
       }
       if (message.type !== 'resolved') return;
-      const request = this.pending.get(message.requestId);
+      const request = this.#pending.get(message.requestId);
       if (!request) return;
-      this.pending.delete(message.requestId);
+      this.#pending.delete(message.requestId);
       request.resolve(new Map(message.assignments.map(({ nodeID, area }) => [nodeID, area])));
     };
-    this.worker.onerror = (event): void => this.rejectAll(new Error(event.message));
+    this.#worker.onerror = (event): void => this.#rejectAll(new Error(event.message));
   }
 
   resolve(nodes: readonly NodeV2[]): Promise<Map<string, NetgraphAreaAnchor>> {
-    const requestId = this.nextRequestID++;
+    const requestId = this.#nextRequestID++;
     return new Promise((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject });
-      this.worker.postMessage({
+      this.#pending.set(requestId, { resolve, reject });
+      this.#worker.postMessage({
         type: 'resolve',
         requestId,
         partitionUrl: regionPartitionURL,
@@ -56,20 +57,20 @@ export class NetgraphRegionResolver {
   }
 
   destroy(): void {
-    this.worker.terminate();
-    this.pending.clear();
+    this.#worker.terminate();
+    this.#pending.clear();
   }
 
-  private reject(requestId: number, error: Error): void {
-    const request = this.pending.get(requestId);
+  #reject(requestId: number, error: Error): void {
+    const request = this.#pending.get(requestId);
     if (!request) return;
-    this.pending.delete(requestId);
+    this.#pending.delete(requestId);
     request.reject(error);
   }
 
-  private rejectAll(error: Error): void {
-    for (const request of this.pending.values()) request.reject(error);
-    this.pending.clear();
+  #rejectAll(error: Error): void {
+    for (const request of this.#pending.values()) request.reject(error);
+    this.#pending.clear();
   }
 }
 
