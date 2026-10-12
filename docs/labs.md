@@ -13,7 +13,7 @@ Northern Lights was removed in v0.9.0; old direct links safely fall back to Pack
 
 ## Scene assets and rendering
 
-Packet Pond and Firefly Meadow each import two original locally bundled WebP assets created for CartoLite: one background plate and one transparent vegetation layer. Vite gives them content-hashed names, and the browser fetches them only after that experiment's dynamic module is selected. They contain no scripts, identifiers, external URLs, telemetry, or data-derived marks. Pond water uses a small dependency-free WebGL2 shader fed by the local texture and bounded live ripple uniforms; all packet colour and route meaning remains deterministic Canvas output from the sanitized state or live event.
+Packet Pond and Firefly Meadow each import two original locally bundled WebP assets created for CartoLite: one background plate and one transparent vegetation layer. Vite gives them content-hashed names, and the browser fetches them only after that experiment is mounted. They contain no scripts, identifiers, external URLs, telemetry, or data-derived marks. Pond water uses a small dependency-free WebGL2 shader fed by the local texture and bounded live ripple uniforms; all packet colour and route meaning remains deterministic Canvas output from the sanitized state or live event.
 
 Little Mesh Villages limits work to the newest bounded public node set. It groups nearby nodes into fixed geographic cells, splits dense cells into bounded settlements, and lays those settlements out across a responsive cartogram while preserving west-to-east and north-to-south ordering. Cross-settlement routes remain visible as intercity links. Static terrain, roads, buildings, windows, and labels render into one offscreen cache; only live couriers and fading lanterns repaint each frame.
 
@@ -21,7 +21,7 @@ Little Mesh Villages limits work to the newest bounded public node set. It group
 
 The shell owns one `/api/events` connection regardless of which experiment is active. Sequence gaps, backend boot changes, browser resume, and network return all use the existing snapshot recovery path. Recovery discards session counters that can no longer be trusted while leaving the existing sound preference intact.
 
-Only one experiment is mounted. Switching uses a dynamic import, destroys the old renderer and its retained objects, replaces its canvases and experiment-local elements, applies the latest public snapshot, and resumes the shared animation frame. Exhibition mode rotates experiments every 60 seconds and requests full screen from the enabling gesture when supported.
+Only one experiment is mounted. The optional Labs page bundles its shell and four factories together; Map and Netgraph do not load that bundle. Switching destroys the old renderer and its retained objects, replaces its canvases and experiment-local elements, applies the latest public snapshot, and resumes the shared animation frame. Exhibition mode rotates experiments every 60 seconds and requests full screen from the enabling gesture when supported.
 
 The status, experiment picker, pause, reset, sound scene and volume, factual live caption, and explanation panel remain keyboard reachable. Coarse-pointer layouts cap pixel ratio and request a screen wake lock while visible. Reduced-motion mode retains static packet meaning without continuous travel.
 
