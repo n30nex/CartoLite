@@ -26,9 +26,11 @@ jobs:
         run: |
           [[ "$RUN_ID" =~ ^[0-9]+$ ]]
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > run.json
-          jq -e --arg repo "$GITHUB_REPOSITORY" '.conclusion == "success" and .event == "push" and .head_branch == "main" and .head_repository.full_name == $repo and .path == ".github/workflows/ci.yml"' run.json >/dev/null
+          jq -e --arg repo "$GITHUB_REPOSITORY" '.conclusion == "success" and (.event == "push" or .event == "workflow_dispatch") and .head_branch == "main" and .head_repository.full_name == $repo and .path == ".github/workflows/ci.yml"' run.json >/dev/null
           sha="$(jq -r .head_sha run.json)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          # A manual run must still be a reviewed main commit, never a PR ref.
+          gh api "repos/$GITHUB_REPOSITORY/compare/$sha...main" --jq .status | grep -Ex 'identical|ahead'
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
