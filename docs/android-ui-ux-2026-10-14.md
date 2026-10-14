@@ -2,7 +2,7 @@
 
 Canada-only update to `org.canadaverse.cartolite`, version code 3. The original
 release certificate and installed preferences must be preserved. The existing
-1.0.0 public APK stays available until the new signed candidate passes acceptance.
+1.0.0 public APK stays available until the new signed candidate passes release checks.
 
 ## Implemented scope
 
@@ -13,6 +13,7 @@ release certificate and installed preferences must be preserved. The existing
 - Let a late committed page recover a timeout. HTTP and certificate failures stay
   visible, and page-finished callbacks cannot reveal an uncommitted document.
 - Provide Retry and an external-browser fallback for ordinary load failures.
+  The chooser excludes CartoLite so verified Canada links cannot reopen the app.
   Certificate failures never offer a bypass.
 - Add remembered fullscreen and start-view choices (last used, Map, Netgraph, Labs).
   Changing the start view does not navigate away from the current scene. Fullscreen
@@ -43,10 +44,13 @@ assembly. The existing CI must exercise synthetic WebView journeys on API 26 and
 recovery, renderer replacement and native preference handling.
 
 Sign the exact tested candidate with the existing certificate and retain its
-source revision, package/version metadata and checksum. Before public publication,
-verify the exact candidate on the Canada tablet, preserving app data: touch,
+source revision, package/version metadata and checksum. On 14 October the user
+explicitly removed physical-device testing as a publication requirement. Publish
+after the automated/API 26/36, signing and release checks pass, and disclose that
+physical-device testing was not performed. When a tablet is available, preserve
+app data while checking touch,
 portrait/landscape, Back, keyboard, fullscreen/system bars, keep-awake, sleep/resume,
-network recovery, Map/Netgraph/Labs and gesture-unlocked sound. Publish the accepted
+network recovery, Map/Netgraph/Labs and gesture-unlocked sound. Publish the verified
 APK and checksum at a new versioned download path, update the product page, retain
 the old APK/link for rollback, and verify the public bytes.
 
@@ -55,4 +59,5 @@ the old APK/link for rollback, and verify the public bytes.
 - [WebViewClient callbacks](https://developer.android.com/reference/android/webkit/WebViewClient)
 - [WebView history restoration](https://developer.android.com/reference/android/webkit/WebView#restoreState(android.os.Bundle))
 - [Predictive Back guidance](https://developer.android.com/guide/navigation/custom-back/predictive-back-gesture)
+- [Chooser component exclusion](https://developer.android.com/reference/android/content/Intent#EXTRA_EXCLUDE_COMPONENTS)
 - [Standard public-repository runner usage](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)

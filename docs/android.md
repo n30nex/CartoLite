@@ -2,7 +2,7 @@
 
 CartoLite for Android is the official signed Android presentation of the
 public live map. The repository targets candidate 1.1.1; the public APK remains
-1.0.0 until device acceptance is complete. It uses the same production frontend and public API as the
+1.0.0 until release checks are complete. It uses the same production frontend and public API as the
 browser, so map, sound, privacy, and topology updates do not wait for a new APK.
 
 ## Motion and animation defaults
@@ -51,8 +51,9 @@ CartoLite origin can verify released APKs.
 
 ## Device acceptance
 
-Before publication, install the signed candidate on a physical device and
-verify the exact APK SHA-256 and certificate. Confirm a live map in portrait
+Physical-device testing is optional. Disclose when it has not been performed;
+API 26/36 synthetic checks and exact APK/package/certificate verification remain
+required before publication. When a device is available, confirm a live map in portrait
 and landscape, 44-pixel web controls, a 48dp native retry control, touchscreen Web Audio unlock,
 one oscillator per visible hop, screen-awake ownership, forced sleep recovery,
 network loss/recovery, external-link handoff, and no process crash or app-level
@@ -68,8 +69,8 @@ navigation survives recreation and already-running deep links are handled.
 Predictive Back is registered only while web history can consume it.
 
 Actions gates API 26 and 36 against debug-only synthetic pages. The signing
-workflow promotes the exact CI APK without rebuilding and does not publish it
-before physical-device acceptance.
+workflow promotes the exact CI APK without rebuilding. Release notes record the
+actual emulator and physical-device test status.
 
 ## 1.1.1 UI and recovery patch
 

@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -537,7 +538,11 @@ public class MainActivity extends Activity {
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
             intent.addCategory(Intent.CATEGORY_BROWSABLE);
-            startActivity(intent);
+            // Verified Canada links would otherwise reopen this same Activity.
+            Intent chooser = Intent.createChooser(intent, getString(R.string.open_browser));
+            chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS,
+                    new ComponentName[]{new ComponentName(this, MainActivity.class)});
+            startActivity(chooser);
         } catch (ActivityNotFoundException ignored) {
             Toast.makeText(this, R.string.no_browser, Toast.LENGTH_SHORT).show();
         }
@@ -556,6 +561,12 @@ public class MainActivity extends Activity {
     private boolean handleNavigation(WebResourceRequest request) {
         String url = request.getUrl().toString();
         if (NavigationPolicy.isTrusted(url)) {
+            // Some WebView versions wait for response headers before page-start.
+            // Arm recovery at the navigation request; hash-only changes need no loader.
+            if (request.isForMainFrame() && (request.getUrl().getFragment() == null || !isCurrentPage(webView, url))) {
+                currentUrl = url;
+                showConnecting();
+            }
             return false;
         }
         if (request.isForMainFrame() && request.hasGesture()) {
@@ -742,7 +753,7 @@ public class MainActivity extends Activity {
 
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-            return handleNavigation(request);
+            return view != webView || handleNavigation(request);
         }
 
         @Override
