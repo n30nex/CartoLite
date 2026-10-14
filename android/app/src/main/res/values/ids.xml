@@ -6,4 +6,6 @@
     <item name="map_button" type="id" />
     <item name="netgraph_button" type="id" />
     <item name="app_button" type="id" />
+    <item name="load_progress" type="id" />
+    <item name="browser_button" type="id" />
 </resources>

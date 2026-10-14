@@ -32,6 +32,11 @@ final class NavigationPolicy {
         return CANADA_URL + ("netgraph/".equals(view) || "labs/".equals(view) ? view : "");
     }
 
+    static String startViewUrl(String preferredView, String lastView) {
+        return lastViewUrl("".equals(preferredView) || "netgraph/".equals(preferredView) || "labs/".equals(preferredView)
+                ? preferredView : lastView);
+    }
+
     private static int effectivePort(URI uri) {
         return uri.getPort() == -1 ? 443 : uri.getPort();
     }

@@ -15,6 +15,7 @@ import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Parcel;
 import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.Menu;
@@ -23,6 +24,7 @@ import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.PermissionRequest;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.SslErrorHandler;
@@ -31,6 +33,7 @@ import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
+import android.webkit.WebBackForwardList;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
@@ -64,21 +67,28 @@ public class MainActivity extends Activity {
     private TextView connectionTitle;
     private TextView connectionDetail;
     private ProgressBar progress;
+    private ProgressBar loadProgress;
     private Button retryButton;
+    private Button browserButton;
     private android.window.OnBackInvokedCallback backCallback;
     private boolean backRegistered;
     private SharedPreferences preferences;
     private String currentUrl = NavigationPolicy.CANADA_URL;
     private boolean pageVisible;
+    private boolean hadContent;
     private boolean loadFailed;
+    private boolean timedOut;
     private boolean retryOnNetwork;
     private boolean resumed;
     private long pausedAt;
     private ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback networkCallback;
     private final Runnable resumeRunnable = this::evaluateResumeScript;
-    private final Runnable loadTimeout = () -> showConnectionProblem(
-            R.string.timeout_title, R.string.timeout_detail, true);
+    private final Runnable loadTimeout = () -> {
+        if (pageVisible || loadFailed || !resumed) return;
+        showConnectionProblem(R.string.timeout_title, R.string.timeout_detail, true);
+        timedOut = true;
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -93,7 +103,18 @@ public class MainActivity extends Activity {
         String savedUrl = savedInstanceState == null ? null : savedInstanceState.getString("current_url");
         String initialUrl = NavigationPolicy.isTrusted(savedUrl) ? savedUrl
                 : launchUri != null && NavigationPolicy.isTrusted(launchUri.toString()) ? launchUri.toString()
-                : NavigationPolicy.lastViewUrl(preferences.getString("last_view", ""));
+                : NavigationPolicy.startViewUrl(preferences.getString("start_view", "last"), preferences.getString("last_view", ""));
+        // Only this app's bounded, trusted history is saved. Restore it before
+        // loading a URL, otherwise WebView discards its existing Back entries.
+        Bundle history = savedInstanceState == null ? null : savedInstanceState.getBundle("web_history");
+        if (history != null && NavigationPolicy.isTrusted(savedUrl)) {
+            currentUrl = savedUrl;
+            showConnecting();
+            if (webView.restoreState(history) != null) {
+                updateBackHandler();
+                return;
+            }
+        }
         loadPage(initialUrl);
     }
 
@@ -199,6 +220,18 @@ public class MainActivity extends Activity {
                 dp(48),
                 0, 0, 0, 0));
 
+        browserButton = new Button(this);
+        browserButton.setId(R.id.browser_button);
+        browserButton.setText(R.string.open_browser);
+        browserButton.setAllCaps(false);
+        browserButton.setTextColor(PRIMARY);
+        browserButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(PANEL));
+        browserButton.setMinHeight(dp(48));
+        browserButton.setVisibility(View.GONE);
+        browserButton.setOnClickListener(view -> openExternalWebLink(currentUrl));
+        connectionPanel.addView(browserButton, linearParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 0, dp(8), 0, 0));
+
         LinearLayout.LayoutParams panelParams = new LinearLayout.LayoutParams(
                 Math.min(dp(390), getResources().getDisplayMetrics().widthPixels - dp(32)),
                 ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -212,6 +245,14 @@ public class MainActivity extends Activity {
                 connectionPanel.requestLayout();
             }
         });
+
+        loadProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        loadProgress.setId(R.id.load_progress);
+        loadProgress.setProgressTintList(android.content.res.ColorStateList.valueOf(ACCENT));
+        loadProgress.setContentDescription(getString(R.string.loading_view));
+        loadProgress.setVisibility(View.GONE);
+        webContainer.addView(loadProgress, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(4), Gravity.TOP));
 
         Button appButton = new Button(this);
         appButton.setId(R.id.app_button);
@@ -251,6 +292,7 @@ public class MainActivity extends Activity {
             if (!resumed) webView.onPause();
         }
         currentUrl = url;
+        webView.stopLoading();
         showConnecting();
         updateBackHandler();
         webView.loadUrl(url);
@@ -261,26 +303,61 @@ public class MainActivity extends Activity {
         Menu menu = popup.getMenu();
         menu.add(0, 1, 0, R.string.keep_awake).setCheckable(true)
                 .setChecked(preferences.getBoolean("keep_awake", true));
-        menu.add(0, 2, 1, R.string.reload);
-        menu.add(0, 3, 2, R.string.open_browser);
-        menu.add(0, 4, 3, R.string.about_app);
+        menu.add(0, 2, 3, R.string.reload);
+        menu.add(0, 3, 5, R.string.open_browser);
+        menu.add(0, 4, 6, R.string.about_app);
+        menu.add(0, 5, 1, R.string.fullscreen).setCheckable(true)
+                .setChecked(preferences.getBoolean("fullscreen", true));
+        menu.add(0, 6, 2, R.string.start_view);
+        menu.add(0, 7, 4, R.string.share_view);
         popup.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
                 case 1:
                     preferences.edit().putBoolean("keep_awake", !item.isChecked()).apply();
                     applyKeepAwake();
                     return true;
-                case 2: loadPage(currentUrl); return true;
+                case 2:
+                    if (webView == null || loadFailed) loadPage(currentUrl);
+                    else { webView.stopLoading(); showConnecting(); webView.reload(); }
+                    return true;
                 case 3: openExternalWebLink(currentUrl); return true;
                 case 4:
                     new AlertDialog.Builder(this).setTitle(R.string.about_app)
                             .setMessage(getString(R.string.about_detail, BuildConfig.VERSION_NAME))
                             .setPositiveButton(android.R.string.ok, null).show();
                     return true;
+                case 5:
+                    preferences.edit().putBoolean("fullscreen", !item.isChecked()).apply();
+                    configureImmersiveWindow();
+                    webContainer.requestApplyInsets();
+                    return true;
+                case 6: chooseStartView(); return true;
+                case 7:
+                    Intent share = new Intent(Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(Intent.EXTRA_TEXT, NavigationPolicy.CANADA_URL + NavigationPolicy.viewPath(currentUrl));
+                    try { startActivity(Intent.createChooser(share, getString(R.string.share_view))); }
+                    catch (ActivityNotFoundException ignored) {
+                        Toast.makeText(this, R.string.no_share_target, Toast.LENGTH_SHORT).show();
+                    }
+                    return true;
                 default: return false;
             }
         });
         popup.show();
+    }
+
+    private void chooseStartView() {
+        String[] values = {"last", "", "netgraph/", "labs/"};
+        String[] labels = {getString(R.string.start_last), getString(R.string.start_map),
+                getString(R.string.start_netgraph), getString(R.string.start_labs)};
+        String selected = preferences.getString("start_view", "last");
+        int checked = 0;
+        for (int i = 0; i < values.length; i++) if (values[i].equals(selected)) checked = i;
+        new AlertDialog.Builder(this).setTitle(R.string.start_view)
+                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
+                    preferences.edit().putString("start_view", values[which]).apply();
+                    dialog.dismiss();
+                }).setNegativeButton(android.R.string.cancel, null).show();
     }
 
     private void applyKeepAwake() {
@@ -323,24 +400,26 @@ public class MainActivity extends Activity {
     }
 
     private void configureImmersiveWindow() {
+        boolean fullscreen = preferences.getBoolean("fullscreen", true);
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarColor(Color.TRANSPARENT);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             getWindow().setDecorFitsSystemWindows(false);
             WindowInsetsController controller = getWindow().getDecorView().getWindowInsetsController();
             if (controller != null) {
-                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                int bars = WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars();
+                if (fullscreen) controller.hide(bars);
+                else controller.show(bars);
                 controller.setSystemBarsBehavior(
                         WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
         } else {
-            getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            int layout = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+            getWindow().getDecorView().setSystemUiVisibility(fullscreen ? layout
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                             | View.SYSTEM_UI_FLAG_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION : layout);
         }
     }
 
@@ -382,40 +461,64 @@ public class MainActivity extends Activity {
     }
 
     private void showConnecting() {
+        hideKeyboard();
         pageVisible = false;
         loadFailed = false;
+        timedOut = false;
         retryOnNetwork = false;
-        connectionTitle.setText(R.string.connecting_title);
+        String path = NavigationPolicy.viewPath(currentUrl);
+        int name = "netgraph/".equals(path) ? R.string.start_netgraph : "labs/".equals(path) ? R.string.start_labs : R.string.start_map;
+        connectionTitle.setText(getString(R.string.opening_view, getString(name)));
         connectionDetail.setText(R.string.connecting_detail);
         progress.setVisibility(View.VISIBLE);
         retryButton.setVisibility(View.GONE);
+        browserButton.setVisibility(View.GONE);
+        loadProgress.setProgress(0);
+        loadProgress.setVisibility(hadContent ? View.VISIBLE : View.GONE);
         connectionOverlay.animate().cancel();
         connectionOverlay.setAlpha(1f);
-        connectionOverlay.setVisibility(View.VISIBLE);
+        connectionOverlay.setVisibility(hadContent ? View.GONE : View.VISIBLE);
         webContainer.removeCallbacks(loadTimeout);
         webContainer.postDelayed(loadTimeout, LOAD_TIMEOUT_MS);
     }
 
     private void showConnectionProblem(int title, int detail, boolean recoverWithNetwork) {
+        hideKeyboard();
         pageVisible = false;
+        hadContent = false;
         loadFailed = true;
+        timedOut = false;
         retryOnNetwork = recoverWithNetwork;
         webContainer.removeCallbacks(loadTimeout);
         connectionTitle.setText(title);
         connectionDetail.setText(detail);
         progress.setVisibility(View.GONE);
         retryButton.setVisibility(View.VISIBLE);
+        browserButton.setVisibility(title == R.string.security_title ? View.GONE : View.VISIBLE);
+        loadProgress.setVisibility(View.GONE);
+        if (webView != null) webView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         connectionOverlay.animate().cancel();
         connectionOverlay.setAlpha(1f);
         connectionOverlay.setVisibility(View.VISIBLE);
     }
 
+    private void hideKeyboard() {
+        if (!resumed) return;
+        View focused = getCurrentFocus();
+        if (focused != null) focused.clearFocus();
+        InputMethodManager input = getSystemService(InputMethodManager.class);
+        if (input != null) input.hideSoftInputFromWindow(webContainer.getWindowToken(), 0);
+    }
+
     private void revealPage() {
         if (loadFailed || webView == null) return;
         pageVisible = true;
+        hadContent = true;
         webContainer.removeCallbacks(loadTimeout);
         preferences.edit().putString("last_view", NavigationPolicy.viewPath(currentUrl)).apply();
         webView.animate().alpha(1f).setDuration(220L).start();
+        webView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        loadProgress.setVisibility(View.GONE);
         connectionOverlay.animate()
                 .alpha(0f)
                 .setDuration(180L)
@@ -517,6 +620,13 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // InsetsController may not exist yet during onCreate/onResume.
+        if (hasFocus && preferences != null) configureImmersiveWindow();
+    }
+
+    @Override
     protected void onPause() {
         resumed = false;
         applyKeepAwake();
@@ -543,7 +653,27 @@ public class MainActivity extends Activity {
     @Override
     protected void onSaveInstanceState(Bundle state) {
         state.putString("current_url", currentUrl);
+        if (webView != null && pageVisible && trustedHistory(webView.copyBackForwardList())) {
+            Bundle history = new Bundle();
+            webView.saveState(history);
+            Parcel parcel = Parcel.obtain();
+            try {
+                parcel.writeBundle(history);
+                // Keep Activity state bounded; a URL-only restore remains available.
+                if (parcel.dataSize() <= 128 * 1024) state.putBundle("web_history", history);
+            } finally { parcel.recycle(); }
+        }
         super.onSaveInstanceState(state);
+    }
+
+    private boolean trustedHistory(WebBackForwardList history) {
+        if (history == null || history.getSize() == 0 || history.getSize() > 32) return false;
+        for (int i = 0; i < history.getSize(); i++) {
+            if (!NavigationPolicy.isTrusted(history.getItemAtIndex(i).getUrl())) return false;
+            String original = history.getItemAtIndex(i).getOriginalUrl();
+            if (original != null && !NavigationPolicy.isTrusted(original)) return false;
+        }
+        return true;
     }
 
     @Override
@@ -632,15 +762,9 @@ public class MainActivity extends Activity {
         @Override
         public void onPageCommitVisible(WebView view, String url) {
             super.onPageCommitVisible(view, url);
-            if (isCurrentPage(view, url) && !loadFailed) {
-                revealPage();
-            }
-        }
-
-        @Override
-        public void onPageFinished(WebView view, String url) {
-            super.onPageFinished(view, url);
-            if (isCurrentPage(view, url) && !pageVisible && !loadFailed) {
+            if (isCurrentPage(view, url) && (!loadFailed || timedOut)) {
+                loadFailed = false;
+                timedOut = false;
                 revealPage();
             }
         }
@@ -683,6 +807,7 @@ public class MainActivity extends Activity {
                 parent.removeView(view);
             }
             webView = null;
+            hadContent = false;
             updateBackHandler();
             view.destroy();
             showConnectionProblem(R.string.renderer_title, R.string.renderer_detail, false);
@@ -696,6 +821,7 @@ public class MainActivity extends Activity {
             super.onProgressChanged(view, newProgress);
             if (view == webView && !pageVisible && !loadFailed) {
                 connectionDetail.setText(getString(R.string.loading_progress, newProgress));
+                loadProgress.setProgress(newProgress);
             }
         }
 

@@ -5,10 +5,18 @@ import android.webkit.WebResourceResponse;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /** No live broker, tiles or public site requests in instrumentation tests. */
 public final class FixtureActivity extends MainActivity {
+    static volatile CountDownLatch pendingResponse;
     @Override protected WebResourceResponse fixtureResponse(WebResourceRequest request) {
+        CountDownLatch pending = pendingResponse;
+        if (pending != null && request.getUrl().getPath().contains("fixture-wait")) {
+            try { pending.await(45, TimeUnit.SECONDS); }
+            catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+        }
         boolean error = request.getUrl().getPath().contains("fixture-error");
         String body = "<!doctype html><meta name='viewport' content='width=device-width'><title>Synthetic CartoLite</title>"
                 + "<style>body{background:#071319;color:#efffff;font:18px sans-serif}a,button{padding:16px;color:inherit}</style>"

@@ -1,9 +1,14 @@
 # CartoLite for Android
 
-Canada-only native WebView shell, version 1.1.0, package `org.canadaverse.cartolite`.
+Canada-only native WebView shell, candidate version 1.1.1, package `org.canadaverse.cartolite`.
 Android 8/API 26 minimum; Android 16/API 36 target. The web dock owns Map,
 Netgraph and Labs navigation; native options provide keep-awake, reload,
-external browser and app information.
+external browser and app information. The public APK remains 1.0.0 until the
+candidate completes device acceptance.
+
+The 1.1.1 patch adds a compact loading strip for view changes, recoverable timeouts,
+bounded Back-history restoration, fullscreen and start-view choices, and sharing
+of canonical Canada view links. See the [patch plan](../docs/android-ui-ux-2026-10-14.md).
 
 The live frontend defaults the Android app to **Full motion** and **Spectacle**.
 Saved Full, System or Reduced choices take precedence; change them in Display.
