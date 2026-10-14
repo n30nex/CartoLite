@@ -210,12 +210,15 @@ public class ShellTest {
         }
     }
     private static void capture(String name) throws Exception {
-        File directory = new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getFilesDir(), "screenshots");
+        // Gradle collects this directory before uninstalling the test applications.
+        String output = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir");
+        assertNotNull("Gradle supplies an additional test output directory", output);
+        File directory = new File(output, "screenshots");
         assertTrue(directory.isDirectory() || directory.mkdirs());
         Bitmap image = InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();
         assertNotNull("A native UI screenshot is available", image);
-        try (FileOutputStream output = new FileOutputStream(new File(directory, name + ".png"))) {
-            assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, output));
+        try (FileOutputStream stream = new FileOutputStream(new File(directory, name + ".png"))) {
+            assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, stream));
         } finally { image.recycle(); }
     }
     private static void awaitPage(ActivityScenario<FixtureActivity> scenario) throws Exception {
