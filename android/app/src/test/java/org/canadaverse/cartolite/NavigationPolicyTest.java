@@ -7,6 +7,14 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 public final class NavigationPolicyTest {
+    @Test public void startViewChoiceIsLocalAndCannotSelectAnotherServer() {
+        assertEquals(NavigationPolicy.CANADA_URL + "netgraph/", NavigationPolicy.startViewUrl("last", "netgraph/"));
+        assertEquals(NavigationPolicy.CANADA_URL, NavigationPolicy.startViewUrl("", "netgraph/"));
+        assertEquals(NavigationPolicy.CANADA_URL + "labs/", NavigationPolicy.startViewUrl("labs/", "netgraph/"));
+        assertEquals(NavigationPolicy.CANADA_URL + "labs/", NavigationPolicy.startViewUrl(null, "labs/"));
+        assertEquals(NavigationPolicy.CANADA_URL + "labs/", NavigationPolicy.startViewUrl("https://example.invalid/", "labs/"));
+        assertEquals(NavigationPolicy.CANADA_URL, NavigationPolicy.startViewUrl("corrupt", "https://example.invalid/"));
+    }
     @Test public void restoresOnlyCanadaViews() {
         assertEquals("https://carto.canadaverse.org/labs/", NavigationPolicy.lastViewUrl("labs/"));
         assertEquals("https://carto.canadaverse.org/", NavigationPolicy.lastViewUrl("https://example.invalid"));

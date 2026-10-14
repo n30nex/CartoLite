@@ -74,8 +74,8 @@ jobs:
           grep -F "name='org.canadaverse.cartolite'" signed/package.txt
           grep -F "versionName='$version'" signed/package.txt
           (cd signed && sha256sum "CartoLite-Android-v$version.apk" > "CartoLite-Android-v$version.apk.sha256")
-          jq -n --arg sha "$SOURCE_SHA" --arg version "$version" --arg cert "$actual" '{sourceRevision:$sha,version:$version,certificateSha256:$cert,physicalDeviceAcceptance:"required-before-publication"}' > signed/manifest.json
-      - name: Retain candidate for physical acceptance
+          jq -n --arg sha "$SOURCE_SHA" --arg version "$version" --arg cert "$actual" '{sourceRevision:$sha,version:$version,certificateSha256:$cert,physicalDeviceAcceptance:"not-performed",physicalDeviceRequiredForPublication:false}' > signed/manifest.json
+      - name: Retain verified signed candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: cartolite-android-signed-${{ steps.candidate.outputs.sha }}

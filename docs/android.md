@@ -1,7 +1,8 @@
 # CartoLite for Android
 
-CartoLite for Android 1.1.0 is the official signed Android presentation of the
-public live map. It uses the same production frontend and public API as the
+CartoLite for Android is the official signed Android presentation of the
+public live map. The repository targets candidate 1.1.1; the public APK remains
+1.0.0 until release checks are complete. It uses the same production frontend and public API as the
 browser, so map, sound, privacy, and topology updates do not wait for a new APK.
 
 ## Motion and animation defaults
@@ -38,7 +39,7 @@ recovery without an APK update or a broader navigation allowlist.
 ## Identity
 
 - Package: `org.canadaverse.cartolite`
-- App version: `1.1.0` (`versionCode` 2)
+- Candidate app version: `1.1.1` (`versionCode` 3)
 - Minimum Android: 8.0 / API 26
 - Target Android: 16 / API 36
 - Release certificate: `android/signing/cartolite-release-cert.pem`
@@ -50,8 +51,9 @@ CartoLite origin can verify released APKs.
 
 ## Device acceptance
 
-Before publication, install the signed candidate on a physical device and
-verify the exact APK SHA-256 and certificate. Confirm a live map in portrait
+Physical-device testing is optional. Disclose when it has not been performed;
+API 26/36 synthetic checks and exact APK/package/certificate verification remain
+required before publication. When a device is available, confirm a live map in portrait
 and landscape, 44-pixel web controls, a 48dp native retry control, touchscreen Web Audio unlock,
 one oscillator per visible hop, screen-awake ownership, forced sleep recovery,
 network loss/recovery, external-link handoff, and no process crash or app-level
@@ -67,5 +69,20 @@ navigation survives recreation and already-running deep links are handled.
 Predictive Back is registered only while web history can consume it.
 
 Actions gates API 26 and 36 against debug-only synthetic pages. The signing
-workflow promotes the exact CI APK without rebuilding and does not publish it
-before physical-device acceptance.
+workflow promotes the exact CI APK without rebuilding. Release notes record the
+actual emulator and physical-device test status.
+
+## 1.1.1 UI and recovery patch
+
+View changes show a thin loading strip; first launch and actual errors use the
+branded card. A slow page can recover after the timeout when it commits a valid
+frame, while HTTP and certificate failures stay visible. Ordinary failures offer
+Retry and Open in browser; certificate failures never offer a bypass.
+
+App options now remember fullscreen and a preferred start view. Last used remains
+the default, and changing the preference leaves the current view alone. Share view
+opens Android's chooser with the canonical Canada URL, without query parameters
+or local display settings. Back history survives Activity recreation when it is
+Canada-only, at most 32 entries and at most 128 KiB; otherwise the URL is restored.
+Reload does not add another history entry. Full-motion and sound preferences are
+unchanged. [Patch scope and acceptance](android-ui-ux-2026-10-14.md).

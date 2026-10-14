@@ -326,7 +326,15 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: cd android && bash gradlew --no-daemon connectedDebugAndroidTest
+          script: >-
+            cd android &&
+            bash gradlew --no-daemon connectedDebugAndroidTest &&
+            mkdir -p app/build/outputs/android-ui &&
+            find app/build -path '*/screenshots/*.png' -exec cp {} app/build/outputs/android-ui/ \; &&
+            test -s app/build/outputs/android-ui/app-options.png &&
+            test -s app/build/outputs/android-ui/chosen-view.png &&
+            test -s app/build/outputs/android-ui/load-error.png &&
+            test -s app/build/outputs/android-ui/view-loading.png
       - name: Upload native evidence and unsigned candidate
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -336,6 +344,7 @@ jobs:
             android/app/build/outputs/apk/release/
             android/app/build/reports/
             android/app/build/outputs/androidTest-results/
+            android/app/build/outputs/android-ui/
 
   required:
     name: CI / Required
