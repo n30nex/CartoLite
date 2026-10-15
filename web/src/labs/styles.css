@@ -92,14 +92,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .labs-status[data-state="demo"] .status-dot { background: #a78bfa; box-shadow: 0 0 9px #a78bfa; }
 
 .labs-controls {
-  position: absolute;
-  z-index: 5;
-  top: max(12px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
-  display: flex;
   min-height: 48px;
   align-items: stretch;
-  border-radius: 14px;
   transition: opacity 220ms ease, transform 220ms ease;
 }
 .labs-controls button, .labs-controls select {
@@ -159,14 +153,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 @keyframes status-pulse { 50% { opacity: 0.35; } }
 
 @media (max-width: 1020px) {
-  .labs-controls { top: auto; right: max(8px, env(safe-area-inset-right)); bottom: max(58px, calc(env(safe-area-inset-bottom) + 58px)); left: max(8px, env(safe-area-inset-left)); display: grid; grid-template-columns: repeat(4, minmax(44px, 1fr)); max-height: min(50vh, 330px); overflow-y: auto; }
-  .experiment-picker { grid-column: 1 / -1; }
   .experiment-picker select { width: 100%; }
-  .compact-field, .volume-field { grid-column: span 2; }
-  .labs-controls button, .labs-controls label { min-height: 48px; border-bottom: 1px solid rgba(139, 205, 214, 0.13); }
-  .labs-controls #info-button { grid-column: span 2; }
   .live-caption { right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); left: 8px; max-width: none; text-align: center; }
-  .loom-legend { top: max(68px, calc(env(safe-area-inset-top) + 68px)); right: 8px; bottom: auto; left: 8px; max-width: none; justify-content: center; }
+  .loom-legend { top:auto; right:8px; left:8px; max-width:none; justify-content:center; }
 }
 
 @media (max-width: 520px) {
@@ -174,18 +163,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
   .labs-back { min-width: 44px; justify-content: center; }
   .labs-back > span:last-child, .labs-title { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .labs-status { margin-left: auto; }
-  .labs-controls { grid-template-columns: repeat(3, minmax(44px, 1fr)); }
-  .compact-field, .volume-field { grid-column: span 3; }
-  .labs-controls #info-button { grid-column: span 2; }
   .labs-controls button { padding-inline: 7px; font-size: 11px; }
   .village-truth { top: max(64px, calc(env(safe-area-inset-top) + 64px)); left: 8px; max-width: calc(100vw - 16px); font-size: 9px; }
-}
-
-@media (orientation: landscape) and (max-height: 520px) {
-  .labs-controls { top: 64px; right: 8px; bottom: auto; left: auto; width: min(520px, calc(100vw - 16px)); grid-template-columns: repeat(6, minmax(44px, 1fr)); max-height: calc(100vh - 118px); }
-  .experiment-picker { grid-column: span 3; }
-  .compact-field, .volume-field { grid-column: span 3; }
-  .labs-controls #info-button { grid-column: span 2; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -213,6 +192,18 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .labs-sound-body { position:absolute; bottom:calc(100% + 10px); right:0; display:grid; gap:12px; width:min(320px,calc(100vw - 24px)); max-height:calc(100dvh - 180px); overflow:auto; border-radius:14px; padding:14px; background:var(--panel-solid); }
 .labs-sound-body .compact-field, .labs-sound-body .volume-field { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; }
 .labs-sound-body .volume-field input { width:100%; }
-.labs-app .live-caption { bottom:max(86px,calc(env(safe-area-inset-bottom) + 78px)); }
-.labs-app .loom-legend { bottom:max(86px,calc(env(safe-area-inset-bottom) + 78px)); }
-@media(max-width:700px) { .labs-app .labs-controls { width:calc(100vw - 16px); padding:4px; gap:3px; } .labs-app .labs-controls button { padding:0 7px; font-size:11px; } .labs-app .live-caption,.labs-app .loom-legend { bottom:156px; } }
+.labs-app .live-caption,.labs-app .loom-legend { top:auto; bottom:calc(var(--dock-height,66px) + max(12px,env(safe-area-inset-bottom)) + 12px); }
+@media(max-width:1020px) { .labs-app .loom-legend { top:max(68px,calc(env(safe-area-inset-top) + 68px)); bottom:auto; } }
+:root[data-mobile-dock="true"] .labs-topbar { width:max-content; right:auto; max-width:calc(100vw - 80px); }
+:root[data-mobile-dock="true"] .labs-topbar > a { display:none; }
+:root[data-mobile-dock="true"] .labs-title { position:static; width:auto; height:auto; margin:0; overflow:visible; clip:auto; }
+html:root[data-mobile-dock="true"] .labs-controls { grid-template-columns:repeat(5,minmax(0,1fr)); }
+:root[data-mobile-dock="true"] .experiment-picker { grid-column:span 2; padding:0 3px; min-width:0; }
+:root[data-mobile-dock="true"] .experiment-picker > span { display:none; }
+:root[data-mobile-dock="true"] .experiment-picker select { min-width:0; width:100%; padding:0 4px; font-size:12px; }
+:root[data-mobile-dock="true"] .labs-controls > button { padding:4px; font-size:13px; }
+:root[data-mobile-dock="true"][data-text-size="large"] .labs-controls > button { font-size:15px; }
+:root[data-mobile-dock="true"] .labs-controls #view-button { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:46px; padding:4px 2px; font-size:13px; }
+:root[data-mobile-dock="true"] .labs-controls .view-actions > button { min-height:44px; text-align:left; padding:8px 12px; font-size:14px; }
+:root[data-mobile-dock="true"] .labs-sound-body { position:static; width:auto; max-height:none; padding:8px; box-shadow:none; border:0; }
+:root[data-mobile-dock="true"] .labs-controls #view-panel select { font-size:16px; }

@@ -1,3 +1,4 @@
+import { openDisplay, viewTool } from './dockControls';
 import { expect, test, type Page } from '@playwright/test';
 import { visualFixture, visualPacket } from './visualFixtures';
 
@@ -53,7 +54,7 @@ test('Android preserves Reduced and System choices across views and can switch t
   await page.goto('/netgraph/');
   const stage = page.locator('#netgraph-stage');
   await expect(stage).toHaveAttribute('data-motion-mode', 'static');
-  await page.getByRole('button', { name: 'Display settings', exact: true }).click();
+  await openDisplay(page);
   const motion = page.getByLabel('Motion preference');
   await expect(motion).toHaveValue('reduced');
   await expect(page.getByLabel('Effects intensity')).toHaveValue('calm');
@@ -64,13 +65,13 @@ test('Android preserves Reduced and System choices across views and can switch t
   await expect(stage).toHaveAttribute('data-motion-mode', 'static');
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-motion', 'reduced');
-  await page.getByRole('button', { name: 'Display settings', exact: true }).click();
+  await openDisplay(page);
   await expect(page.getByLabel('Motion preference')).toHaveValue('system');
   await page.getByLabel('Motion preference').selectOption('full');
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-motion-mode', 'animated');
   await page.keyboard.press('Escape');
   // A map created under System/Reduced must animate after switching to Full.
-  await page.locator('#reset-button').click();
+  await viewTool(page, '#reset-button');
   await expect(page.locator('#map')).toHaveAttribute('data-camera-moving', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-camera-moving', 'false');
   await page.reload();
@@ -85,7 +86,7 @@ test('the ordinary browser still follows system motion unless Full is selected',
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/netgraph/');
   await expect(page.locator('#netgraph-stage')).toHaveAttribute('data-motion-mode', 'static');
-  await page.getByRole('button', { name: 'Display settings', exact: true }).click();
+  await openDisplay(page);
   await expect(page.getByLabel('Motion preference')).toHaveValue('system');
   await page.getByLabel('Motion preference').selectOption('full');
   await expect(page.locator('#netgraph-stage')).toHaveAttribute('data-motion-mode', 'animated');

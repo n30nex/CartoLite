@@ -1,3 +1,7 @@
+import { required } from '../dom';
+import { requestScreenAwake as requestWakeLock, releaseScreenAwake as releaseWakeLock } from '../screenAwake';
+import { mountMobileDock } from '../mobileDock';
+import { trackPanelHistory } from '../cinematicChrome';
 import { initializeDisplay, DISPLAY_EVENT, displayPreferences, prefersReducedMotion } from '../displayPreferences';
 import { mountDisplayControls } from '../displayControls';
 import { mountSoundPreview } from '../soundPreview';
@@ -63,13 +67,12 @@ let exhibition = false;
 let exhibitionTimer: number | undefined;
 let burstTimer: number | undefined;
 let destroyed = false;
-let wakeLock: WakeLockSentinel | undefined;
 let latestSnapshot: Readonly<StateV2> | undefined;
 
 for (const definition of EXPERIMENTS) {
   const option = document.createElement('option');
   option.value = definition.id;
-  option.textContent = `${definition.title} · ${definition.status}`;
+  option.textContent = definition.title;
   picker.append(option);
 }
 picker.value = currentDefinition.id;
@@ -82,13 +85,17 @@ for(const label of labControls.querySelectorAll<HTMLElement>('.compact-field,.vo
 labControls.append(soundOptions);
 document.addEventListener('pointerdown',event=>{if(event.target instanceof Node&&!soundOptions.contains(event.target))soundOptions.open=false;});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&soundOptions.open){soundOptions.open=false;soundOptions.querySelector<HTMLElement>('summary')!.focus();}});
-const displayDialog = document.createElement('dialog'); displayDialog.className='labs-display glass'; displayDialog.setAttribute('aria-label','Display settings');
+const displayDialog = document.createElement('dialog'); displayDialog.id='labs-display'; displayDialog.className='labs-display glass'; displayDialog.setAttribute('aria-label','Display settings');
 displayDialog.innerHTML='<header><strong>Display</strong><button type="button" aria-label="Close display settings">×</button></header>';
-const displayButton=document.createElement('button');displayButton.type='button';displayButton.textContent='Display';displayButton.setAttribute('aria-haspopup','dialog');
+const displayButton=document.createElement('button');displayButton.id='labs-display-button';displayButton.type='button';displayButton.textContent='Display';displayButton.setAttribute('aria-haspopup','dialog');
 document.querySelector('.labs-controls')!.append(displayButton);app.append(displayDialog);
 mountDisplayControls(displayDialog,true);
 displayButton.addEventListener('click',()=>displayDialog.showModal());
 displayDialog.querySelector('button')!.addEventListener('click',()=>{displayDialog.close();displayButton.focus();});
+const navigation = document.createElement('nav'); navigation.className='dock-views'; navigation.setAttribute('aria-label','Views');
+navigation.innerHTML='<a class="control-button" href="/" aria-label="Open CartoLite map">Map</a><a class="control-button" href="/netgraph/" aria-label="Open CartoLite Netgraph">Netgraph</a><a class="control-button" href="/labs/" aria-current="page" aria-label="Open CartoLite Labs">Labs</a>';
+mountMobileDock(labControls, navigation, 'Labs');
+trackPanelHistory(labControls, ['labs-display', 'info-dialog', 'view-panel']);
 window.addEventListener(DISPLAY_EVENT,()=>{resizeActiveExperiment();});
 void start();
 
@@ -331,7 +338,7 @@ function updateExperimentInformation(definition: ExperimentDefinition): void {
 function updateExperimentURL(experiment: string): void {
   const next = new URL(location.href);
   next.searchParams.set('experiment', experiment);
-  history.replaceState(null, '', `${next.pathname}${next.search}${next.hash}`);
+  history.replaceState(history.state, '', `${next.pathname}${next.search}${next.hash}`);
 }
 
 function resizeActiveExperiment(): void {
@@ -416,29 +423,6 @@ async function liveFeedResume(feed: LiveFeed | undefined): Promise<void> {
   }
 }
 
-interface WakeLockSentinel extends EventTarget {
-  readonly released: boolean;
-  release(): Promise<void>;
-}
-
-async function requestWakeLock(): Promise<void> {
-  if (/CartoLiteAndroid\//.test(navigator.userAgent)) { app.dataset.screenAwake = 'native'; return; }
-  if (document.hidden || wakeLock && !wakeLock.released || !matchMedia('(pointer: coarse)').matches) return;
-  const api = (navigator as Navigator & { wakeLock?: { request(type: 'screen'): Promise<WakeLockSentinel> } }).wakeLock;
-  if (!api) return;
-  try {
-    wakeLock = await api.request('screen');
-  } catch {
-    wakeLock = undefined;
-  }
-}
-
-function releaseWakeLock(): void {
-  const lock = wakeLock;
-  wakeLock = undefined;
-  if (lock && !lock.released) void lock.release().catch(() => undefined);
-}
-
 function showFatal(error: unknown): void {
   status.dataset.state = 'offline';
   statusText.textContent = 'Unavailable';
@@ -446,10 +430,4 @@ function showFatal(error: unknown): void {
   fatal.hidden = false;
   app.dataset.loading = 'false';
   picker.disabled = false;
-}
-
-function required<T extends HTMLElement>(id: string): T {
-  const element = document.getElementById(id);
-  if (!element) throw new Error(`Missing Labs control: ${id}`);
-  return element as T;
 }

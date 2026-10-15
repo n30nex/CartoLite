@@ -1,3 +1,4 @@
+import { viewTool } from './dockControls';
 import { expect, test } from '@playwright/test';
 
 test('Labs supports direct links, bounded experiment switching, and synthetic demo traffic', async ({ page }) => {
@@ -43,7 +44,7 @@ test('Labs supports direct links, bounded experiment switching, and synthetic de
   await expect(page.locator('#labs-stage')).toHaveAttribute('data-settlement-columns', /[2-9][0-9]*/);
   await expect(page.locator('#labs-stage')).toHaveAttribute('data-settlement-rows', /[2-9][0-9]*/);
 
-  await page.locator('#info-button').click();
+  await viewTool(page, '#info-button');
   await expect(page.locator('#info-dialog')).toContainText('same sanitized live state and event stream');
   await expect(page.locator('#info-dialog')).toContainText('never receives message contents, keys, raw paths, or MQTT credentials');
   await page.locator('#info-close').click();
@@ -74,6 +75,6 @@ test('Labs controls stay usable on small screens and respect reduced motion', as
   await page.locator('#pause-button').click();
   await expect(page.locator('#pause-button')).toHaveText('Resume');
   await expect(page.locator('#pause-button')).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('#reset-button').click();
+  await viewTool(page, '#reset-button');
   await expect(page.locator('#live-caption')).toContainText('Live traffic continues');
 });
