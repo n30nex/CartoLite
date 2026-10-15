@@ -56,14 +56,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
   pointer-events: none;
 }
 
-.glass {
-  border: 1px solid rgba(151, 220, 224, 0.16);
-  background: linear-gradient(145deg, rgba(8, 20, 26, 0.9), rgba(2, 9, 14, 0.8));
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.34), inset 0 1px rgba(219, 255, 255, 0.04);
-  -webkit-backdrop-filter: blur(14px) saturate(1.18);
-  backdrop-filter: blur(14px) saturate(1.18);
-}
-
 .labs-topbar {
   position: absolute;
   z-index: 5;
@@ -139,9 +131,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .info-dialog::backdrop { background: rgba(0, 6, 10, 0.68); backdrop-filter: blur(4px); }
 .info-dialog header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .info-dialog h1 { margin: 4px 0 12px; font-size: 24px; }
-.info-dialog p { color: #b9cbd2; line-height: 1.55; }
+.info-dialog p { color: var(--muted); line-height: 1.55; }
 .info-dialog button { width: 44px; min-width: 44px; border: 0; border-radius: 10px; color: #cce1e7; background: rgba(255, 255, 255, 0.04); font-size: 24px; }
-.experiment-status { display: inline-flex; padding: 4px 7px; border-radius: 999px; color: #75e8d6; background: rgba(77, 231, 196, 0.1); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.experiment-status { display: inline-flex; padding: 4px 7px; border-radius: 999px; color: var(--focus-ring); background: var(--selected); font-size: 10px; font-weight: 800; text-transform: uppercase; }
 .truth-note { padding-top: 12px; border-top: 1px solid rgba(151, 220, 224, 0.12); font-size: 12px; }
 .labs-fatal { position: absolute; z-index: 7; top: 50%; left: 50%; max-width: min(520px, calc(100vw - 30px)); margin: 0; padding: 16px; border-radius: 14px; color: #ffd7dd; transform: translate(-50%, -50%); }
 
@@ -178,7 +170,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .labs-display header { display:flex; justify-content:space-between; align-items:center; }
 .labs-display header button { min-width:44px; min-height:44px; background:transparent; color:inherit; border:0; font-size:24px; }
 .labs-display::backdrop { background:#03101888; }
-:root[data-theme="light"] .labs-app .glass { color:var(--ink); background:var(--panel-solid); border-color:var(--panel-border); }
 :root[data-theme="light"] .labs-app :is(button,select,input,a,label,.labs-title,.labs-status) { color:var(--ink); }
 :root[data-theme="light"] .labs-app :is(button,select) { background:var(--field-bg); border-color:var(--panel-border); }
 :root[data-text-size="large"] .labs-app :is(button,select,label,.live-caption) { font-size:15px; }
