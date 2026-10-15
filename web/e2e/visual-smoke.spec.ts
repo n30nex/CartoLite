@@ -1,4 +1,4 @@
-import { viewTool } from './dockControls';
+import { viewTool, openViewMenu } from './dockControls';
 import { openMapOptions } from './mapControls';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { DESTINATION_BLOOM_MS, routeDuration } from '../src/packetAnimator';
@@ -38,8 +38,10 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   const response = await stateResponse;
   const state = await response.json() as Record<string, unknown>;
 
+  await openViewMenu(page);
   await expect(page.locator('.labs-link')).toBeVisible();
   await expect(page.locator('.labs-link')).toHaveAttribute('href', '/labs/');
+  if (mobile) await page.keyboard.press('Escape');
 
   await expect(page.locator('#map .maplibregl-canvas')).toBeVisible();
   await expect(page.locator('.map-grade')).toBeVisible();
