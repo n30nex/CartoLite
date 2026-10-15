@@ -1,3 +1,4 @@
+import { viewTool } from './dockControls';
 import { expect, test } from '@playwright/test';
 
 test('keeps the Labs tablet portrait shell clear and touch sized', async ({ page }) => {
@@ -26,7 +27,7 @@ test('keeps the Labs tablet portrait shell clear and touch sized', async ({ page
     return bounds.left < -0.5 || bounds.right > innerWidth + 0.5 || bounds.top < -0.5 || bounds.bottom > innerHeight + 0.5;
   }));
   expect(overflow).toBe(false);
-  await page.locator('#labs-sound-options summary').click();
+  await viewTool(page, '#labs-sound-options summary');
   await expect(page.getByLabel('Sound voice')).toBeVisible();
   const soundBounds = await page.locator('.labs-sound-body').boundingBox();
   expect(soundBounds!.x).toBeGreaterThanOrEqual(0);

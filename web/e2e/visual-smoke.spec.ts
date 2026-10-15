@@ -1,3 +1,4 @@
+import { viewTool, openViewMenu } from './dockControls';
 import { openMapOptions } from './mapControls';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { DESTINATION_BLOOM_MS, routeDuration } from '../src/packetAnimator';
@@ -37,8 +38,10 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   const response = await stateResponse;
   const state = await response.json() as Record<string, unknown>;
 
+  await openViewMenu(page);
   await expect(page.locator('.labs-link')).toBeVisible();
   await expect(page.locator('.labs-link')).toHaveAttribute('href', '/labs/');
+  if (mobile) await page.keyboard.press('Escape');
 
   await expect(page.locator('#map .maplibregl-canvas')).toBeVisible();
   await expect(page.locator('.map-grade')).toBeVisible();
@@ -308,7 +311,7 @@ test('keeps the map primary with reduced motion and releases live follow on drag
   await openMapOptions(page);
   await page.locator('#routes-button').click();
   await expect(page.locator('#routes-button')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#reset-button')).toBeVisible();
+  await expect(page.locator(mobile ? '#view-button' : '#reset-button')).toBeVisible();
   await page.locator('#follow-button').click();
   await expect(page.locator('#follow-button')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#follow-button')).toHaveClass(/selected/);
@@ -328,7 +331,7 @@ test('keeps the map primary with reduced motion and releases live follow on drag
     await page.locator('#follow-button').click();
     await expect(page.locator('#follow-button')).toHaveAttribute('aria-pressed', 'true');
   }
-  await page.locator('#reset-button').click();
+  await viewTool(page, '#reset-button');
   await expect(page.locator('#follow-button')).toHaveAttribute('aria-pressed', 'false');
   await expect.poll(() => canvasHasPixels(page.locator('#packet-canvas')), {
     message: 'reduced motion should render a restrained static traffic cue',
