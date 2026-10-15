@@ -29,7 +29,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .loom-legend strong { color: #d9ecec; font-size: 9px; letter-spacing: 0.055em; text-transform: uppercase; }
 .loom-kind-item { display: inline-flex; align-items: center; gap: 4px; }
 .loom-kind-item i { width: 13px; height: 3px; border-radius: 999px; }
-.loom-legend small { flex-basis: 100%; color: rgba(164, 195, 197, 0.58); font-size: 8px; }
+.loom-legend small { flex-basis: 100%; color: var(--muted); font-size: 10px; }
 
 .village-truth {
   position: absolute;
