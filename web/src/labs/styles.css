@@ -181,7 +181,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 html:root[data-mobile-dock="true"] .labs-controls { grid-template-columns:repeat(5,minmax(0,1fr)); }
 :root[data-mobile-dock="true"] .experiment-picker { grid-column:span 2; padding:0 3px; min-width:0; }
 :root[data-mobile-dock="true"] .experiment-picker > span { display:none; }
-:root[data-mobile-dock="true"] .experiment-picker select { min-width:0; width:100%; padding:0 4px; font-size:12px; }
+:root[data-mobile-dock="true"] .experiment-picker select { min-width:0; width:100%; padding:0 4px; font-size:16px; }
 :root[data-mobile-dock="true"] .labs-controls > button { padding:4px; font-size:13px; }
 :root[data-mobile-dock="true"][data-text-size="large"] .labs-controls > button { font-size:15px; }
 :root[data-mobile-dock="true"] .labs-controls #view-button { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:46px; padding:4px 2px; font-size:13px; }
