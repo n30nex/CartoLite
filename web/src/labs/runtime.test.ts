@@ -5,6 +5,7 @@ import {
   bearingDegrees,
   captionFor,
   haversineKm,
+  labPixelRatio,
   normalizeLabPacket,
   projectCanada,
   spatiallySpacedNodes,
@@ -14,6 +15,14 @@ import {
 const toronto = { id: 'yyz', label: 'Toronto', lat: 43.6532, lng: -79.3832 };
 const montreal = { id: 'yul', label: 'Montréal', lat: 45.5019, lng: -73.5674 };
 const ottawa = { id: 'yow', label: 'Ottawa', lat: 45.4215, lng: -75.6972 };
+
+it('restores explicit High resolution after automatic economy without exceeding phone and display caps', () => {
+  expect(labPixelRatio('auto', true, 3, true)).toBe(1);
+  expect(labPixelRatio('high', true, 3, true)).toBe(1.5);
+  expect(labPixelRatio('high', true, 3, false)).toBe(2);
+  expect(labPixelRatio('high', true, 1, false)).toBe(1);
+  expect(labPixelRatio('economy', false, 3, false)).toBe(1);
+});
 
 describe('Labs packet normalization', () => {
   it('preserves ordered public hops and derives geographic measurements', () => {
