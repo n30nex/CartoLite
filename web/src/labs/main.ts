@@ -1,7 +1,7 @@
 import { required } from '../dom';
 import { requestScreenAwake as requestWakeLock, releaseScreenAwake as releaseWakeLock } from '../screenAwake';
 import { mountMobileDock } from '../mobileDock';
-import { addViewGuide } from '../viewHelp';
+import { addViewGuide, closeHelpBackdrop } from '../viewHelp';
 import { trackPanelHistory } from '../cinematicChrome';
 import { initializeDisplay, DISPLAY_EVENT, displayPreferences, prefersReducedMotion } from '../displayPreferences';
 import { mountDisplayControls } from '../displayControls';
@@ -55,7 +55,7 @@ infoButton.addEventListener('click', () => {
   infoDialog.scrollTop = 0;
 });
 infoClose.addEventListener('click', () => infoDialog.close());
-infoDialog.addEventListener('click', event => { if (event.target === infoDialog) infoDialog.close(); });
+infoDialog.addEventListener('click', event => closeHelpBackdrop(infoDialog, event));
 const burstIndicator = required<HTMLElement>('burst-indicator');
 const liveCaption = required<HTMLElement>('live-caption');
 const fatal = required<HTMLElement>('labs-fatal');
