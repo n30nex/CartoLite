@@ -68,6 +68,7 @@ let exhibitionTimer: number | undefined;
 let burstTimer: number | undefined;
 let destroyed = false;
 let latestSnapshot: Readonly<StateV2> | undefined;
+let captionUntil = 0;
 
 for (const definition of EXPERIMENTS) {
   const option = document.createElement('option');
@@ -132,7 +133,7 @@ async function start(): Promise<void> {
       if (!packetView || replayed) return;
       const packet = normalizeLabPacket(packetView);
       metrics.record(packet);
-      liveCaption.textContent = captionFor(packet);
+      if (!effectivePause() && performance.now() >= captionUntil) liveCaption.textContent = captionFor(packet);
       if (!effectivePause()) {
         activeExperiment?.handlePacket(packet);
         routeSonifier.play(packetView, activeExperiment?.soundCharacter);
@@ -164,7 +165,7 @@ async function start(): Promise<void> {
           metrics.reset();
           activeExperiment?.reset();
           liveStore.replace(snapshot);
-          liveCaption.textContent = 'Live stream restored.';
+          showFeedback(userPaused ? 'Live stream restored. Motion is still paused.' : 'Live stream restored.');
           return snapshot;
         },
         onError() {
@@ -193,12 +194,13 @@ async function start(): Promise<void> {
       pauseButton.textContent = userPaused ? 'Resume' : 'Pause';
       pauseButton.setAttribute('aria-pressed', String(userPaused));
       applyPauseState(routeSonifier);
+      showFeedback(userPaused ? 'Paused. Live traffic continues; motion and sound are paused.' : 'Resumed. New live packets animate as they arrive.');
     });
     resetButton.addEventListener('click', () => {
       metrics.reset();
       activeExperiment?.reset();
       activeExperiment?.applySnapshot(liveStore.snapshot);
-      liveCaption.textContent = 'This experiment was reset. Live traffic continues.';
+      showFeedback(userPaused ? 'Scene reset. Paused. Live traffic continues.' : 'Scene reset. Live traffic continues.');
       updateBurstState();
     });
     exhibitButton.addEventListener('click', () => setExhibition(!exhibition));
@@ -373,6 +375,12 @@ function startFrames(): void {
 function stopFrames(): void {
   if (frameHandle !== undefined) cancelAnimationFrame(frameHandle);
   frameHandle = undefined;
+}
+
+function showFeedback(message: string): void {
+  captionUntil = performance.now() + 4_000;
+  liveCaption.textContent = message;
+  required('labs-announcement').textContent = message;
 }
 
 function effectivePause(): boolean {

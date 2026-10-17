@@ -188,3 +188,5 @@ html:root[data-mobile-dock="true"] .labs-controls { grid-template-columns:repeat
 :root[data-mobile-dock="true"] .labs-controls .view-actions > button { min-height:44px; text-align:left; padding:8px 12px; font-size:14px; }
 :root[data-mobile-dock="true"] .labs-sound-body { position:static; width:auto; max-height:none; padding:8px; box-shadow:none; border:0; }
 :root[data-mobile-dock="true"] .labs-controls #view-panel select { font-size:16px; }
+
+.labs-announcement { position:absolute; width:1px; height:1px; margin:-1px; padding:0; border:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
