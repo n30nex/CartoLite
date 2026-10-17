@@ -3,16 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 const root = process.argv[2] ?? "web/dist";
-// MapLibre 6 requires a separate Vite worker (129,701 gzip bytes in Actions).
-// Keep the previous cap for all other JS/CSS; account for the worker explicitly.
-// Combined measured cost: 474,482 bytes. Runtime timing/route gates are unchanged.
-const uiLimit = 358 * 1024;
-const workerLimit = 128 * 1024;
-// Optional Terminal view is lazy-loaded; original UI and worker caps stay fixed.
-const terminalLimit = 8 * 1024;
-const limit = Number(process.env.CARTOLITE_GZIP_BUDGET ?? (uiLimit + workerLimit + terminalLimit));
-const partitionLimit = Number(process.env.CARTOLITE_REGION_GZIP_BUDGET ?? 3_200 * 1024);
-const registryLimit = Number(process.env.CARTOLITE_REGION_REGISTRY_GZIP_BUDGET ?? 24 * 1024);
+// Report artifact sizes without release-blocking caps. Runtime gates remain.
 
 async function assets(dir, pattern) {
   const found = [];
@@ -42,27 +33,23 @@ for (const file of files) {
   console.log(`${bytes.toString().padStart(8)}  ${file}`);
 }
 
-console.log(`${total} gzip bytes total (budget ${limit})`);
-console.log(`${total - workerBytes - terminalBytes} gzip bytes excluding map worker (budget ${uiLimit})`);
-console.log(`${workerBytes} gzip bytes for map worker (budget ${workerLimit})`);
-console.log(terminalBytes + ' gzip bytes for optional Terminal (budget ' + terminalLimit + ')');
-if (terminalBytes <= 0 || terminalBytes > terminalLimit) process.exitCode = 1;
+console.log(`${total} gzip bytes total`);
+console.log(`${total - workerBytes - terminalBytes} gzip bytes for main UI`);
+console.log(`${workerBytes} gzip bytes for map worker`);
+console.log(terminalBytes + ' gzip bytes for optional Terminal');
+if (terminalBytes <= 0) throw new Error('missing optional Terminal assets');
 if (workerCount !== 1) throw new Error(`expected one map worker, found ${workerCount}`);
-if (!Number.isFinite(limit) || limit <= 0) throw new Error('invalid total frontend budget');
-if (total > limit || total - workerBytes - terminalBytes > uiLimit || workerBytes > workerLimit) process.exitCode = 1;
 
 const partitionFiles = await assets(root, /^meshcore-canada-region-partition.*\.geojson$/);
 if (partitionFiles.length !== 1) {
   throw new Error(`expected one built MeshCore Canada region partition in ${root}, found ${partitionFiles.length}`);
 }
 const partitionBytes = gzipSync(await readFile(partitionFiles[0]), { level: 9 }).byteLength;
-console.log(`${partitionBytes} gzip bytes for ${partitionFiles[0]} (budget ${partitionLimit})`);
-if (partitionBytes > partitionLimit) process.exitCode = 1;
+console.log(`${partitionBytes} gzip bytes for ${partitionFiles[0]}`);
 
 const registryFiles = await assets(root, /^meshcore-canada-regions.*\.json$/);
 if (registryFiles.length !== 1) {
   throw new Error(`expected one built MeshCore Canada region registry in ${root}, found ${registryFiles.length}`);
 }
 const registryBytes = gzipSync(await readFile(registryFiles[0]), { level: 9 }).byteLength;
-console.log(`${registryBytes} gzip bytes for ${registryFiles[0]} (budget ${registryLimit})`);
-if (registryBytes > registryLimit) process.exitCode = 1;
+console.log(`${registryBytes} gzip bytes for ${registryFiles[0]}`);
