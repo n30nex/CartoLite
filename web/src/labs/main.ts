@@ -52,6 +52,7 @@ infoButton.setAttribute('aria-controls', 'info-dialog');
 infoButton.addEventListener('click', () => {
   for (const dialog of document.querySelectorAll<HTMLDialogElement>('dialog[open]')) dialog.close();
   infoDialog.showModal();
+  infoDialog.scrollTop = 0;
 });
 infoClose.addEventListener('click', () => infoDialog.close());
 infoDialog.addEventListener('click', event => { if (event.target === infoDialog) infoDialog.close(); });

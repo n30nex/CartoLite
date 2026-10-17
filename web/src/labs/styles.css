@@ -158,7 +158,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 /* Shared display choices apply to the shell; each experiment retains its artistic setting. */
 .labs-display { color:var(--ink); background:var(--panel-solid); border:1px solid var(--panel-border); border-radius:18px; width:min(370px,calc(100vw - 32px)); max-height:calc(100dvh - 40px); padding:16px; overflow:auto; }
 .labs-display header { display:flex; justify-content:space-between; align-items:center; }
-.labs-display header { position:sticky; top:-16px; z-index:2; padding:8px 0; background:var(--panel-solid); }
+.labs-display header { position:sticky; top:0; z-index:2; padding:8px 0; background:var(--panel-solid); }
 .labs-display header button { min-width:44px; min-height:44px; background:transparent; color:inherit; border:0; font-size:24px; }
 .labs-display::backdrop { background:#03101888; }
 :root[data-theme="light"] .labs-app :is(button,select,input,a,label,.labs-title,.labs-status) { color:var(--ink); }

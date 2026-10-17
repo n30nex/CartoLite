@@ -38,12 +38,12 @@ test.describe('UI audit Labs controls', () => {
     await page.addInitScript(() => {
       localStorage.setItem('cartolite:display:v1', JSON.stringify({ basemap: 'streets', preset: 'dashed', detail: 'complete', quality: 'auto' }));
       Object.assign(window, { slowLab: true });
-      const clear = CanvasRenderingContext2D.prototype.clearRect;
-      CanvasRenderingContext2D.prototype.clearRect = function (...args) {
-        if ((window as unknown as { slowLab: boolean }).slowLab) {
+      const fill = CanvasRenderingContext2D.prototype.fillRect;
+      CanvasRenderingContext2D.prototype.fillRect = function (...args) {
+        if ((window as unknown as { slowLab: boolean }).slowLab && args[0] === 0 && args[1] === 0) {
           const until = performance.now() + 18; while (performance.now() < until) { /* Synthetic expensive frame. */ }
         }
-        return clear.apply(this, args);
+        return fill.apply(this, args);
       };
     });
     await page.goto('/labs/?demo=1&experiment=firefly-meadow');
