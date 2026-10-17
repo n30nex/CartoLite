@@ -74,7 +74,7 @@ jobs:
           assert package["version"] == lock["version"] == lock["packages"][""]["version"] == version
 
   frontend:
-    name: Frontend test, build, and budget
+    name: Frontend test and build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -103,8 +103,8 @@ jobs:
           # Measure the same browser-visible configuration as the published image.
           VITE_CARTO_BASEMAP_API_KEY: ${{ secrets.CARTO_BASEMAP_API_KEY }}
         run: npm run build
-      - name: Total frontend and worker budgets
-        run: node scripts/check-frontend-budget.mjs web/dist
+      - name: Report frontend artifact sizes
+        run: node scripts/report-frontend-size.mjs web/dist
 
   container:
     name: Container integration, browser, privacy, and scan
@@ -167,9 +167,9 @@ jobs:
             BUILD_TIME=${{ steps.meta.outputs.built_at }}
           secrets: |
             carto_basemap_api_key=${{ secrets.CARTO_BASEMAP_API_KEY }}
-      - name: Enforce image budget and runtime identity
+      - name: Report image size and verify runtime identity
         run: |
-          bash scripts/check-image-size.sh cartolite:ci
+          bash scripts/report-image-size.sh cartolite:ci
           test "$(docker image inspect cartolite:ci --format '{{.Config.User}}')" = "65532:65532"
           test "$(docker image inspect cartolite:ci --format '{{.Architecture}}')" = "amd64"
       - name: Start synthetic broker and CartoLite

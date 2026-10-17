@@ -36,3 +36,10 @@ Do not build, test, run containers, install dependencies, or generate browser ar
 - Preserve firmware identity/settings and unrelated Pi services by default.
 - Run focused checks plus `git diff --check`; use the repository's existing CI/release path rather than creating a parallel one.
 - Release and deployment claims require exact-commit artifacts and observable verification. Mark anything not physically or publicly tested as unverified.
+
+## Build artifact sizes
+
+By owner request (17 October 2026), frontend, worker, geography and container
+artifact sizes are reported without hard release-blocking caps. Keep the runtime
+performance gates, privacy/security checks, lazy-view isolation, resource limits
+and exact tested-image promotion requirements.

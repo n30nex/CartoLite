@@ -31,7 +31,7 @@ See the [audit roadmap](docs/roadmap.md) for current corrective work, UI refinem
 
 The geographic map requires WebGL2; Netgraph uses Canvas2D. MQTT bridge envelopes are limited to 64 KiB before normalization, and RF evidence must contain finite numbers.
 
-This repository intentionally does not build or test on the workstation. The normal release path uses `CI / Required`; an explicitly approved no-Actions exception must follow the fail-closed Pi procedure in [manual release](docs/manual-release.md). The complete gate runs Go tests/vet/race, frontend tests/build/budgets, a Mosquitto-backed integration and bounded-load smoke, desktop/phone portrait/phone landscape Playwright, privacy and vector-only checks, operations transition tests, and a HIGH/CRITICAL Trivy scan.
+This repository intentionally does not build or test on the workstation. The normal release path uses `CI / Required`; an explicitly approved no-Actions exception must follow the fail-closed Pi procedure in [manual release](docs/manual-release.md). The complete gate runs Go tests/vet/race, frontend tests/build/size reports, a Mosquitto-backed integration and bounded-load smoke, desktop/phone portrait/phone landscape Playwright, privacy and vector-only checks, operations transition tests, and a HIGH/CRITICAL Trivy scan.
 
 Green `main` publishes `sha-<full-git-sha>`. A signed or annotated `vX.Y.Z` tag promotes that exact tested digest to `X.Y.Z`, `X.Y`, and `latest`; the release workflow does not rebuild it.
 
