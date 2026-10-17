@@ -201,6 +201,11 @@ jobs:
           bash scripts/integration-smoke.sh http://127.0.0.1:39476 artifacts/integration cartolite-mqtt
       - name: Bounded load smoke
         run: bash scripts/performance-smoke.sh http://127.0.0.1:39476 cartolite-mqtt
+      - name: UI audit baseline and recovery regressions
+        working-directory: web
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: ux-audit-playwright-report
+        run: npm run test:e2e -- ui-audit.spec.ts labs-ui-audit.spec.ts --project=desktop --max-failures=0 --retries=0 --output ux-audit-test-results
       - name: Terminal presentation and isolation
         working-directory: web
         env:
@@ -242,7 +247,7 @@ jobs:
             done
           ) &
           publisher_pid="$!"
-          npm run test:e2e -- --grep-invert '@terrain|@regions|Terminal|unavailable character readback|keeps a 4k-node / 7k-route first view responsive'
+          npm run test:e2e -- --grep-invert 'UI audit|@terrain|@regions|Terminal|unavailable character readback|keeps a 4k-node / 7k-route first view responsive'
       - name: Trivy HIGH/CRITICAL gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -265,6 +270,8 @@ jobs:
             web/scale-playwright-report/
             web/terrain-test-results/
             web/terrain-playwright-report/
+            web/ux-audit-test-results/
+            web/ux-audit-playwright-report/
             web/terminal-test-results/
             web/terminal-playwright-report/
           retention-days: ${{ github.event_name == 'pull_request' && 3 || 30 }}
