@@ -5,6 +5,7 @@ WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY web/ ./
+COPY scripts/write-terminal-page.mjs /src/scripts/write-terminal-page.mjs
 # CARTO issues this key for direct browser tile URLs. The secret mount keeps its
 # value out of source, build logs, and image metadata; it remains client-visible.
 RUN --mount=type=secret,id=carto_basemap_api_key,required=false \
