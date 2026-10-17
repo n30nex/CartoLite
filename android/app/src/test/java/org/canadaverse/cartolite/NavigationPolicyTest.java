@@ -7,6 +7,14 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 public final class NavigationPolicyTest {
+    @Test public void terminalSharesRestoresAndStartsOnlyOnCanada() {
+        assertEquals("terminal/", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "terminal/?node=example"));
+        assertEquals("terminal/", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "terminal"));
+        assertEquals(NavigationPolicy.CANADA_URL + "terminal/", NavigationPolicy.startViewUrl("last", "terminal/"));
+        assertEquals(NavigationPolicy.CANADA_URL + "terminal/", NavigationPolicy.startViewUrl("terminal/", "netgraph/"));
+        assertEquals("", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "terminal-other/"));
+        assertEquals("", NavigationPolicy.viewPath("https://example.invalid/terminal/"));
+    }
     @Test public void startViewChoiceIsLocalAndCannotSelectAnotherServer() {
         assertEquals(NavigationPolicy.CANADA_URL + "netgraph/", NavigationPolicy.startViewUrl("last", "netgraph/"));
         assertEquals(NavigationPolicy.CANADA_URL, NavigationPolicy.startViewUrl("", "netgraph/"));

@@ -348,9 +348,9 @@ public class MainActivity extends Activity {
     }
 
     private void chooseStartView() {
-        String[] values = {"last", "", "netgraph/", "labs/"};
+        String[] values = {"last", "", "netgraph/", "terminal/", "labs/"};
         String[] labels = {getString(R.string.start_last), getString(R.string.start_map),
-                getString(R.string.start_netgraph), getString(R.string.start_labs)};
+                getString(R.string.start_netgraph), getString(R.string.start_terminal), getString(R.string.start_labs)};
         String selected = preferences.getString("start_view", "last");
         int checked = 0;
         for (int i = 0; i < values.length; i++) if (values[i].equals(selected)) checked = i;
@@ -468,7 +468,7 @@ public class MainActivity extends Activity {
         timedOut = false;
         retryOnNetwork = false;
         String path = NavigationPolicy.viewPath(currentUrl);
-        int name = "netgraph/".equals(path) ? R.string.start_netgraph : "labs/".equals(path) ? R.string.start_labs : R.string.start_map;
+        int name = "netgraph/".equals(path) ? R.string.start_netgraph : "terminal/".equals(path) ? R.string.start_terminal : "labs/".equals(path) ? R.string.start_labs : R.string.start_map;
         connectionTitle.setText(getString(R.string.opening_view, getString(name)));
         connectionDetail.setText(R.string.connecting_detail);
         progress.setVisibility(View.VISIBLE);
