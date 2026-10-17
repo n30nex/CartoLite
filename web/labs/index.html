@@ -46,7 +46,9 @@
       </section>
 
       <div id="burst-indicator" class="burst-indicator glass" role="status" hidden>Burst mode</div>
-      <p id="live-caption" class="live-caption glass" aria-live="polite" aria-atomic="true">Waiting for live traffic…</p>
+      <p id="live-caption" class="live-caption glass" aria-live="off" aria-atomic="true">Waiting for live traffic…</p>
+
+      <p id="labs-announcement" class="labs-announcement" role="status" aria-atomic="true"></p>
 
       <dialog id="info-dialog" class="info-dialog glass" aria-labelledby="info-title">
         <header><div><span id="info-status" class="experiment-status">Stable</span><h1 id="info-title">Packet Pond</h1></div><button id="info-close" type="button" aria-label="Close information">×</button></header>
