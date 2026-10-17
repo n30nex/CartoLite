@@ -741,7 +741,7 @@ export class LiveMap {
     source.setData({ type: 'FeatureCollection', features });
   }
 
-  setAppearance(preferences: UiPreferences, force = false): void {
+  setAppearance(preferences: UiPreferences = this.#appearance, force = false): void {
     const reduced = displayReducedMotion();
     if (reduced && !this.#reducedMotion) this.map.stop();
     this.#reducedMotion = reduced;
@@ -760,7 +760,7 @@ export class LiveMap {
           this.map.setPaintProperty(layer.id, property as Parameters<maplibregl.Map['setPaintProperty']>[1], value);
         }
       }
-      const light = preferences.basemap !== 'dark';
+      const light = preferences.basemap !== 'dark' && !document.documentElement.hasAttribute('data-terminal');
       this.#historicalRouteLayer.setLightBackground(light);
       applyOverlayPalette(this.map, this.#originalOverlayColors, light);
       if (this.#terrain3D) this.#updateSky();
@@ -785,7 +785,7 @@ export class LiveMap {
     this.#updateBuildingLayer();
     if (this.map.getLayer(HILLSHADE_LAYER_ID)) {
       this.map.setPaintProperty(HILLSHADE_LAYER_ID, 'hillshade-exaggeration', this.#hillshadeStrength());
-      const light = preferences.basemap !== 'dark';
+      const light = preferences.basemap !== 'dark' && !document.documentElement.hasAttribute('data-terminal');
       this.map.setPaintProperty(HILLSHADE_LAYER_ID, 'hillshade-shadow-color', light ? 'rgba(47, 64, 61, 0.55)' : 'rgba(2, 9, 18, 0.86)');
       this.map.setPaintProperty(HILLSHADE_LAYER_ID, 'hillshade-highlight-color', light ? 'rgba(255, 255, 244, 0.6)' : 'rgba(177, 211, 175, 0.64)');
     }
