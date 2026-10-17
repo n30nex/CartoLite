@@ -273,6 +273,7 @@ export class LiveMap {
     this.container.dataset.regionRenderer = 'maplibre';
     this.container.dataset.regionSourceRevision = '0';
     this.map = new maplibregl.Map({
+      canvasContextAttributes: { preserveDrawingBuffer: location.pathname.startsWith('/terminal') },
       container: this.container,
       style: cartoVectorStyle(undefined, this.#appearance.basemap),
       center: DEFAULT_CENTER,

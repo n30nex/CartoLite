@@ -1,11 +1,11 @@
 {
   "name": "cartolite-web",
-  "version": "0.16.3",
+  "version": "0.17.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node ../scripts/write-terminal-page.mjs",
     "test": "vitest",
     "test:e2e": "playwright test"
   },
