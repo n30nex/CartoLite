@@ -110,7 +110,9 @@ jobs:
     name: Container integration, browser, privacy, and scan
     needs: [backend, frontend]
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # Expanded Terminal/font/recovery coverage runs serially on this runner.
+    # Match Worldwide's job allowance; browser/runtime assertion limits stay fixed.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
