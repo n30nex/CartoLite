@@ -20,6 +20,12 @@ export interface LabViewport {
   pixelRatio: number;
 }
 
+/** A manual High choice overrides the automatic fallback, within the device cap. */
+export function labPixelRatio(quality: 'auto' | 'high' | 'economy', adaptiveEconomy: boolean, deviceRatio: number, coarse: boolean): number {
+  const economy = quality === 'economy' || (quality === 'auto' && adaptiveEconomy);
+  return Math.min(deviceRatio, economy ? 1 : coarse ? 1.5 : 2);
+}
+
 export interface LabHop {
   routeId: string;
   index: number;

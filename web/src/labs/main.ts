@@ -1,6 +1,7 @@
 import { required } from '../dom';
 import { requestScreenAwake as requestWakeLock, releaseScreenAwake as releaseWakeLock } from '../screenAwake';
 import { mountMobileDock } from '../mobileDock';
+import { addViewGuide, closeHelpBackdrop } from '../viewHelp';
 import { trackPanelHistory } from '../cinematicChrome';
 import { initializeDisplay, DISPLAY_EVENT, displayPreferences, prefersReducedMotion } from '../displayPreferences';
 import { mountDisplayControls } from '../displayControls';
@@ -17,6 +18,7 @@ import {
   CanadaProjector,
   RollingMetrics,
   captionFor,
+  labPixelRatio,
   normalizeLabPacket,
   type ExperimentDefinition,
   type LabExperiment,
@@ -44,6 +46,16 @@ const infoStatus = required<HTMLElement>('info-status');
 const infoTitle = required<HTMLElement>('info-title');
 const infoSummary = required<HTMLElement>('info-summary');
 const infoExplanation = required<HTMLElement>('info-explanation');
+addViewGuide(infoDialog, 'Labs');
+infoButton.textContent = 'Help & controls';
+infoButton.setAttribute('aria-controls', 'info-dialog');
+infoButton.addEventListener('click', () => {
+  for (const dialog of document.querySelectorAll<HTMLDialogElement>('dialog[open]')) dialog.close();
+  infoDialog.showModal();
+  infoDialog.scrollTop = 0;
+});
+infoClose.addEventListener('click', () => infoDialog.close());
+infoDialog.addEventListener('click', event => closeHelpBackdrop(infoDialog, event));
 const burstIndicator = required<HTMLElement>('burst-indicator');
 const liveCaption = required<HTMLElement>('live-caption');
 const fatal = required<HTMLElement>('labs-fatal');
@@ -90,14 +102,21 @@ const displayDialog = document.createElement('dialog'); displayDialog.id='labs-d
 displayDialog.innerHTML='<header><strong>Display</strong><button type="button" aria-label="Close display settings">×</button></header>';
 const displayButton=document.createElement('button');displayButton.id='labs-display-button';displayButton.type='button';displayButton.textContent='Display';displayButton.setAttribute('aria-haspopup','dialog');
 document.querySelector('.labs-controls')!.append(displayButton);app.append(displayDialog);
-mountDisplayControls(displayDialog,true);
+mountDisplayControls(displayDialog,'labs');
 displayButton.addEventListener('click',()=>displayDialog.showModal());
 displayDialog.querySelector('button')!.addEventListener('click',()=>{displayDialog.close();displayButton.focus();});
 const navigation = document.createElement('nav'); navigation.className='dock-views'; navigation.setAttribute('aria-label','Views');
 navigation.innerHTML='<a class="control-button" href="/" aria-label="Open CartoLite map">Map</a><a class="control-button" href="/netgraph/" aria-label="Open CartoLite Netgraph">Netgraph</a><a class="control-button" href="/terminal/" aria-label="Open CartoLite Terminal">Terminal</a><a class="control-button" href="/labs/" aria-current="page" aria-label="Open CartoLite Labs">Labs</a>';
 mountMobileDock(labControls, navigation, 'Labs');
 trackPanelHistory(labControls, ['labs-display', 'info-dialog', 'view-panel']);
-window.addEventListener(DISPLAY_EVENT,()=>{resizeActiveExperiment();});
+let qualityPreference = displayPreferences().quality;
+window.addEventListener(DISPLAY_EVENT,()=>{
+  if (qualityPreference !== displayPreferences().quality) {
+    qualityPreference = displayPreferences().quality;
+    adaptiveEconomy = false; expensiveFrames = 0;
+  }
+  resizeActiveExperiment();
+});
 void start();
 
 async function start(): Promise<void> {
@@ -204,11 +223,6 @@ async function start(): Promise<void> {
       updateBurstState();
     });
     exhibitButton.addEventListener('click', () => setExhibition(!exhibition));
-    infoButton.addEventListener('click', () => infoDialog.showModal());
-    infoClose.addEventListener('click', () => infoDialog.close());
-    infoDialog.addEventListener('click', (event) => {
-      if (event.target === infoDialog) infoDialog.close();
-    });
 
     let wasHidden = document.hidden;
     document.addEventListener('visibilitychange', () => {
@@ -279,6 +293,7 @@ async function switchExperiment(definition: ExperimentDefinition, snapshot: Read
     metrics: () => metrics.snapshot(),
   });
   activeExperiment = next;
+  adaptiveEconomy = false; expensiveFrames = 0;
   next.applySnapshot(snapshot);
   next.setPaused(effectivePause());
   resizeActiveExperiment();
@@ -348,8 +363,14 @@ function resizeActiveExperiment(): void {
   const viewport: LabViewport = {
     width: Math.max(1, stage.clientWidth),
     height: Math.max(1, stage.clientHeight),
-    pixelRatio: Math.min(devicePixelRatio || 1, displayPreferences().quality === 'economy' || adaptiveEconomy ? 1 : matchMedia('(pointer: coarse)').matches ? 1.5 : 2),
+    pixelRatio: labPixelRatio(displayPreferences().quality, adaptiveEconomy, devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches),
   };
+  const quality = displayPreferences().quality;
+  const economy = quality === 'economy' || (quality === 'auto' && adaptiveEconomy);
+  stage.dataset.qualityMode = economy ? 'economy' : 'high';
+  required('labs-quality-status').textContent = quality === 'auto'
+    ? economy ? 'Automatic: reduced resolution to keep the scene responsive.' : 'Automatic: full scene resolution.'
+    : quality === 'high' ? 'High: full scene resolution.' : 'Economy: reduced scene resolution.';
   activeExperiment.resize(viewport);
 }
 
