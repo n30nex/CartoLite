@@ -110,7 +110,9 @@ jobs:
     name: Container integration, browser, privacy, and scan
     needs: [backend, frontend]
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # Expanded Terminal/font/recovery coverage runs serially on this runner.
+    # Match Worldwide's job allowance; browser/runtime assertion limits stay fixed.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
@@ -201,6 +203,20 @@ jobs:
           bash scripts/integration-smoke.sh http://127.0.0.1:39476 artifacts/integration cartolite-mqtt
       - name: Bounded load smoke
         run: bash scripts/performance-smoke.sh http://127.0.0.1:39476 cartolite-mqtt
+      - name: Terminal presentation and isolation
+        working-directory: web
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: terminal-playwright-report
+        run: npm run test:e2e -- terminal.spec.ts --output terminal-test-results
+      - name: Preserve Terminal review screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cartolite-terminal-review
+          retention-days: 30
+          path: |
+            web/terminal-test-results/
+            web/terminal-playwright-report/
       - name: UI audit and recovery regressions
         working-directory: web
         env:
@@ -215,11 +231,6 @@ jobs:
           path: |
             web/ux-audit-test-results/
             web/ux-audit-playwright-report/
-      - name: Terminal presentation and isolation
-        working-directory: web
-        env:
-          PLAYWRIGHT_HTML_OUTPUT_DIR: terminal-playwright-report
-        run: npm run test:e2e -- terminal.spec.ts --output terminal-test-results
       - name: Terrain and Netgraph visual regression
         working-directory: web
         env:

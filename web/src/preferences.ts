@@ -32,7 +32,8 @@ export interface UiPreferences {
 }
 
 const VIEW_STORAGE_PREFIX = 'cartolite:view:v3';
-export const UI_STORAGE_KEY = 'cartolite:ui:v1';
+export const TERMINAL_PAGE = typeof document !== 'undefined' && document.documentElement.hasAttribute('data-terminal');
+export const UI_STORAGE_KEY = TERMINAL_PAGE ? 'cartolite:terminal-ui:v1' : 'cartolite:ui:v1';
 export const DEFAULT_UI_PREFERENCES: UiPreferences = {
   routes: false,
   heatmap: true,
@@ -53,7 +54,8 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
   roads: true,
   livePackets: true,
   routeOpacity: 0.8,
-  relief: 0.75
+  relief: 0.75,
+  ...(TERMINAL_PAGE ? { routes:true,heatmap:true,clusters:false,regions:false,hillshade:false,terrain3D:false,buildings:true,routeWindow:'15m' as const,mapLabels:true,nodeLabels:true,roads:true,livePackets:true,relief:.15,routeOpacity:.9 } : {}),
 };
 
 export function viewClass(
@@ -105,7 +107,7 @@ export function loadUiPreferences(storage: Storage): UiPreferences {
       clusters: typeof value.clusters === 'boolean' ? value.clusters : DEFAULT_UI_PREFERENCES.clusters,
       hillshade: typeof value.hillshade === 'boolean' ? value.hillshade : DEFAULT_UI_PREFERENCES.hillshade,
       terrain3D: typeof value.terrain3D === 'boolean' ? value.terrain3D : DEFAULT_UI_PREFERENCES.terrain3D,
-      buildings: typeof value.buildings === 'boolean' ? value.buildings : Boolean(value.terrain3D),
+      buildings: typeof value.buildings === 'boolean' ? value.buildings : Boolean(value.terrain3D) || DEFAULT_UI_PREFERENCES.buildings,
       terrainExaggeration: savedRange(value.terrainExaggeration, 1, 0.5, 2),
       terrainPitch: savedRange(value.terrainPitch, 50, 0, 65),
       terrainBearing: savedRange(value.terrainBearing, 0, -180, 180),
@@ -119,8 +121,8 @@ export function loadUiPreferences(storage: Storage): UiPreferences {
       nodeLabels: typeof value.nodeLabels === 'boolean' ? value.nodeLabels : true,
       roads: typeof value.roads === 'boolean' ? value.roads : true,
       livePackets: typeof value.livePackets === 'boolean' ? value.livePackets : true,
-      routeOpacity: savedAmount(value.routeOpacity, 0.8, 0.2),
-      relief: savedAmount(value.relief, 0.75, 0)
+      routeOpacity: savedAmount(value.routeOpacity, DEFAULT_UI_PREFERENCES.routeOpacity, 0.2),
+      relief: savedAmount(value.relief, DEFAULT_UI_PREFERENCES.relief, 0)
     };
   } catch {
     return { ...DEFAULT_UI_PREFERENCES };
