@@ -307,7 +307,7 @@ export class LiveMap {
     const creditSize = new ResizeObserver(() => document.documentElement.style.setProperty('--map-credits-height', `${credits.offsetHeight}px`));
     creditSize.observe(credits);
     this.map.once('remove', () => creditSize.disconnect());
-    this.map.on('load', () => this.#installLayers());
+    this.map.once('load', () => this.#installLayers());
     this.map.on('movestart', () => { this.container.dataset.cameraMoving = 'true'; });
     this.map.on('sourcedata', (event) => {
       if (this.#buildingSourceID && event.sourceId === this.#buildingSourceID) {
@@ -328,6 +328,7 @@ export class LiveMap {
     this.map.on('zoom', this.#updateRouteRepresentation);
     this.map.on('zoomend', this.#handleZoomEnd);
     this.map.on('resize', this.#handleInspectorResize);
+    this.map.on('webglcontextlost', this.#handleWebGLContextLost);
     this.map.on('webglcontextrestored', this.#handleWebGLContextRestored);
     document.addEventListener('keydown', this.#handleKeyDown);
     this.#freshnessTimer = window.setInterval(() => this.#refreshRouteClock(), 60_000);
@@ -1029,6 +1030,7 @@ export class LiveMap {
     this.map.off('zoom', this.#updateRouteRepresentation);
     this.map.off('zoomend', this.#handleZoomEnd);
     this.map.off('resize', this.#handleInspectorResize);
+    this.map.off('webglcontextlost', this.#handleWebGLContextLost);
     this.map.off('webglcontextrestored', this.#handleWebGLContextRestored);
     this.map.remove();
   }
@@ -2038,19 +2040,34 @@ export class LiveMap {
   }
 
   #handleInspectorResize = (): void => {
+    if(!this.#layersReady)return;
     this.#updateBuildingLayer();
     if (this.#selectedNodeID) this.#renderNodeInspector(true);
   };
 
+  #handleWebGLContextLost = (): void => {
+    // MapLibre discards its stylesheet during context loss. Resize/data events
+    // can run before the replacement stylesheet exists; retain state, not writes.
+    this.#layersReady=false;
+    this.#routeHydrationEpoch++;
+    this.#routeHydrating=false;
+    if(this.#routeHydrationTimer!==undefined)window.clearTimeout(this.#routeHydrationTimer);
+    this.#routeHydrationTimer=undefined;
+    this.renderEpoch++;this.renderingScheduled=false;this.renderingSources.clear();
+    this.container.dataset.graphicsRecovering='true';
+  };
+
   #handleWebGLContextRestored = (): void => {
     const restore = (): void => {
-      if (!this.#layersReady) return;
       // Restored terrain tiles may still be loading, without another style.load
       // event. Layer presence establishes the stylesheet, not global tile idle.
       if (!this.map.getLayer(ROUTE_FOCUS_LAYER_IDS[0])) {
+        // Loss before first load is completed by the ordinary initial installer.
+        if(this.map.getLayer('basemap-water')&&!this.map.getSource(NODE_SOURCE_ID))return;
         this.map.once('style.load', restore);
         return;
       }
+      this.#layersReady=true;
       if (this.map.getLayer(ROUTE_WEBGL_LAYER_ID)) this.map.removeLayer(ROUTE_WEBGL_LAYER_ID);
       const layer = new HistoricalRouteLayer();
       layer.setOpacity(this.#appearance.routeOpacity);
@@ -2061,6 +2078,10 @@ export class LiveMap {
       this.#historicalRouteLayer = layer;
       const before = this.map.getLayer(ROUTE_FOCUS_LAYER_IDS[0]) ? ROUTE_FOCUS_LAYER_IDS[0] : undefined;
       this.map.addLayer(layer, before);
+      this.setAppearance(this.#appearance,true);
+      this.render(this.#lastState,{reset:true},true);
+      this.showFollowPacket(this.#followedPacket);
+      this.container.dataset.graphicsRecovering='false';
       this.container.dataset.routeContextRestores = String(Number(this.container.dataset.routeContextRestores ?? 0) + 1);
     };
     window.requestAnimationFrame(restore);
