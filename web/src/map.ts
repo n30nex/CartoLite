@@ -2045,7 +2045,9 @@ export class LiveMap {
   #handleWebGLContextRestored = (): void => {
     const restore = (): void => {
       if (!this.#layersReady) return;
-      if (!this.map.isStyleLoaded()) {
+      // Restored terrain tiles may still be loading, without another style.load
+      // event. Layer presence establishes the stylesheet, not global tile idle.
+      if (!this.map.getLayer(ROUTE_FOCUS_LAYER_IDS[0])) {
         this.map.once('style.load', restore);
         return;
       }
