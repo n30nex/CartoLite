@@ -54,16 +54,29 @@ const LIGHT_COLORS: Record<string, string> = {
 
 let current: DisplayPreferences = { ...DEFAULT_DISPLAY };
 let initialized = false;
+// Optional per-view colour presentation. Terminal installs this after its lazy
+// entry loads; shared preferences and other pages never import its renderer.
+let viewColors: Record<string,string> = {};
+let viewLightColors: Record<string,string> = LIGHT_COLORS;
+let hasViewColors = false;
+let colorRevision = 0;
+export function displayColorRevision(): number { return colorRevision; }
+export function setDisplayColors(colors: Record<string,string> = {}): void {
+  const safe = Object.fromEntries(Object.entries(colors).filter(([from,to]) => /^#[0-9a-f]{6}$/i.test(from) && /^#[0-9a-f]{6}$/i.test(to)).map(([from,to])=>[from.toLowerCase(),to.toLowerCase()]));
+  if(JSON.stringify(safe)===JSON.stringify(viewColors))return;
+  viewColors=safe; hasViewColors=Object.keys(safe).length>0; viewLightColors={...LIGHT_COLORS,...safe}; colorRevision++;
+}
 export function displayPreferences(): Readonly<DisplayPreferences> { return current; }
 export function lightScene(): boolean { return !document.documentElement.hasAttribute('data-terminal') && current.basemap !== 'dark'; }
 export function displayColor(color: string, light = lightScene()): string {
-  if (!light) return color;
-  const direct = LIGHT_COLORS[color.toLowerCase()];
+  if(!light && !hasViewColors)return color;
+  const colors = light ? viewLightColors : viewColors;
+  const direct = colors[color.toLowerCase()];
   if (direct) return direct;
   const rgba = /^rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\s*\)$/i.exec(color);
   if (!rgba) return color;
   const hex = '#' + rgba.slice(1, 4).map((channel) => Number(channel).toString(16).padStart(2, '0')).join('');
-  const mapped = LIGHT_COLORS[hex];
+  const mapped = colors[hex];
   if (!mapped) return color;
   const value = Number.parseInt(mapped.slice(1), 16);
   return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${rgba[4] ?? 1})`;
@@ -71,12 +84,16 @@ export function displayColor(color: string, light = lightScene()): string {
 export function recolorPaint(value: unknown, light: boolean): unknown {
   if (typeof value === 'string') return displayColor(value, light);
   if (!Array.isArray(value)) return value;
-  if (light && value[0] === 'get' && typeof value[1] === 'string' && /^color(?:\d|$)/.test(value[1])) {
-    return ['match', value, ...Object.entries(LIGHT_COLORS).flat(), value];
+  const colors = light ? viewLightColors : viewColors;
+  if ((light || hasViewColors) && value[0] === 'get' && typeof value[1] === 'string' && /^color(?:\d|$)/.test(value[1])) {
+    return ['match', value, ...Object.entries(colors).flat(), value];
   }
   return value.map((item) => recolorPaint(item, light));
 }
-export function packetPalette(light = lightScene()): typeof DARK_KINDS { return light ? LIGHT_KINDS : DARK_KINDS; }
+export function packetPalette(light = lightScene()): typeof DARK_KINDS {
+  if(!hasViewColors)return light ? LIGHT_KINDS : DARK_KINDS;
+  return Object.fromEntries(Object.entries(DARK_KINDS).map(([kind,color])=>[kind,displayColor(color,light)])) as typeof DARK_KINDS;
+}
 export function canvasColorWithAlpha(color: string, alpha: number): string {
   const resolved = displayColor(color);
   const value = Number.parseInt(resolved.startsWith('#') ? resolved.slice(1) : 'ffffff', 16);
