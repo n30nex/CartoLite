@@ -5,11 +5,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      refresh_map_lock:
-        description: Generate the pinned MapLibre lockfile for source review only
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -22,27 +17,7 @@ env:
   IMAGE_NAME: ghcr.io/n30nex/cartolite
 
 jobs:
-  dependency-lock:
-    if: github.event_name == 'workflow_dispatch' && inputs.refresh_map_lock
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: 22
-      - name: Resolve the targeted MapLibre update without installing packages
-        working-directory: web
-        run: npm install --package-lock-only --ignore-scripts --save-exact maplibre-gl@6.15.0
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: reviewed-maplibre-lock
-          retention-days: 3
-          path: |
-            web/package.json
-            web/package-lock.json
   backend:
-    if: ${{ !inputs.refresh_map_lock }}
     name: Go test, vet, and race
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -99,7 +74,6 @@ jobs:
           assert package["version"] == lock["version"] == lock["packages"][""]["version"] == version
 
   frontend:
-    if: ${{ !inputs.refresh_map_lock }}
     name: Frontend test and build
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -133,10 +107,10 @@ jobs:
         run: node scripts/report-frontend-size.mjs web/dist
 
   container:
-    if: ${{ !inputs.refresh_map_lock }}
     name: Container integration, browser, privacy, and scan
     needs: [backend, frontend]
-    runs-on: ubuntu-latest
+    # Keep the browser dependency environment stable across hosted-runner rollouts.
+    runs-on: ubuntu-24.04
     # Expanded Terminal/font/recovery coverage runs serially on this runner.
     # Match Worldwide's job allowance; browser/runtime assertion limits stay fixed.
     timeout-minutes: 45
@@ -373,9 +347,8 @@ jobs:
           docker network rm cartolite-ci >/dev/null 2>&1 || true
 
   android:
-    if: ${{ !inputs.refresh_map_lock }}
     name: Android API ${{ matrix.api }} shell and recovery
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -424,7 +397,7 @@ jobs:
 
   required:
     name: CI / Required
-    if: always() && !inputs.refresh_map_lock
+    if: always()
     needs: [backend, frontend, container, android]
     runs-on: ubuntu-latest
     steps:
