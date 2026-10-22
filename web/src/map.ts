@@ -1136,6 +1136,7 @@ export class LiveMap {
   };
 
   #refreshRouteClock(): void {
+    if (document.hidden || !this.#layersReady) return;
     const now = Date.now();
     this.#refreshRouteAgeBands(now);
     this.#applyRouteTimeState(now, true);

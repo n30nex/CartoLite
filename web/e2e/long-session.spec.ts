@@ -6,6 +6,48 @@ import { visualFixture } from './visualFixtures';
 // readbacks distort GPU timings and retain their own history during this check.
 test.use({ screenshot: 'off', trace: 'off' });
 
+test('long session releases completed source updates while newer work is queued', async ({ page }, info) => {
+  test.skip(info.project.name !== 'desktop');
+  await visualFixture(page);
+  await page.addInitScript(() => window.addEventListener('cartolite-map-ready', event => {
+    (window as any).__sessionMap = (event as CustomEvent).detail.view.map;
+  }, { once: true }));
+  await page.goto('/');
+  await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
+  await page.evaluate(async () => {
+    const map = (window as any).__sessionMap;
+    map.addSource('session-pressure', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    const source = map.getSource('session-pressure');
+    const actor = await source.actorPromise;
+    const send = actor.sendAsync.bind(actor);
+    // Test-only worker latency models a busy device. MapLibre's public setData
+    // path still processes real data; no private runtime patch ships to users.
+    actor.sendAsync = async (message: any, ...args: any[]) => {
+      if (message.data?.source === 'session-pressure') await new Promise(resolve => setTimeout(resolve, 60));
+      return send(message, ...args);
+    };
+    const refs: WeakRef<object>[] = [];
+    (window as any).__sessionRefs = refs;
+    let tick = 0;
+    (window as any).__sessionTimer = setInterval(() => {
+      const data = { type: 'FeatureCollection', features: Array.from({ length: 400 }, (_, i) => ({
+        type: 'Feature', id: i, properties: { label: `Update ${tick} node ${i}` },
+        geometry: { type: 'Point', coordinates: [-80.4 + i * .0001, 43.45 + (tick % 10) * .00001] },
+      })) };
+      if (tick++ < 100) refs.push(new WeakRef(data));
+      void source.setData(data);
+    }, 15);
+  });
+  await page.waitForTimeout(4_000);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('HeapProfiler.collectGarbage');
+  const retained = await page.evaluate(() => (window as any).__sessionRefs.filter((ref: WeakRef<object>) => ref.deref()).length);
+  await page.evaluate(() => clearInterval((window as any).__sessionTimer));
+  await cdp.detach();
+  console.log('COMPLETED_SOURCE_UPDATES_RETAINED', retained);
+  expect(retained, 'completed GeoJSON must be collectable before continuous updates stop').toBeLessThanOrEqual(2);
+});
+
 for (const scene of ['map', 'terrain', 'terminal', 'netgraph'] as const) {
   test(`long session resource sampling: ${scene}`, async ({ page }, info) => {
     test.skip(info.project.name !== 'desktop');
@@ -103,6 +145,9 @@ for (const scene of ['map', 'terrain', 'terminal', 'netgraph'] as const) {
 test('long session background tabs close their feed and refresh once on return', async ({ page }, info) => {
   test.skip(info.project.name !== 'desktop');
   for (const path of ['/', '/terminal/', '/netgraph/', '/labs/']) {
+    let snapshots = 0;
+    const countSnapshot = (request: import('@playwright/test').Request) => { if (new URL(request.url()).pathname === '/api/state') snapshots++; };
+    page.on('request', countSnapshot);
     await visualFixture(page);
     await page.goto(path);
     await expect(page.locator('html')).toHaveAttribute('data-fixture-stream', 'ready');
@@ -114,10 +159,16 @@ test('long session background tabs close their feed and refresh once on return',
       document.dispatchEvent(new Event('visibilitychange'));
     });
     await expect.poll(() => page.evaluate(() => (window as any).__closedFeeds), { message: `${path} must stop background ingestion` }).toBe(1);
+    const before = snapshots;
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.waitForTimeout(300);
+    expect(snapshots, 'hidden network changes must not restart snapshot work').toBe(before);
     await page.evaluate(() => {
       Object.defineProperty(document, 'hidden', { configurable: true, value: false });
       document.dispatchEvent(new Event('visibilitychange'));
     });
-    await expect(page.locator('#status')).toHaveAttribute('data-state', 'active');
+    await expect(page.locator(path === '/labs/' ? '#labs-status' : '#status')).toHaveAttribute('data-state', 'active');
+    await expect.poll(() => snapshots).toBe(before + 1);
+    page.off('request', countSnapshot);
   }
 });
