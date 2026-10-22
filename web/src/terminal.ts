@@ -204,6 +204,9 @@ export function mountTerminal(view: LiveMap, animator: PacketAnimator): () => vo
     // Restore its GL state before changing paint/layer state for the fallback.
     queueMicrotask(() => {
       if (!failed || disposed) return;
+      // Retry must re-enter the native custom-layer lifecycle as well as rebuild
+      // our shaders; keeping the failed layer installed can leave a stale frame.
+      capture.detach();
       for (const item of originalPaint.values()) if (map.getLayer(item.layer)) map.setPaintProperty(item.layer, item.property as Parameters<typeof map.setPaintProperty>[1], item.value);
       originalPaint.clear();
       setDisplayColors();
