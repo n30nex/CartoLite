@@ -196,14 +196,20 @@ export function mountTerminal(view: LiveMap, animator: PacketAnimator): () => vo
   }
 
   function fail() {
+    if (failed || disposed) return;
     failed = true; root.dataset.terminalFallback = 'true'; notice.hidden = false;
     delete root.dataset.terminal;
-    for (const item of originalPaint.values()) if (map.getLayer(item.layer)) map.setPaintProperty(item.layer, item.property as Parameters<typeof map.setPaintProperty>[1], item.value);
-    originalPaint.clear();
-    setDisplayColors();
-    animator.setPresentationGlow(1);
-    applyDisplayChrome(); view.setAppearance(undefined, true); animator.refreshAppearance();
     fx.clearRect(0, 0, effects.width, effects.height);
+    // Shader failure can arrive inside MapLibre's custom-layer render pass.
+    // Restore its GL state before changing paint/layer state for the fallback.
+    queueMicrotask(() => {
+      if (!failed || disposed) return;
+      for (const item of originalPaint.values()) if (map.getLayer(item.layer)) map.setPaintProperty(item.layer, item.property as Parameters<typeof map.setPaintProperty>[1], item.value);
+      originalPaint.clear();
+      setDisplayColors();
+      animator.setPresentationGlow(1);
+      applyDisplayChrome(); view.setAppearance(undefined, true); animator.refreshAppearance();
+    });
   }
 
   function paint() {
