@@ -19,6 +19,7 @@ export default defineConfig({
         // and MapLibre stay separate, so Netgraph never loads the basemap.
         codeSplitting: { groups: [
           { name: 'terminal', test: /[\\/]src[\\/]terminal(?:Grid|Graphics)?\.ts$/, priority: 20, includeDependenciesRecursively: false },
+          { name: 'chronoscope', test: /[\\/]src[\\/]chronoscope[\\/]/, priority: 20, includeDependenciesRecursively: false },
           { name: 'shared', test: /[\\/]src[\\/]/, minShareCount: 2, priority: 10 },
         ] },
       },
@@ -26,7 +27,8 @@ export default defineConfig({
         main: inputPath('index.html'),
         terminal: inputPath('src/terminal.ts'),
         labs: inputPath('labs/index.html'),
-        netgraph: inputPath('netgraph/index.html')
+        netgraph: inputPath('netgraph/index.html'),
+        chronoscope: inputPath('chronoscope/index.html')
       }
     }
   },

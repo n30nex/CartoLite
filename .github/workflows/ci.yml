@@ -113,7 +113,7 @@ jobs:
     runs-on: ubuntu-24.04
     # Expanded Terminal/font/recovery coverage runs serially on this runner.
     # Match Worldwide's job allowance; browser/runtime assertion limits stay fixed.
-    timeout-minutes: 45
+    timeout-minutes: 50
     permissions:
       contents: read
       packages: write
@@ -218,6 +218,20 @@ jobs:
           path: |
             web/session-test-results/
             web/session-playwright-report/
+      - name: Chronoscope live time, interaction and scale
+        working-directory: web
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: chrono-playwright-report
+        run: npm run test:e2e -- chronoscope.spec.ts --retries 0 --output chrono-test-results
+      - name: Preserve Chronoscope evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cartolite-chronoscope-review
+          retention-days: 7
+          path: |
+            web/chrono-test-results/
+            web/chrono-playwright-report/
       - name: Terminal presentation and isolation
         working-directory: web
         env:
@@ -282,7 +296,7 @@ jobs:
             done
           ) &
           publisher_pid="$!"
-          npm run test:e2e -- --grep-invert 'long session|UI audit|@terrain|@regions|Terminal|unavailable character readback|keeps a 4k-node / 7k-route first view responsive'
+          npm run test:e2e -- --grep-invert 'long session|Chronoscope|UI audit|@terrain|@regions|Terminal|unavailable character readback|keeps a 4k-node / 7k-route first view responsive'
       - name: Trivy HIGH/CRITICAL gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
