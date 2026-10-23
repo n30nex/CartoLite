@@ -132,9 +132,7 @@ jobs:
         working-directory: web
         run: |
           npm ci
-          # The Azure package mirror repeatedly stalled these runners.
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
-          npm exec -- playwright install --with-deps chromium webkit
+          docker pull mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
       - name: Set up Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Read build identity
@@ -210,7 +208,7 @@ jobs:
         working-directory: web
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: session-playwright-report
-        run: npm run test:e2e -- long-session.spec.ts --project desktop --retries 0 --output session-test-results
+        run: bash ../scripts/browser-ci.sh long-session.spec.ts --project desktop --retries 0 --output session-test-results
       - name: Preserve long-session diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -224,7 +222,7 @@ jobs:
         working-directory: web
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: chrono-playwright-report
-        run: npm run test:e2e -- chronoscope.spec.ts --retries 0 --output chrono-test-results
+        run: bash ../scripts/browser-ci.sh chronoscope.spec.ts --retries 0 --output chrono-test-results
       - name: Preserve Chronoscope evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -238,7 +236,7 @@ jobs:
         working-directory: web
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: terminal-playwright-report
-        run: npm run test:e2e -- terminal.spec.ts --output terminal-test-results
+        run: bash ../scripts/browser-ci.sh terminal.spec.ts --output terminal-test-results
       - name: Preserve Terminal review screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -252,7 +250,7 @@ jobs:
         working-directory: web
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: ux-audit-playwright-report
-        run: npm run test:e2e -- ui-audit.spec.ts labs-ui-audit.spec.ts --output ux-audit-test-results
+        run: bash ../scripts/browser-ci.sh ui-audit.spec.ts labs-ui-audit.spec.ts --output ux-audit-test-results
       - name: Preserve UI audit screenshots for early review
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -267,7 +265,7 @@ jobs:
         env:
           CARTOLITE_BASE_URL: http://127.0.0.1:39476
           PLAYWRIGHT_HTML_OUTPUT_DIR: terrain-playwright-report
-        run: npm run test:e2e -- --grep '@terrain|@regions' --output terrain-test-results
+        run: bash ../scripts/browser-ci.sh --grep '@terrain|@regions' --output terrain-test-results
       # The scale fixture supplies its own state/event stream. Run all of its
       # viewports before the unrelated live publisher competes for the renderer CPU.
       # Preserve every case, route count and timing limit; do not run it twice.
@@ -275,7 +273,7 @@ jobs:
         working-directory: web
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: scale-playwright-report
-        run: npm run test:e2e -- scale-smoke.spec.ts --grep-invert @terrain --output scale-test-results
+        run: bash ../scripts/browser-ci.sh scale-smoke.spec.ts --grep-invert @terrain --output scale-test-results
       - name: Desktop and mobile Playwright smoke
         working-directory: web
         env:
@@ -298,7 +296,7 @@ jobs:
             done
           ) &
           publisher_pid="$!"
-          npm run test:e2e -- --grep-invert 'long session|Chronoscope|UI audit|@terrain|@regions|Terminal|unavailable character readback|keeps a 4k-node / 7k-route first view responsive'
+          bash ../scripts/browser-ci.sh --grep-invert 'long session|Chronoscope|UI audit|@terrain|@regions|Terminal|unavailable character readback|keeps a 4k-node / 7k-route first view responsive'
       - name: Trivy HIGH/CRITICAL gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
