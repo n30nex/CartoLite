@@ -40,6 +40,8 @@ jobs:
         working-directory: web
         run: |
           npm ci
+          # The Azure package mirror repeatedly stalled these runners.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
           npm exec -- playwright install --with-deps chromium webkit
       - name: Verify deployed memory retention and tab recovery
         working-directory: web
@@ -51,7 +53,7 @@ jobs:
         working-directory: web
         env:
           CARTOLITE_BASE_URL: https://carto.canadaverse.org
-        run: npm run test:e2e -- netgraph-3d.spec.ts netgraph-regions.spec.ts audio-voices.spec.ts android-motion.spec.ts recovery.spec.ts cinematic.spec.ts dock-terrain.spec.ts display-upgrade.spec.ts terrain.spec.ts labs.spec.ts mobile-ux.spec.ts labs-mobile-ux.spec.ts terminal.spec.ts ui-audit.spec.ts labs-ui-audit.spec.ts --project=desktop --project=mobile --project=mobile-webkit
+        run: npm run test:e2e -- chronoscope.spec.ts netgraph-3d.spec.ts netgraph-regions.spec.ts audio-voices.spec.ts android-motion.spec.ts recovery.spec.ts cinematic.spec.ts dock-terrain.spec.ts display-upgrade.spec.ts terrain.spec.ts labs.spec.ts mobile-ux.spec.ts labs-mobile-ux.spec.ts terminal.spec.ts ui-audit.spec.ts labs-ui-audit.spec.ts --project=desktop --project=mobile --project=mobile-webkit
       - name: Retain deployment screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

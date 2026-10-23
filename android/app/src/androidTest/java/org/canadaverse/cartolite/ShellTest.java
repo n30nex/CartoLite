@@ -37,6 +37,21 @@ public class ShellTest {
         FixtureActivity.pendingResponse = null;
     }
 
+    @Test public void restoresChronoscopeAsTheLastView() throws Exception {
+        Context context = ApplicationProvider.getApplicationContext();
+        context.getSharedPreferences("android", Context.MODE_PRIVATE).edit()
+                .putString("start_view", "last").putString("last_view", "chronoscope/").commit();
+        try (ActivityScenario<FixtureActivity> scenario = ActivityScenario.launch(FixtureActivity.class)) {
+            awaitPage(scenario);
+            scenario.onActivity(activity -> assertEquals(NavigationPolicy.CANADA_URL + "chronoscope/",
+                    ((WebView) activity.findViewById(R.id.web_view)).getUrl()));
+            scenario.recreate();
+            awaitPage(scenario);
+            scenario.onActivity(activity -> assertEquals(NavigationPolicy.CANADA_URL + "chronoscope/",
+                    ((WebView) activity.findViewById(R.id.web_view)).getUrl()));
+            capture("chronoscope-restored");
+        }
+    }
     @Test public void opensTheChosenCanadaViewWithoutRewritingOtherPreferences() throws Exception {
         Context context = ApplicationProvider.getApplicationContext();
         context.getSharedPreferences("android", Context.MODE_PRIVATE).edit()

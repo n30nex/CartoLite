@@ -26,15 +26,16 @@ final class NavigationPolicy {
         }
         if (uri != null && ("/labs/".equals(uri.getPath()) || "/labs".equals(uri.getPath()))) return "labs/";
         if (uri != null && ("/terminal/".equals(uri.getPath()) || "/terminal".equals(uri.getPath()))) return "terminal/";
+        if (uri != null && ("/chronoscope/".equals(uri.getPath()) || "/chronoscope".equals(uri.getPath()))) return "chronoscope/";
         return "";
     }
 
     static String lastViewUrl(String view) {
-        return CANADA_URL + ("netgraph/".equals(view) || "labs/".equals(view) || "terminal/".equals(view) ? view : "");
+        return CANADA_URL + ("netgraph/".equals(view) || "labs/".equals(view) || "terminal/".equals(view) || "chronoscope/".equals(view) ? view : "");
     }
 
     static String startViewUrl(String preferredView, String lastView) {
-        return lastViewUrl("".equals(preferredView) || "netgraph/".equals(preferredView) || "labs/".equals(preferredView) || "terminal/".equals(preferredView)
+        return lastViewUrl("".equals(preferredView) || "netgraph/".equals(preferredView) || "labs/".equals(preferredView) || "terminal/".equals(preferredView) || "chronoscope/".equals(preferredView)
                 ? preferredView : lastView);
     }
 

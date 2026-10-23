@@ -1,8 +1,8 @@
 # CartoLite for Android
 
 CartoLite for Android is the official signed Android presentation of the
-public live map. The repository targets candidate 1.1.1; the public APK remains
-1.0.0 until release checks are complete. It uses the same production frontend and public API as the
+public live map. The repository targets candidate 1.1.3; the public APK remains
+1.1.2 until release checks are complete. It uses the same production frontend and public API as the
 browser, so map, sound, privacy, and topology updates do not wait for a new APK.
 
 ## Motion and animation defaults
@@ -15,7 +15,7 @@ Sound remains opt-in, graphics quality remains automatic, and the initial
 camera stays still until the user navigates or enables Follow.
 
 The existing native user-agent marker selects this default before the view starts.
-No JavaScript bridge or new permission is added, and the published 1.0.0 wrapper
+No JavaScript bridge or new permission is added, and the published wrapper
 receives the behavior through the live frontend. Ordinary browser visits still
 respect system reduced-motion settings unless the user selects Full.
 
@@ -39,7 +39,7 @@ recovery without an APK update or a broader navigation allowlist.
 ## Identity
 
 - Package: `org.canadaverse.cartolite`
-- Candidate app version: `1.1.1` (`versionCode` 3)
+- Candidate app version: `1.1.3` (`versionCode` 5)
 - Minimum Android: 8.0 / API 26
 - Target Android: 16 / API 36
 - Release certificate: `android/signing/cartolite-release-cert.pem`
@@ -86,3 +86,10 @@ or local display settings. Back history survives Activity recreation when it is
 Canada-only, at most 32 entries and at most 128 KiB; otherwise the URL is restored.
 Reload does not add another history entry. Full-motion and sound preferences are
 unchanged. [Patch scope and acceptance](android-ui-ux-2026-10-14.md).
+
+## 1.1.3 Chronoscope navigation
+
+Chronoscope is available in the web view picker and native starting-view choices.
+Last-view restoration, loading labels and Share view retain the correct Canada
+Chronoscope path. Existing app data, permissions, package and signing identity stay
+unchanged. API 26/36 checks include recreation into the Chronoscope route.
