@@ -109,7 +109,8 @@ jobs:
   container:
     name: Container integration, browser, privacy, and scan
     needs: [backend, frontend]
-    runs-on: ubuntu-latest
+    # Keep the browser dependency environment stable across hosted-runner rollouts.
+    runs-on: ubuntu-24.04
     # Expanded Terminal/font/recovery coverage runs serially on this runner.
     # Match Worldwide's job allowance; browser/runtime assertion limits stay fixed.
     timeout-minutes: 45
@@ -203,6 +204,20 @@ jobs:
           bash scripts/integration-smoke.sh http://127.0.0.1:39476 artifacts/integration cartolite-mqtt
       - name: Bounded load smoke
         run: bash scripts/performance-smoke.sh http://127.0.0.1:39476 cartolite-mqtt
+      - name: Long-session resource and background checks
+        working-directory: web
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: session-playwright-report
+        run: npm run test:e2e -- long-session.spec.ts --project desktop --retries 0 --output session-test-results
+      - name: Preserve long-session diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cartolite-session-review
+          retention-days: 3
+          path: |
+            web/session-test-results/
+            web/session-playwright-report/
       - name: Terminal presentation and isolation
         working-directory: web
         env:
@@ -267,7 +282,7 @@ jobs:
             done
           ) &
           publisher_pid="$!"
-          npm run test:e2e -- --grep-invert 'UI audit|@terrain|@regions|Terminal|unavailable character readback|keeps a 4k-node / 7k-route first view responsive'
+          npm run test:e2e -- --grep-invert 'long session|UI audit|@terrain|@regions|Terminal|unavailable character readback|keeps a 4k-node / 7k-route first view responsive'
       - name: Trivy HIGH/CRITICAL gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -333,7 +348,7 @@ jobs:
 
   android:
     name: Android API ${{ matrix.api }} shell and recovery
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false

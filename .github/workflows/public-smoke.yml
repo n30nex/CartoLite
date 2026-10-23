@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   public-visuals:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -41,6 +41,12 @@ jobs:
         run: |
           npm ci
           npm exec -- playwright install --with-deps chromium webkit
+      - name: Verify deployed memory retention and tab recovery
+        working-directory: web
+        env:
+          CARTOLITE_BASE_URL: https://carto.canadaverse.org
+          PLAYWRIGHT_HTML_OUTPUT_DIR: session-public-playwright-report
+        run: npm run test:e2e -- long-session.spec.ts --grep 'releases completed|background tabs' --project desktop --retries 0 --output session-public-test-results
       - name: Inspect deployed assets using synthetic topology and terrain
         working-directory: web
         env:
@@ -54,4 +60,6 @@ jobs:
           path: |
             web/test-results/
             web/playwright-report/
+            web/session-public-test-results/
+            web/session-public-playwright-report/
           retention-days: 30
