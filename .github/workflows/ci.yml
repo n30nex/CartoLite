@@ -204,20 +204,6 @@ jobs:
           bash scripts/integration-smoke.sh http://127.0.0.1:39476 artifacts/integration cartolite-mqtt
       - name: Bounded load smoke
         run: bash scripts/performance-smoke.sh http://127.0.0.1:39476 cartolite-mqtt
-      - name: Long-session resource and background checks
-        working-directory: web
-        env:
-          PLAYWRIGHT_HTML_OUTPUT_DIR: session-playwright-report
-        run: bash ../scripts/browser-ci.sh long-session.spec.ts --project desktop --retries 0 --output session-test-results
-      - name: Preserve long-session diagnostics
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: cartolite-session-review
-          retention-days: 3
-          path: |
-            web/session-test-results/
-            web/session-playwright-report/
       - name: Firehose physics, GPU presentation and recovery
         working-directory: web
         env:
@@ -232,6 +218,20 @@ jobs:
           path: |
             web/firehose-test-results/
             web/firehose-playwright-report/
+      - name: Long-session resource and background checks
+        working-directory: web
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: session-playwright-report
+        run: bash ../scripts/browser-ci.sh long-session.spec.ts --project desktop --retries 0 --output session-test-results
+      - name: Preserve long-session diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cartolite-session-review
+          retention-days: 3
+          path: |
+            web/session-test-results/
+            web/session-playwright-report/
       - name: Chronoscope live time, interaction and scale
         working-directory: web
         env:
