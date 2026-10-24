@@ -157,8 +157,8 @@ func (s *Server) frontend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if r.URL.Path == "/terminal" {
-		target := "/terminal/"
+	if r.URL.Path == "/terminal" || r.URL.Path == "/chronoscope" {
+		target := r.URL.Path + "/"
 		if r.URL.RawQuery != "" {
 			target += "?" + r.URL.RawQuery
 		}

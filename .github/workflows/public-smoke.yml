@@ -40,18 +40,18 @@ jobs:
         working-directory: web
         run: |
           npm ci
-          npm exec -- playwright install --with-deps chromium webkit
+          docker pull mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
       - name: Verify deployed memory retention and tab recovery
         working-directory: web
         env:
           CARTOLITE_BASE_URL: https://carto.canadaverse.org
           PLAYWRIGHT_HTML_OUTPUT_DIR: session-public-playwright-report
-        run: npm run test:e2e -- long-session.spec.ts --grep 'releases completed|background tabs' --project desktop --retries 0 --output session-public-test-results
+        run: bash ../scripts/browser-ci.sh long-session.spec.ts --grep 'releases completed|background tabs' --project desktop --retries 0 --output session-public-test-results
       - name: Inspect deployed assets using synthetic topology and terrain
         working-directory: web
         env:
           CARTOLITE_BASE_URL: https://carto.canadaverse.org
-        run: npm run test:e2e -- netgraph-3d.spec.ts netgraph-regions.spec.ts audio-voices.spec.ts android-motion.spec.ts recovery.spec.ts cinematic.spec.ts dock-terrain.spec.ts display-upgrade.spec.ts terrain.spec.ts labs.spec.ts mobile-ux.spec.ts labs-mobile-ux.spec.ts terminal.spec.ts ui-audit.spec.ts labs-ui-audit.spec.ts --project=desktop --project=mobile --project=mobile-webkit
+        run: bash ../scripts/browser-ci.sh chronoscope.spec.ts netgraph-3d.spec.ts netgraph-regions.spec.ts audio-voices.spec.ts android-motion.spec.ts recovery.spec.ts cinematic.spec.ts dock-terrain.spec.ts display-upgrade.spec.ts terrain.spec.ts labs.spec.ts mobile-ux.spec.ts labs-mobile-ux.spec.ts terminal.spec.ts ui-audit.spec.ts labs-ui-audit.spec.ts --project=desktop --project=mobile --project=mobile-webkit
       - name: Retain deployment screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

@@ -23,6 +23,7 @@
     <string name="start_netgraph">Netgraph</string>
     <string name="start_labs">Labs</string>
     <string name="start_terminal">Terminal</string>
+    <string name="start_chronoscope">Chronoscope</string>
     <string name="share_view">Share view</string>
     <string name="no_share_target">No app is available to share this view.</string>
     <string name="loading_view">Loading view</string>

@@ -106,7 +106,7 @@ mountDisplayControls(displayDialog,'labs');
 displayButton.addEventListener('click',()=>displayDialog.showModal());
 displayDialog.querySelector('button')!.addEventListener('click',()=>{displayDialog.close();displayButton.focus();});
 const navigation = document.createElement('nav'); navigation.className='dock-views'; navigation.setAttribute('aria-label','Views');
-navigation.innerHTML='<a class="control-button" href="/" aria-label="Open CartoLite map">Map</a><a class="control-button" href="/netgraph/" aria-label="Open CartoLite Netgraph">Netgraph</a><a class="control-button" href="/terminal/" aria-label="Open CartoLite Terminal">Terminal</a><a class="control-button" href="/labs/" aria-current="page" aria-label="Open CartoLite Labs">Labs</a>';
+navigation.innerHTML='<a class="control-button" href="/" aria-label="Open CartoLite map">Map</a><a class="control-button" href="/netgraph/" aria-label="Open CartoLite Netgraph">Netgraph</a><a class="control-button" href="/terminal/" aria-label="Open CartoLite Terminal">Terminal</a><a class="control-button" href="/chronoscope/" aria-label="Open CartoLite Chronoscope">Chronoscope</a><a class="control-button" href="/labs/" aria-current="page" aria-label="Open CartoLite Labs">Labs</a>';
 mountMobileDock(labControls, navigation, 'Labs');
 trackPanelHistory(labControls, ['labs-display', 'info-dialog', 'view-panel']);
 let qualityPreference = displayPreferences().quality;

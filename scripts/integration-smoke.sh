@@ -11,8 +11,8 @@ curl --fail --silent --show-error "$base_url/readyz" | tee "$artifact_dir/ready.
 curl --fail --silent --show-error --dump-header "$artifact_dir/headers.txt" --output "$artifact_dir/index.html" "$base_url/"
 grep -Eiq '^Strict-Transport-Security: max-age=31536000[[:space:]]*$' "$artifact_dir/headers.txt"
 grep -Eiq '^Permissions-Policy: .*geolocation=\(\).*usb=\(\)' "$artifact_dir/headers.txt"
-for public_asset in favicon.svg robots.txt site.webmanifest social-card.svg; do
-  curl --fail --silent --show-error "$base_url/$public_asset" > "$artifact_dir/$public_asset"
+for public_asset in favicon.svg robots.txt site.webmanifest social-card.svg chronoscope/; do
+  curl --fail --silent --show-error "$base_url/$public_asset" > "$artifact_dir/${public_asset//\//_}"
 done
 missing_code="$(curl --silent --output /dev/null --write-out '%{http_code}' "$base_url/missing-asset.svg")"
 test "$missing_code" = 404
