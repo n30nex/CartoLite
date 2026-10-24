@@ -20,7 +20,6 @@ export default defineConfig({
         codeSplitting: { groups: [
           { name: 'terminal', test: /[\\/]src[\\/]terminal(?:Grid|Graphics)?\.ts$/, priority: 20, includeDependenciesRecursively: false },
           { name: 'chronoscope', test: /[\\/]src[\\/]chronoscope[\\/]/, priority: 20, includeDependenciesRecursively: false },
-          { name: 'firehose', test: /[\\/]src[\\/]firehose[\\/]/, priority: 20, includeDependenciesRecursively: false },
           { name: 'shared', test: /[\\/]src[\\/]/, minShareCount: 2, priority: 10 },
         ] },
       },
