@@ -7,6 +7,14 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 public final class NavigationPolicyTest {
+    @Test public void firehoseSharesRestoresAndStartsOnlyOnCanada() {
+        assertEquals("firehose/", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "firehose/?node=synthetic"));
+        assertEquals("firehose/", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "firehose"));
+        assertEquals(NavigationPolicy.CANADA_URL + "firehose/", NavigationPolicy.startViewUrl("last", "firehose/"));
+        assertEquals(NavigationPolicy.CANADA_URL + "firehose/", NavigationPolicy.startViewUrl("firehose/", "netgraph/"));
+        assertEquals("", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "firehose-other/"));
+        assertEquals("", NavigationPolicy.viewPath("https://example.invalid/firehose/"));
+    }
     @Test public void chronoscopeSharesRestoresAndStartsOnlyOnCanada() {
         assertEquals("chronoscope/", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "chronoscope/?node=synthetic"));
         assertEquals("chronoscope/", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "chronoscope"));

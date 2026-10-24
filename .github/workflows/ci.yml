@@ -204,6 +204,20 @@ jobs:
           bash scripts/integration-smoke.sh http://127.0.0.1:39476 artifacts/integration cartolite-mqtt
       - name: Bounded load smoke
         run: bash scripts/performance-smoke.sh http://127.0.0.1:39476 cartolite-mqtt
+      - name: Firehose physics, GPU presentation and recovery
+        working-directory: web
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: firehose-playwright-report
+        run: bash ../scripts/browser-ci.sh firehose.spec.ts --retries 0 --output firehose-test-results
+      - name: Preserve Firehose evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cartolite-firehose-review
+          retention-days: 7
+          path: |
+            web/firehose-test-results/
+            web/firehose-playwright-report/
       - name: Long-session resource and background checks
         working-directory: web
         env:
@@ -296,7 +310,7 @@ jobs:
             done
           ) &
           publisher_pid="$!"
-          bash ../scripts/browser-ci.sh --grep-invert 'long session|Chronoscope|UI audit|@terrain|@regions|Terminal|unavailable character readback|keeps a 4k-node / 7k-route first view responsive'
+          bash ../scripts/browser-ci.sh --grep-invert 'long session|Firehose|Chronoscope|UI audit|@terrain|@regions|Terminal|unavailable character readback|keeps a 4k-node / 7k-route first view responsive'
       - name: Trivy HIGH/CRITICAL gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
