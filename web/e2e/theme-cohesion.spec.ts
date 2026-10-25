@@ -30,18 +30,29 @@ for(const view of ['map','netgraph','chronoscope','firehose','pachinko','labs'])
   test.setTimeout(90000);
   if(info.project.name!=='desktop')await page.setViewportSize(info.project.name==='mobile-landscape'?{width:568,height:320}:{width:320,height:720});
   await visualFixture(page);
+  if(view==='labs')await page.addInitScript(()=>{
+    (window as any).__labResizes=0;
+    for(const key of ['width','height']){const property=Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype,key)!;Object.defineProperty(HTMLCanvasElement.prototype,key,{...property,set(value){if(this.closest('#labs-stage'))(window as any).__labResizes++;property.set!.call(this,value);}});}
+  });
   if(view==='labs'){await page.goto('/');test.skip(await page.locator('#labs-options').count()===0,'Canada-only Labs');}
   await page.goto(view==='map'?'/':view==='labs'?'/labs/?demo=1&experiment=packet-pond':`/${view}/`);
   if(view==='map')await expect(page.locator('#map')).toHaveAttribute('data-render-state','idle');
   else if(view!=='labs')await expect(page.locator('html')).toHaveAttribute('data-fixture-stream','ready');
   if(['chronoscope','firehose','pachinko'].includes(view))await expect(page.locator(`#${view}-stage`)).toHaveAttribute('data-graphics-ready','true',{timeout:20000});
   if(view!=='labs')await visualPacket(page,1,'Text');
+  if(view==='labs'){
+    await expect(page.locator('#labs-stage')).toHaveAttribute('data-assets','ready');
+    await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+    await page.locator('#pause-button').click();
+    await expect(page.locator('#pause-button')).toHaveAttribute('aria-pressed','true');
+  }
   await openDisplay(page);
   if(view==='map')for(const selector of ['#map-detail-options > summary','#terrain-options > summary','.camera-settings > summary']){const summary=page.locator(selector);if(await summary.isVisible()&&!await summary.evaluate(el=>(el.parentElement as HTMLDetailsElement).open))await summary.click();}
   const palette=page.getByLabel('Interface palette',{exact:true});
   const theme=page.locator('[data-display="theme"],#interface-theme');
   const sceneBefore=await page.locator('html').evaluate(el=>getComputedStyle(el).getPropertyValue('--kind-text'));
   const streamsBefore=await page.locator('html').getAttribute('data-fixture-streams-opened');
+  const labResizes=await page.evaluate(()=>(window as any).__labResizes);
   for(const brightness of ['dark','light']) {
     await theme.selectOption(brightness);
     for(const name of info.project.name==='desktop'?['aurora','glacier','ember','violet']:['aurora','glacier']) {
@@ -65,7 +76,11 @@ for(const view of ['map','netgraph','chronoscope','firehose','pachinko','labs'])
   }
   if(streamsBefore!==null)expect(await page.locator('html').getAttribute('data-fixture-streams-opened')).toBe(streamsBefore);
   if(view==='labs'){
+    expect(await page.evaluate(()=>(window as any).__labResizes)).toBe(labResizes);
     await page.keyboard.press('Escape');
+    // Resume to exercise each artistic scene; palette captures above are paused
+    // so the screenshot does not compete with Pond's software-rendered water.
+    await page.locator('#pause-button').click();
     for(const id of ['firefly-meadow','mesh-loom','little-mesh-villages']){
       await page.locator('#experiment-select').selectOption(id);
       await expect.poll(()=>unreadableControls(page)).toEqual([]);
