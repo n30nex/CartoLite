@@ -38,9 +38,14 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   const response = await stateResponse;
   const state = await response.json() as Record<string, unknown>;
 
-  await openViewMenu(page);
-  await expect(page.locator('.labs-link')).toBeVisible();
-  await expect(page.locator('.labs-link')).toHaveAttribute('href', '/labs/');
+  await openViewMenu(page, 'Labs');
+  await expect(page.locator('#labs-options a')).toHaveCount(4);
+  for (const [name, experience] of [['Packet Pond', 'packet-pond'], ['Firefly Meadow', 'firefly-meadow'], ['Mesh Loom', 'mesh-loom'], ['Little Mesh Villages', 'little-mesh-villages']]) {
+    const link = page.getByRole('link', { name: `Open CartoLite ${name}`, exact: true });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute('href', `/labs/?experiment=${experience}`);
+  }
+  await page.keyboard.press('Escape');
   if (mobile) await page.keyboard.press('Escape');
 
   await expect(page.locator('#map .maplibregl-canvas')).toBeVisible();
