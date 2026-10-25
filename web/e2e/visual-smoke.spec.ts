@@ -12,6 +12,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   // This full journey includes terrain downloads, camera transitions, audio,
   // and region loading. Keep each assertion's own deadline unchanged.
   test.slow();
+  const began=Date.now();const checkpoint=(phase:string)=>console.log('map-journey',JSON.stringify({phase,elapsedMS:Date.now()-began}));
   const mobile = isMobileProject(testInfo.project.name);
   await instrumentAudioContext(page);
   const mapStyleErrors = captureMapStyleErrors(page);
@@ -52,6 +53,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(page.locator('.map-grade')).toBeVisible();
   await expect(page.locator('.map-grade')).toHaveCSS('pointer-events', 'none');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+  checkpoint('map-ready');
   expect(mapStyleErrors, 'MapLibre should accept every installed layer expression').toEqual([]);
   await expect.poll(() => cartoResponses.tileJSON, { message: 'CARTO vector TileJSON should load' }).toBeGreaterThan(0);
   await expect.poll(() => cartoResponses.vector, { message: 'CARTO vector PBF tiles should load' }).toBeGreaterThan(0);
@@ -186,6 +188,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await terrainButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-terrain3d', 'false');
   await expect(page.locator('#map')).toHaveAttribute('data-camera-pitch', '0');
+  checkpoint('terrain-controls');
   const soundButton = page.locator('#sound-button');
   const soundPanel = page.locator('#sound-panel');
   const soundToggle = page.locator('#sound-toggle');
@@ -259,6 +262,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(routesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#map')).toHaveAttribute('data-routes-visible', 'true');
 
+  checkpoint('traffic-controls');
   const regionResponsePromise = page.waitForResponse((assetResponse) => isRegionAssetURL(assetResponse.url()));
   await openMapOptions(page);
   await regionsButton.click();
@@ -272,6 +276,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await expect(page.locator('#map')).toHaveAttribute('data-region-feature-count', '193');
   await expect(page.locator('#map')).toHaveAttribute('data-region-source-revision', '2026-07-18-mcc-reg-1.1-proposed');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
+  checkpoint('regions-loaded');
   expect(regionAssetRequests).toHaveLength(1);
   await openMapOptions(page);
   await heatmapButton.click();
@@ -290,6 +295,7 @@ test('renders the live route map and privacy-safe state', async ({ page }, testI
   await heatmapButton.click();
   await expect(page.locator('#map')).toHaveAttribute('data-heatmap-visible', 'false');
   expect(mapStyleErrors, 'route styling should remain MapLibre-valid after data and layer visibility changes').toEqual([]);
+  checkpoint('complete');
   expect(consoleErrors, 'browser should not emit console errors').toEqual([]);
   expect(state.schemaVersion).toBe(2);
 

@@ -1,4 +1,4 @@
-import { effectStrength } from '../../displayPreferences';
+import { effectStrength, displayPreferences } from '../../displayPreferences';
 import { PACKET_KIND_COLORS } from '../../trafficVisuals';
 import type { PacketKind } from '../../trafficVisuals';
 import type { EndpointV2, StateV2 } from '../../types';
@@ -185,7 +185,7 @@ class MeshLoom implements LabExperiment {
     const bottom = Math.max(top + 70, height - 54);
     const laneHeight = (bottom - top) / LOOM_REGIONS.length;
     canvas.save();
-    canvas.font = '700 9px Inter, system-ui, sans-serif';
+    canvas.font = `700 ${displayPreferences().textSize==='large'?14:11}px Inter, system-ui, sans-serif`;
     canvas.textBaseline = 'middle';
     for (let index = 0; index < LOOM_REGIONS.length; index += 1) {
       const region = LOOM_REGIONS[index]!;
@@ -198,7 +198,7 @@ class MeshLoom implements LabExperiment {
       canvas.moveTo(10, y + laneHeight);
       canvas.lineTo(width - 10, y + laneHeight);
       canvas.stroke();
-      canvas.fillStyle = 'rgba(164, 204, 203, 0.56)';
+      canvas.fillStyle = 'rgba(200, 230, 228, 0.88)';
       canvas.fillText(region.code, 16, y + laneHeight / 2);
     }
     canvas.restore();

@@ -21,6 +21,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - suite: polish
+            specs: visual-polish.spec.ts
           - suite: firehose
             specs: firehose.spec.ts
           - suite: pachinko
@@ -70,7 +72,7 @@ jobs:
         working-directory: web
         env:
           CARTOLITE_BASE_URL: https://carto.canadaverse.org
-        run: bash ../scripts/browser-ci.sh ${{ matrix.specs }} --project=desktop --project=mobile --project=mobile-webkit
+        run: bash ../scripts/browser-ci.sh ${{ matrix.specs }} --project=desktop --project=mobile --project=mobile-webkit ${{ matrix.suite == 'polish' && '--project=mobile-landscape' || '' }}
       - name: Retain deployment screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
