@@ -167,6 +167,8 @@ export function applyDisplayChrome(): void {
   root.dataset.detail = current.detail;
   root.dataset.motion = prefersReducedMotion() ? 'reduced' : 'full';
   root.dataset.textSize = current.textSize;
+  const panelColor = getComputedStyle(root).getPropertyValue('--panel-solid').trim();
+  if (panelColor) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', panelColor);
   for (const [kind, color] of Object.entries(packetPalette())) root.style.setProperty(`--kind-${kind.toLowerCase()}`, color);
   // A light panel can sit over a dark scene (and vice versa). Its swatches must
   // follow the panel, while route previews and rendered traffic follow the scene.
