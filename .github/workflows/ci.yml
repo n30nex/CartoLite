@@ -111,9 +111,9 @@ jobs:
     needs: [backend, frontend]
     # Keep the browser dependency environment stable across hosted-runner rollouts.
     runs-on: ubuntu-24.04
-    # Expanded Terminal/font/recovery coverage runs serially on this runner.
-    # Match Worldwide's job allowance; browser/runtime assertion limits stay fixed.
-    timeout-minutes: 50
+    # Full baseline took 49 minutes; the new visual suite adds about two.
+    # This is job orchestration headroom, not a change to runtime assertions.
+    timeout-minutes: 55
     permissions:
       contents: read
       packages: write
