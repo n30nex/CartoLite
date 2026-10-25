@@ -217,6 +217,20 @@ jobs:
           path: |
             web/polish-test-results/
             web/polish-playwright-report/
+      - name: UI audit and recovery regressions
+        working-directory: web
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: ux-audit-playwright-report
+        run: bash ../scripts/browser-ci.sh ui-audit.spec.ts labs-ui-audit.spec.ts --output ux-audit-test-results
+      - name: Preserve UI audit screenshots for early review
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cartolite-ui-audit
+          retention-days: 30
+          path: |
+            web/ux-audit-test-results/
+            web/ux-audit-playwright-report/
       - name: Pachinko physics, type buckets and responsive drawing
         working-directory: web
         env:
@@ -287,20 +301,6 @@ jobs:
           path: |
             web/terminal-test-results/
             web/terminal-playwright-report/
-      - name: UI audit and recovery regressions
-        working-directory: web
-        env:
-          PLAYWRIGHT_HTML_OUTPUT_DIR: ux-audit-playwright-report
-        run: bash ../scripts/browser-ci.sh ui-audit.spec.ts labs-ui-audit.spec.ts --output ux-audit-test-results
-      - name: Preserve UI audit screenshots for early review
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: cartolite-ui-audit
-          retention-days: 30
-          path: |
-            web/ux-audit-test-results/
-            web/ux-audit-playwright-report/
       - name: Terrain and Netgraph visual regression
         working-directory: web
         env:
