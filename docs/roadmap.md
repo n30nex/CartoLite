@@ -1,5 +1,9 @@
 # CartoLite delivery roadmap
 
+## Firehose motion and spectacle (0.20.1)
+
+Implementation and release qualification: [luminous packet and solver update](firehose-spectacle.md).
+
 ## Firehose delivery (0.20.0)
 
 Implementation and release qualification: [physical packet box plan](firehose-plan.md).
