@@ -204,6 +204,38 @@ jobs:
           bash scripts/integration-smoke.sh http://127.0.0.1:39476 artifacts/integration cartolite-mqtt
       - name: Bounded load smoke
         run: bash scripts/performance-smoke.sh http://127.0.0.1:39476 cartolite-mqtt
+      - name: Live map journey in a fresh browser process
+        working-directory: web
+        env:
+          CARTOLITE_BASE_URL: http://127.0.0.1:39476
+          PLAYWRIGHT_HTML_OUTPUT_DIR: live-map-playwright-report
+        shell: bash
+        run: |
+          publisher_pid=""
+          cleanup() {
+            if [[ -n "$publisher_pid" ]]; then
+              kill "$publisher_pid" >/dev/null 2>&1 || true
+              wait "$publisher_pid" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+          (
+            sleep 1
+            while true; do
+              FIXTURE_DELAY_SECONDS=0.04 bash ../scripts/publish-fixture.sh cartolite-mqtt ../testdata/synthetic-live.ndjson
+              sleep 0.25
+            done
+          ) &
+          publisher_pid="$!"
+          bash ../scripts/browser-ci.sh visual-smoke.spec.ts --output live-map-test-results
+      - name: Preserve live map journey evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cartolite-live-map-review
+          path: |
+            web/live-map-test-results/
+            web/live-map-playwright-report/
       - name: Visual polish framing, navigation and recovery
         working-directory: web
         env:
@@ -308,7 +340,7 @@ jobs:
           PLAYWRIGHT_HTML_OUTPUT_DIR: terrain-playwright-report
         run: bash ../scripts/browser-ci.sh --grep '@terrain|@regions' --output terrain-test-results
       # The scale fixture supplies its own state/event stream. Run all of its
-      # viewports before the unrelated live publisher competes for the renderer CPU.
+      # viewports with no live publisher competing for the renderer CPU.
       # Preserve every case, route count and timing limit; do not run it twice.
       - name: Dense-scene performance budgets
         working-directory: web
@@ -337,7 +369,13 @@ jobs:
             done
           ) &
           publisher_pid="$!"
-          bash ../scripts/browser-ci.sh --grep-invert 'Visual polish|long session|Firehose|Pachinko|Chronoscope|UI audit|@terrain|@regions|Terminal|unavailable character readback|keeps a 4k-node / 7k-route first view responsive'
+          # The live-provider map file ran above in its own browser process.
+          # Keep every remaining file and the existing per-test/runtime budgets.
+          specs=()
+          for spec in e2e/*.spec.ts; do
+            [[ "$spec" = e2e/visual-smoke.spec.ts ]] || specs+=("${spec#e2e/}")
+          done
+          bash ../scripts/browser-ci.sh "${specs[@]}" --grep-invert 'Visual polish|long session|Firehose|Pachinko|Chronoscope|UI audit|@terrain|@regions|Terminal|unavailable character readback|keeps a 4k-node / 7k-route first view responsive'
       - name: Trivy HIGH/CRITICAL gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

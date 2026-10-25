@@ -91,6 +91,7 @@ test('Visual polish Labs navigation follows the picker and keeps every experienc
     await page.keyboard.press('Escape');if(await page.locator('#view-panel').isVisible())await page.keyboard.press('Escape');
     await page.waitForTimeout(300);await page.screenshot({path:info.outputPath(`${id}-polished.png`)});
   }
+  for(const target of await page.locator('.labs-controls button:visible,.labs-controls select:visible,.labs-back:visible').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return{width:r.width,height:r.height};}))){expect(target.width).toBeGreaterThanOrEqual(44);expect(target.height).toBeGreaterThanOrEqual(44);}
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   if(info.project.name==='desktop'){
     const items=await page.locator('.dock-views > a,.dock-views > details > summary').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return{x:r.x,right:r.right};}));

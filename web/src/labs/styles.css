@@ -199,6 +199,6 @@ html:root[data-mobile-dock="true"] .labs-controls { grid-template-columns:repeat
 @media(min-width:901px) and (pointer:fine) {
  .labs-app .labs-controls { gap:3px; padding:5px; }
  .labs-controls .dock-views .control-button { padding-inline:6px; font-size:11px; }
- .labs-controls .experiment-picker select { min-height:34px; }
+ .labs-controls .experiment-picker select { min-height:44px; }
  .labs-controls > button { font-size:12px; padding-inline:10px; }
 }
