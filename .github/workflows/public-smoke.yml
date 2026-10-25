@@ -12,9 +12,27 @@ permissions:
   contents: read
 
 jobs:
+  # Match main CI view isolation: every existing assertion and limit is retained.
   public-visuals:
+    name: Public ${{ matrix.suite }} acceptance
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: firehose
+            specs: firehose.spec.ts
+          - suite: pachinko
+            specs: pachinko.spec.ts
+          - suite: chronoscope
+            specs: chronoscope.spec.ts
+          - suite: network
+            specs: netgraph-3d.spec.ts netgraph-regions.spec.ts audio-voices.spec.ts android-motion.spec.ts recovery.spec.ts cinematic.spec.ts display-upgrade.spec.ts navigation.spec.ts
+          - suite: map
+            specs: dock-terrain.spec.ts terrain.spec.ts mobile-ux.spec.ts terminal.spec.ts ui-audit.spec.ts
+          - suite: labs
+            specs: labs.spec.ts labs-mobile-ux.spec.ts labs-ui-audit.spec.ts
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -42,6 +60,7 @@ jobs:
           npm ci
           docker pull mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
       - name: Verify deployed memory retention and tab recovery
+        if: matrix.suite == 'network'
         working-directory: web
         env:
           CARTOLITE_BASE_URL: https://carto.canadaverse.org
@@ -51,12 +70,12 @@ jobs:
         working-directory: web
         env:
           CARTOLITE_BASE_URL: https://carto.canadaverse.org
-        run: bash ../scripts/browser-ci.sh firehose.spec.ts chronoscope.spec.ts netgraph-3d.spec.ts netgraph-regions.spec.ts audio-voices.spec.ts android-motion.spec.ts recovery.spec.ts cinematic.spec.ts dock-terrain.spec.ts display-upgrade.spec.ts terrain.spec.ts labs.spec.ts mobile-ux.spec.ts labs-mobile-ux.spec.ts terminal.spec.ts ui-audit.spec.ts labs-ui-audit.spec.ts --project=desktop --project=mobile --project=mobile-webkit
+        run: bash ../scripts/browser-ci.sh ${{ matrix.specs }} --project=desktop --project=mobile --project=mobile-webkit
       - name: Retain deployment screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: canada-deployed-visuals-${{ inputs.expected_sha }}
+          name: canada-deployed-visuals-${{ inputs.expected_sha }}-${{ matrix.suite }}
           path: |
             web/test-results/
             web/playwright-report/

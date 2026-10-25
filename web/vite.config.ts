@@ -18,6 +18,9 @@ export default defineConfig({
         // Keep shared controls, projections and effects together. Entry points
         // and MapLibre stay separate, so Netgraph never loads the basemap.
         codeSplitting: { groups: [
+          { name: 'three', test: /[\\/]node_modules[\\/]three[\\/]/, priority: 30, includeDependenciesRecursively: false },
+          { name: 'arcade', test: /[\\/]src[\\/](?:firehose|pachinko)[\\/]/, priority: 20, includeDependenciesRecursively: false },
+          { name: 'scene3d', test: /[\\/]src[\\/]sceneMaterials\.ts$/, priority: 25, includeDependenciesRecursively: false },
           { name: 'terminal', test: /[\\/]src[\\/]terminal(?:Grid|Graphics)?\.ts$/, priority: 20, includeDependenciesRecursively: false },
           { name: 'chronoscope', test: /[\\/]src[\\/]chronoscope[\\/]/, priority: 20, includeDependenciesRecursively: false },
           { name: 'shared', test: /[\\/]src[\\/]/, minShareCount: 2, priority: 10 },
@@ -29,7 +32,8 @@ export default defineConfig({
         labs: inputPath('labs/index.html'),
         netgraph: inputPath('netgraph/index.html'),
         chronoscope: inputPath('chronoscope/index.html'),
-        firehose: inputPath('firehose/index.html')
+        firehose: inputPath('firehose/index.html'),
+        pachinko: inputPath('pachinko/index.html')
       }
     }
   },

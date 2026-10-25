@@ -162,7 +162,7 @@ test('blocked browser storage does not prevent Map, Netgraph, or Labs startup', 
   await page.goto('/');
   await expect(page.locator('#status-text')).not.toHaveText('Starting…');
   await expect(page.locator('#fatal')).toBeHidden();
-  const hasLabs = await page.locator('#labs-link').count() > 0;
+  const hasLabs = await page.locator('#labs-options').count() > 0;
   await page.locator('#layers-summary').click();
   await expect(page.locator('#layers-panel')).toBeVisible();
   await page.goto('/netgraph/');

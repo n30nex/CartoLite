@@ -328,7 +328,7 @@ test('the map exposes Netgraph beside Labs', async ({ page }) => {
     body: `event: hello\ndata: ${JSON.stringify({ seq: 0, bootId: 'netgraph-test' })}\n\n`,
   }));
   await page.goto('/');
-  await expect(page.locator('#labs-link')).toHaveAttribute('href', '/labs/');
+  await expect(page.locator('#labs-options a').first()).toHaveAttribute('href', '/labs/?experiment=packet-pond');
   await expect(page.locator('#netgraph-link')).toHaveAttribute('href', '/netgraph/');
 });
 
