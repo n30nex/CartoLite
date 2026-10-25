@@ -37,6 +37,21 @@ public class ShellTest {
         FixtureActivity.pendingResponse = null;
     }
 
+    @Test public void restoresPachinkoAsTheLastView() throws Exception {
+        Context context = ApplicationProvider.getApplicationContext();
+        context.getSharedPreferences("android", Context.MODE_PRIVATE).edit()
+                .putString("start_view", "last").putString("last_view", "pachinko/").commit();
+        try (ActivityScenario<FixtureActivity> scenario = ActivityScenario.launch(FixtureActivity.class)) {
+            awaitPage(scenario);
+            scenario.onActivity(activity -> assertEquals(NavigationPolicy.CANADA_URL + "pachinko/",
+                    ((WebView) activity.findViewById(R.id.web_view)).getUrl()));
+            scenario.recreate();
+            awaitPage(scenario);
+            scenario.onActivity(activity -> assertEquals(NavigationPolicy.CANADA_URL + "pachinko/",
+                    ((WebView) activity.findViewById(R.id.web_view)).getUrl()));
+            capture("pachinko-restored");
+        }
+    }
     @Test public void restoresFirehoseAsTheLastView() throws Exception {
         Context context = ApplicationProvider.getApplicationContext();
         context.getSharedPreferences("android", Context.MODE_PRIVATE).edit()

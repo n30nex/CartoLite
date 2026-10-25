@@ -28,15 +28,16 @@ final class NavigationPolicy {
         if (uri != null && ("/terminal/".equals(uri.getPath()) || "/terminal".equals(uri.getPath()))) return "terminal/";
         if (uri != null && ("/chronoscope/".equals(uri.getPath()) || "/chronoscope".equals(uri.getPath()))) return "chronoscope/";
         if (uri != null && ("/firehose/".equals(uri.getPath()) || "/firehose".equals(uri.getPath()))) return "firehose/";
+        if (uri != null && ("/pachinko/".equals(uri.getPath()) || "/pachinko".equals(uri.getPath()))) return "pachinko/";
         return "";
     }
 
     static String lastViewUrl(String view) {
-        return CANADA_URL + ("netgraph/".equals(view) || "labs/".equals(view) || "terminal/".equals(view) || "chronoscope/".equals(view) || "firehose/".equals(view) ? view : "");
+        return CANADA_URL + ("netgraph/".equals(view) || "labs/".equals(view) || "terminal/".equals(view) || "chronoscope/".equals(view) || "firehose/".equals(view) || "pachinko/".equals(view) ? view : "");
     }
 
     static String startViewUrl(String preferredView, String lastView) {
-        return lastViewUrl("".equals(preferredView) || "netgraph/".equals(preferredView) || "labs/".equals(preferredView) || "terminal/".equals(preferredView) || "chronoscope/".equals(preferredView) || "firehose/".equals(preferredView)
+        return lastViewUrl("".equals(preferredView) || "netgraph/".equals(preferredView) || "labs/".equals(preferredView) || "terminal/".equals(preferredView) || "chronoscope/".equals(preferredView) || "firehose/".equals(preferredView) || "pachinko/".equals(preferredView)
                 ? preferredView : lastView);
     }
 

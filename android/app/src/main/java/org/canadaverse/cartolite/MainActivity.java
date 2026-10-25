@@ -348,9 +348,9 @@ public class MainActivity extends Activity {
     }
 
     private void chooseStartView() {
-        String[] values = {"last", "", "netgraph/", "terminal/", "chronoscope/", "firehose/", "labs/"};
+        String[] values = {"last", "", "netgraph/", "terminal/", "chronoscope/", "firehose/", "pachinko/", "labs/"};
         String[] labels = {getString(R.string.start_last), getString(R.string.start_map),
-                getString(R.string.start_netgraph), getString(R.string.start_terminal), getString(R.string.start_chronoscope), getString(R.string.start_firehose), getString(R.string.start_labs)};
+                getString(R.string.start_netgraph), getString(R.string.start_terminal), getString(R.string.start_chronoscope), getString(R.string.start_firehose), getString(R.string.start_pachinko), getString(R.string.start_labs)};
         String selected = preferences.getString("start_view", "last");
         int checked = 0;
         for (int i = 0; i < values.length; i++) if (values[i].equals(selected)) checked = i;
@@ -468,7 +468,7 @@ public class MainActivity extends Activity {
         timedOut = false;
         retryOnNetwork = false;
         String path = NavigationPolicy.viewPath(currentUrl);
-        int name = "netgraph/".equals(path) ? R.string.start_netgraph : "terminal/".equals(path) ? R.string.start_terminal : "chronoscope/".equals(path) ? R.string.start_chronoscope : "firehose/".equals(path) ? R.string.start_firehose : "labs/".equals(path) ? R.string.start_labs : R.string.start_map;
+        int name = "netgraph/".equals(path) ? R.string.start_netgraph : "terminal/".equals(path) ? R.string.start_terminal : "chronoscope/".equals(path) ? R.string.start_chronoscope : "firehose/".equals(path) ? R.string.start_firehose : "pachinko/".equals(path) ? R.string.start_pachinko : "labs/".equals(path) ? R.string.start_labs : R.string.start_map;
         connectionTitle.setText(getString(R.string.opening_view, getString(name)));
         connectionDetail.setText(R.string.connecting_detail);
         progress.setVisibility(View.VISIBLE);

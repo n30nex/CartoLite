@@ -7,6 +7,14 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 public final class NavigationPolicyTest {
+    @Test public void pachinkoSharesRestoresAndStartsOnlyOnCanada() {
+        assertEquals("pachinko/", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "pachinko/?node=synthetic"));
+        assertEquals("pachinko/", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "pachinko"));
+        assertEquals(NavigationPolicy.CANADA_URL + "pachinko/", NavigationPolicy.startViewUrl("last", "pachinko/"));
+        assertEquals(NavigationPolicy.CANADA_URL + "pachinko/", NavigationPolicy.startViewUrl("pachinko/", "netgraph/"));
+        assertEquals("", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "pachinko-other/"));
+        assertEquals("", NavigationPolicy.viewPath("https://example.invalid/pachinko/"));
+    }
     @Test public void firehoseSharesRestoresAndStartsOnlyOnCanada() {
         assertEquals("firehose/", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "firehose/?node=synthetic"));
         assertEquals("firehose/", NavigationPolicy.viewPath(NavigationPolicy.CANADA_URL + "firehose"));

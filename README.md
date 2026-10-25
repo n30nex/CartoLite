@@ -120,3 +120,7 @@ Open /chronoscope/ or choose **Chronoscope** in the dock. A bright Now plane and
 ## Firehose
 
 Open `/firehose/` for a fully 3D live packet box. Tilt the box, orbit the camera, or pour linked packet beads into the pit. The pile starts empty, preserves confirmed hops and uses GPU rendering with worker physics and bounded resources. [View and controls guide](docs/firehose.md).
+
+## Packet arcade and sculpture
+
+The icon dock keeps Map, Netgraph and Terminal direct, with Chronoscope, Firehose and the new [Pachinko](docs/pachinko.md) under **Experimental**. Canada also groups its four Labs experiences. Pachinko uses one dot per packet, type lanes, buckets and overflow. [Chronoscope](docs/chronoscope.md) now has a true 3D camera and a bounded accumulating sculpture. [Generated scene materials](docs/scene-assets.md) add metallic shading and a quiet enamel playfield.

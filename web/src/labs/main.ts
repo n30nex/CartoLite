@@ -1,6 +1,7 @@
 import { required } from '../dom';
 import { requestScreenAwake as requestWakeLock, releaseScreenAwake as releaseWakeLock } from '../screenAwake';
 import { mountMobileDock } from '../mobileDock';
+import { createViewNavigation } from '../viewNavigation';
 import { addViewGuide, closeHelpBackdrop } from '../viewHelp';
 import { trackPanelHistory } from '../cinematicChrome';
 import { initializeDisplay, DISPLAY_EVENT, displayPreferences, prefersReducedMotion } from '../displayPreferences';
@@ -105,10 +106,10 @@ document.querySelector('.labs-controls')!.append(displayButton);app.append(displ
 mountDisplayControls(displayDialog,'labs');
 displayButton.addEventListener('click',()=>displayDialog.showModal());
 displayDialog.querySelector('button')!.addEventListener('click',()=>{displayDialog.close();displayButton.focus();});
-const navigation = document.createElement('nav'); navigation.className='dock-views'; navigation.setAttribute('aria-label','Views');
-navigation.innerHTML='<a class="control-button" href="/" aria-label="Open CartoLite map">Map</a><a class="control-button" href="/netgraph/" aria-label="Open CartoLite Netgraph">Netgraph</a><a class="control-button" href="/terminal/" aria-label="Open CartoLite Terminal">Terminal</a><a class="control-button" href="/chronoscope/" aria-label="Open CartoLite Chronoscope">Chronoscope</a><a class="control-button" href="/firehose/" aria-label="Open CartoLite Firehose">Firehose</a><a class="control-button" href="/labs/" aria-current="page" aria-label="Open CartoLite Labs">Labs</a>';
+const navigation = createViewNavigation('Labs', new Set(['terminal', 'chronoscope', 'firehose', 'pachinko']), true);
+labControls.prepend(navigation);
 mountMobileDock(labControls, navigation, 'Labs');
-trackPanelHistory(labControls, ['labs-display', 'info-dialog', 'view-panel']);
+trackPanelHistory(labControls, ['labs-display', 'info-dialog', 'experimental-options', 'labs-options', 'view-panel']);
 let qualityPreference = displayPreferences().quality;
 window.addEventListener(DISPLAY_EVENT,()=>{
   if (qualityPreference !== displayPreferences().quality) {

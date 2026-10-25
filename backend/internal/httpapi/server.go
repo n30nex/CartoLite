@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -157,7 +158,7 @@ func (s *Server) frontend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if r.URL.Path == "/terminal" || r.URL.Path == "/chronoscope" || r.URL.Path == "/firehose" {
+	if r.URL.Path == "/terminal" || r.URL.Path == "/chronoscope" || r.URL.Path == "/firehose" || r.URL.Path == "/pachinko" {
 		target := r.URL.Path + "/"
 		if r.URL.RawQuery != "" {
 			target += "?" + r.URL.RawQuery
@@ -170,6 +171,10 @@ func (s *Server) frontend(w http.ResponseWriter, r *http.Request) {
 		name = "index.html"
 	} else if strings.HasSuffix(r.URL.Path, "/") {
 		name = path.Join(name, "index.html")
+	}
+	if path.Ext(name) != ".html" {
+		s.staticAsset(w, r, name)
+		return
 	}
 	body, err := fs.ReadFile(s.static, name)
 	if err != nil {
@@ -194,6 +199,42 @@ func (s *Server) frontend(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if r.Method != http.MethodHead {
 		_, _ = w.Write(body)
+	}
+}
+
+// Stream large textures, workers and region assets; HEAD never reads their body.
+func (s *Server) staticAsset(w http.ResponseWriter, r *http.Request, name string) {
+	file, err := s.static.Open(name)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, "frontend unavailable", http.StatusInternalServerError)
+		}
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		http.Error(w, "frontend unavailable", http.StatusInternalServerError)
+		return
+	}
+	if info.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+	if strings.HasPrefix(name, "assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400")
+	}
+	if contentType := staticContentType(name); contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	w.WriteHeader(http.StatusOK)
+	if r.Method != http.MethodHead {
+		_, _ = io.Copy(w, file)
 	}
 }
 
