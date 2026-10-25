@@ -161,8 +161,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .labs-display header { position:sticky; top:0; z-index:2; padding:8px 0; background:var(--panel-solid); }
 .labs-display header button { min-width:44px; min-height:44px; background:transparent; color:inherit; border:0; font-size:24px; }
 .labs-display::backdrop { background:#03101888; }
-:root[data-theme="light"] .labs-app :is(button,select,input,a,label,.labs-title,.labs-status) { color:var(--ink); }
-:root[data-theme="light"] .labs-app :is(button,select) { background:var(--field-bg); border-color:var(--panel-border); }
 :root[data-text-size="large"] .labs-app :is(button,select,label,.live-caption) { font-size:15px; }
 :root[data-effects="minimal"] .labs-stage { filter:saturate(.85); }
 @media(max-width:620px) { .labs-display { margin:auto; max-height:calc(100dvh - 24px); } }
