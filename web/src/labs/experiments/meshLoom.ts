@@ -382,8 +382,8 @@ function createLegend(): HTMLElement {
     const item = document.createElement('span');
     item.className = 'loom-kind-item';
     const swatch = document.createElement('i');
-    swatch.style.backgroundColor = PACKET_KIND_COLORS[kind];
-    swatch.style.boxShadow = `0 0 8px ${PACKET_KIND_COLORS[kind]}`;
+    swatch.style.backgroundColor = `var(--ui-kind-${kind.toLowerCase()})`;
+    swatch.style.boxShadow = 'none';
     const label = document.createElement('span');
     label.textContent = kind;
     item.append(swatch, label);
