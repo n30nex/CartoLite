@@ -1,4 +1,4 @@
-import { effectStrength } from '../../displayPreferences';
+import { effectStrength, displayPreferences } from '../../displayPreferences';
 import type { EndpointV2, StateV2 } from '../../types';
 import { PACKET_KIND_COLORS } from '../../trafficVisuals';
 import { CanvasSurface, easeOut, rgba } from '../canvas';
@@ -390,7 +390,8 @@ class LittleMeshVillages implements LabExperiment {
     height: number,
   ): void {
     canvas.save();
-    canvas.font = '600 10px Inter, system-ui, sans-serif';
+    const fontSize=displayPreferences().textSize==='large'?14:11;
+    canvas.font = `600 ${fontSize}px Inter, system-ui, sans-serif`;
     canvas.textAlign = 'center';
     canvas.textBaseline = 'bottom';
     const labelled = settlements
@@ -399,12 +400,13 @@ class LittleMeshVillages implements LabExperiment {
     for (const settlement of labelled) {
       const center = this.#settlementCenters.get(settlement.id);
       if (!center || center.y < 72 || center.y > height - 48) continue;
-      const label = `${settlement.tier} · ${settlement.buildings.length} observed nodes`;
+      const label = `${settlement.tier} · ${settlement.buildings.length} ${settlement.buildings.length===1?'node':'nodes'}`;
       const textWidth = canvas.measureText(label).width;
-      canvas.fillStyle = 'rgba(3, 12, 16, 0.66)';
-      canvas.fillRect(center.x - textWidth / 2 - 5, center.y - 48, textWidth + 10, 15);
+      const labelX=clamp(center.x,textWidth/2+8,width-textWidth/2-8);
+      canvas.fillStyle = 'rgba(3, 12, 16, 0.88)';
+      canvas.fillRect(labelX - textWidth / 2 - 5, center.y - 37 - fontSize, textWidth + 10, fontSize + 6);
       canvas.fillStyle = 'rgba(203, 228, 224, 0.86)';
-      canvas.fillText(label, center.x, center.y - 35);
+      canvas.fillText(label, labelX, center.y - 35);
     }
     canvas.restore();
   }

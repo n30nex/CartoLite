@@ -21,6 +21,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - suite: polish
+            specs: visual-polish.spec.ts
           - suite: firehose
             specs: firehose.spec.ts
           - suite: pachinko
