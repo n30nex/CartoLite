@@ -69,6 +69,8 @@ const metrics = new RollingMetrics();
 
 let currentDefinition = experimentByID(query.get('experiment'));
 let activeExperiment: LabExperiment | undefined;
+let sizedExperiment: LabExperiment | undefined;
+let sizedViewport: LabViewport | undefined;
 let switchGeneration = 0;
 let userPaused = false;
 let streamConnected = false;
@@ -269,6 +271,8 @@ async function start(): Promise<void> {
     store?.destroy();
     sonifier?.destroy();
     activeExperiment?.destroy();
+    sizedExperiment = undefined;
+    sizedViewport = undefined;
     releaseWakeLock();
   });
 }
@@ -372,7 +376,13 @@ function resizeActiveExperiment(): void {
   required('labs-quality-status').textContent = quality === 'auto'
     ? economy ? 'Automatic: reduced resolution to keep the scene responsive.' : 'Automatic: full scene resolution.'
     : quality === 'high' ? 'High: full scene resolution.' : 'Economy: reduced scene resolution.';
+  // Palette, interface and motion choices do not resize the scene. Assigning
+  // canvas dimensions again clears paused art and recreates graphics buffers.
+  if (sizedExperiment === activeExperiment && sizedViewport?.width === viewport.width
+    && sizedViewport.height === viewport.height && sizedViewport.pixelRatio === viewport.pixelRatio) return;
   activeExperiment.resize(viewport);
+  sizedExperiment = activeExperiment;
+  sizedViewport = viewport;
 }
 
 function startFrames(): void {

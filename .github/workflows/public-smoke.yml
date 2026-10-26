@@ -22,7 +22,7 @@ jobs:
       matrix:
         include:
           - suite: polish
-            specs: visual-polish.spec.ts
+            specs: visual-polish.spec.ts theme-cohesion.spec.ts
           - suite: firehose
             specs: firehose.spec.ts
           - suite: pachinko
