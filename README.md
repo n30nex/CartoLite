@@ -1,133 +1,69 @@
-# CartoLite
+# CartoLite Canada
 
-CartoLite is a compact, privacy-safe live map of high-confidence MeshCore Canada RF traffic. Its calm CARTO vector geography keeps the live topology readable: visitors can switch between clusters and individual nodes at every zoom, while the stronger heatmap separates activity by packet type. Optional multidirectional Topo makes relief clearer; enabling 3D also enables Topo and Buildings and aligns live trails, residue, and ground rings with the terrain and camera. Desktop 3D adds mapped buildings, a compass, pitch control and adjustable terrain height (1× by default). These are illustrations of confirmed hops, not antenna heights or radio coverage. Route windows narrow automatically from 24 hours at local detail to 15 minutes at national scale and also constrain focused-node connections. Every eligible route in the chosen window remains an individual geographic line at every zoom. Selecting a node opens a persistent inspector, lights its recent connected routes, and lists its active neighbours newest first. The local Node Finder searches only already-downloaded public labels. Every visible packet hop travels as a sharp protocol-coloured core with a short tapered glow, restrained sparks, relay handoff, destination shimmer, node wake, and 45-second sparkling residue independent of the historical Routes layer. The geographic map keeps its optional region labels static and free of traffic badges. In Netgraph, cross-region traffic makes both exact area labels answer in packet colour with OUT and IN cues; long-haul DX candidates receive a stronger bounded treatment. Live Follow holds each activity for ten seconds with a node/packet card, countdown and pause/resume. Map and Netgraph share saved Night, Daylight and Streets/Paper scenes, interface themes and six route presets with advanced width, pattern, glow, packet and trail controls. The optional 193-leaf MeshCore.ca region partition stays lazy until requested, with stronger borders, subtle region colors and a viewport legend that stays locked to the basemap during camera movement. The opt-in Sound control gives every live hop crossing the current view one note in a choice of [31 sound voices](docs/sound-voices.md), including an Android-safe gesture unlock; off-screen hops and observer-only traffic stay silent. [Netgraph](https://carto.canadaverse.org/netgraph/) presents the same live feed as a stable, full-screen topology with every connected node and active-window link, exact Canadian region grouping, nearby U.S. metro grouping, synchronized packet travel and sound, local search, and neighbour inspection. [CartoLite Labs](https://carto.canadaverse.org/labs/) interprets that same sanitized live feed as Packet Pond, Firefly Meadow, Mesh Loom, and Little Mesh Villages without adding another service or data source. On supported phones CartoLite keeps the screen awake while visible and refreshes its state and live stream whenever the page resumes. The signed [CartoLite Android app](https://canadaverse.org/cartolite/) adds an immersive shell, native keep-awake, and stronger lifecycle recovery without changing those privacy boundaries. View, layer, route-window, legend, and audio preferences remain local to that browser or app. CartoLite deliberately omits persistent packet history, chat, PacketTV, phonebooks, operator tools, visitor analytics, and databases.
+**See and hear the Canadian MeshCore network in motion.**
 
-## Runtime shape
+[Open the live map](https://carto.canadaverse.org/) · [Android app](https://canadaverse.org/cartolite/) · [Latest release](https://github.com/n30nex/CartoLite/releases/latest) · [Host your own mesh](https://github.com/n30nex/CartoLite-Server)
 
-- One static Go binary subscribes to MeshCore MQTT, validates routes, maintains bounded in-memory state, serves normalized public schema v2 and SSE, and embeds the frontend.
-- One vanilla TypeScript multi-page build serves the MapLibre map, native Canvas2D Netgraph, and lazy-loaded Labs shell from the same binary. Netgraph separates stable topology from transient packet motion; Labs uses bounded Canvas2D experiments plus one dependency-free reactive WebGL2 water surface. Every view shares the existing public feed and sound engine.
-- One internal `/data/state-v1.json` checkpoint preserves current topology across restarts. Routes expire after 24 hours and unreferenced nodes after 30 days; it is not packet history.
-- One non-root, read-only, `linux/amd64` container is published to `ghcr.io/n30nex/cartolite`.
+CartoLite turns the Canada MQTT feed into a compact live map, an interactive topology diagram and a collection of visual experiments. Packets animate only when observed; retained routes show confirmed links.
 
-See [Architecture](docs/architecture.md), [Netgraph](docs/netgraph.md), [Labs](docs/labs.md), [Android app](docs/android.md), [data sources](docs/data-sources.md), [public API](docs/public-api.md), [browser and app privacy](docs/privacy.md), [sound and animation](docs/sound-and-animation.md), [deployment](docs/deployment.md), and [operations](docs/operations.md).
+![CartoLite's map, terrain and compact layer controls](https://github.com/n30nex/CartoLite/releases/latest/download/map-overview-desktop.png)
 
-## Deploy a published image
+*Current-release interface, captured in Actions with synthetic traffic. [More screenshots and verification](https://github.com/n30nex/CartoLite/releases/latest).*
 
-No build tools are required on the host.
+## Choose a view
 
-```bash
-cp .env.example .env
-# Edit .env: pin CARTOLITE_IMAGE by digest and provide the private MQTT values.
-docker compose pull
-docker compose up -d
-curl --fail http://127.0.0.1:39476/readyz
-```
+| View | What you can do |
+|---|---|
+| **Map** | Watch confirmed hops on a geographic map; explore terrain, buildings, heatmaps and optional 3D. |
+| **Netgraph** | Follow the topology with recognizable geographic groups, optional 3D, region filters and draggable region layouts. |
+| **Terminal** | Turn the map into a live BBS display with Braille, ASCII, pixel and cel-shaded modes, six presets, custom colours and fonts. |
+| **Chronoscope** | Orbit a growing, session-only sculpture of observed packets and routes. |
+| **Firehose** | Watch linked packet beads tumble into a 3D box; tilt it to pour them out. |
+| **Pachinko** | Watch individual packets bounce into colour-coded buckets and overflow into a drain. |
 
-The production example exposes port 80 for a TLS edge and a loopback health endpoint on port 39476. Restrict origin traffic to the edge, redirect public HTTP to HTTPS, and use strict certificate validation between the edge and origin. Public SSE is same-origin and validates the browser `Origin` against the request host. Only the content-hashed regional GeoJSON should receive a Cloudflare cache-eligibility rule; health, readiness, state, and events stay uncached.
+The dock keeps **Map**, **Netgraph** and **Terminal** close at hand. **Experimental** groups Chronoscope, Firehose and Pachinko. **Labs** adds Packet Pond, Firefly Meadow, Mesh Loom and Little Mesh Villages. On phones, these live in one View picker.
 
-## Development and verification
+<p>
+  <img src="https://github.com/n30nex/CartoLite/releases/latest/download/firehose-active-flow-desktop.png" width="49%" alt="Luminous packets falling into the Firehose box">
+  <img src="https://github.com/n30nex/CartoLite/releases/latest/download/pachinko-live-desktop.png" width="49%" alt="Packets falling through Pachinko into type-specific buckets">
+</p>
 
-See the [audit roadmap](docs/roadmap.md) for current corrective work, UI refinements, validation tasks and paired worldwide delivery.
+## Everyday controls
 
-The geographic map requires WebGL2; Netgraph uses Canvas2D. MQTT bridge envelopes are limited to 64 KiB before normalization, and RF evidence must contain finite numbers.
+- **Find, inspect and follow:** search public node names, inspect confirmed neighbours and routes, or use ten-second Live Follow with a countdown, area/node scopes and Hold/Next controls.
+- **Make it yours:** Aurora, Glacier, Ember and Violet interface palettes; light/dark panels; Night, Daylight and Streets scenes; six route presets and advanced line controls. Terminal has its own colour/font studio.
+- **Hear the mesh:** [31 opt-in sound voices](docs/sound-voices.md), including Dial-up Modem, with preview and volume controls. Only eligible visible live hops make sound.
+- **Phone-friendly:** one compact view picker, coordinated sheets, touch controls, reduced-motion support and recovery after sleep or a lost connection.
+- **A small service:** one Go process, bounded memory and one atomic topology checkpoint. No database, accounts, chat, visitor analytics or persistent packet history.
 
-This repository intentionally does not build or test on the workstation. The normal release path uses `CI / Required`; an explicitly approved no-Actions exception must follow the fail-closed Pi procedure in [manual release](docs/manual-release.md). The complete gate runs Go tests/vet/race, frontend tests/build/size reports, a Mosquitto-backed integration and bounded-load smoke, desktop/phone portrait/phone landscape Playwright, privacy and vector-only checks, operations transition tests, and a HIGH/CRITICAL Trivy scan.
+Canada adds maintained MQTT region coverage, detailed region outlines and a local legend. Map uses CARTO vector tiles; optional terrain uses Mapterhorn and buildings use OpenFreeMap, with attribution retained.
 
-Green `main` publishes `sha-<full-git-sha>`. A signed or annotated `vX.Y.Z` tag promotes that exact tested digest to `X.Y.Z`, `X.Y`, and `latest`; the release workflow does not rebuild it.
+The **Canada-only Android app** wraps the hosted pages with immersive display, keep-awake and lifecycle recovery. Get the signed APK and installation details from [Canadaverse](https://canadaverse.org/cartolite/). The native package remains **1.1.5**; hosted interface updates arrive without an APK reinstall.
 
-## Privacy
+## Hosting
 
-Public responses never contain full public keys, observer keys, raw paths, packet hashes, raw or decoded payloads, message text, credentials, or resolver debug reasons. Please report security issues privately as described in [SECURITY.md](SECURITY.md).
+For another local or national mesh, use **[CartoLite Server](https://github.com/n30nex/CartoLite-Server)**: key-free maps, optional pages and published AMD64/ARM64 images.
 
-## License
+This repository powers the Canadian instance. Its published image is `ghcr.io/n30nex/cartolite` for `linux/amd64`. Follow the [Canada deployment guide](docs/deployment.md) to configure the existing edge/origin setup, MQTT subscription, exact image digest and persistent data volume. No build tools are needed on the server.
 
-MIT
+CartoLite is an **MQTT client, not a broker**. A reachable MeshCore broker and its subscription details are required; installing CartoLite does not open an MQTT listener on port 1883. Operator logs are available with `docker compose logs --tail=100 cartolite` from the installation directory.
 
-## Cinematic display
+## Privacy and scope
 
-Map and Netgraph share effects intensity, six route presets, detail level,
-graphics quality, motion and text size. New settings default to Spectacle with
-automatic detail/quality and the system motion preference. Existing appearance,
-layer and audio choices are preserved. Sound stays opt-in; Preview voice plays
-one explicit sample without enabling live audio.
+Public data contains sanitized node labels, locations and confirmed topology. It does **not** expose keys, observer identities, raw paths, packet hashes, payloads, message text, credentials or resolver details. Route interpretation stays fail-closed; terrain and diagram heights are visual context, not radio coverage or antenna measurements. See [privacy](docs/privacy.md), [public API v2](docs/public-api.md) and [security reporting](SECURITY.md).
 
-The dock holds navigation, Find, Layers, Follow, Sound and Display. Network,
-Activity and Landscape combinations change layers only and include Undo.
-Follow holds each live subject for ten seconds and supports fixed-area or
-selected-node scopes, Hold, Next and Inspect. It never replays old traffic.
-Netgraph adds area/component focus without rearranging the network.
+## Development and releases
 
-GPU packet effects use the same geographic projections and hop clock as the
-Canvas fallback. Automatic detail reduces background decoration, not retained
-connections. Terrain and buildings are visual context, not RF coverage or
-measured antenna heights. A missing basemap does not prevent using Netgraph.
+Maintainer builds, tests, lockfile refreshes, screenshots and releases run in **GitHub Actions**. The toolchains are Node **24.22.1 LTS**, Go **1.27.3** and Playwright **1.64.1** with its matching pinned browser image. CI covers all npm dependencies, Go tests/vet/race, synthetic MQTT and privacy checks, browser/mobile rendering, long-session and performance checks, and container scanning.
 
+The CI workflow's **Refresh dependency lockfiles** option exports a patch tied to its source commit for review. It does not run the qualification suite or publish an image. Apply the reviewed patch on the same branch, then run normal PR CI. See the [maintenance review](docs/maintenance-2026-10-26.md).
 
-## Optional 3D Netgraph
+Green `main` publishes an attested `sha-<full-commit>` candidate. Versioned releases promote that tested digest without rebuilding and include installation files, a manifest, checksums and Actions screenshots.
 
-Netgraph opens top-down. Tap **3D** to tilt the same geographic groups into
-raised nodes, regional platforms and arched connections. Drag to pan;
-Shift-drag or right-drag rotates on desktop, while two-finger pinch/twist zooms
-and rotates on phones. Display also has rotation, tilt and Top-down controls.
+Canada CI also checks the Android shell on API 26 and 36. A web release does not imply a newly signed APK or a new physical-device acceptance check.
 
-Selecting a node frames its recent confirmed neighbours once. Tap a connection
-for its endpoints, latest category, last-heard time and approximate geographic
-distance, or open either endpoint on Map. The height is schematic, not measured
-antenna elevation. All six route presets, themes and 31 voices still apply.
+## Documentation
 
-### Arrange and filter regions
+[Deployment](docs/deployment.md) · [Operations and recovery](docs/operations.md) · [Architecture](docs/architecture.md) · [Data sources](docs/data-sources.md) · [Netgraph](docs/netgraph.md) · [Terminal](docs/terminal-view-plan-2026-10-17.md) · [Chronoscope](docs/chronoscope.md) · [Firehose](docs/firehose.md) · [Pachinko](docs/pachinko.md) · [Labs](docs/labs.md) · [Android](docs/android.md) · [Roadmap](docs/roadmap.md)
 
-In Netgraph, open **Display → Region layout** to spread region centres from 100% to
-400%. Drag a region label to move its whole bubble, or choose a region and use
-the arrow buttons. **Reset region layout** restores the geographic arrangement.
-Nodes keep their positions inside each bubble; routes and live packets follow
-when the bubble moves. These controls change the diagram, not reported locations.
-
-Use **Regions** to search IATA/region codes or names and select multiple regions.
-**None** followed by one checkbox isolates a region; **All** restores the full mesh.
-Only connections with both endpoints in the selected regions are shown. Search
-and Follow respect this selection. Use **Routes** to hide standing connections;
-live packets still illuminate their paths and leave a brief fading trace.
-Layout, region choices and route visibility are remembered in this browser.
-
-### Terminal view
-
-Open /terminal/ or choose **Terminal** beside Map and Netgraph (in the View picker on phones). This BBS-style geographic view uses live Braille/ASCII graphics with ANSI, amber or green phosphor. Find, inspection, layer toggles, route windows, Follow, optional 3D and opt-in sounds use the same live data and controls as Map. Set characters and cell size under **Display → Terminal display**. The character renderer is downloaded only when you open Terminal; no extra map key or service is required.
-
-See [implementation and validation plan](docs/terminal-view-plan-2026-10-17.md).
-
-### Terminal appearance
-
-Open **Terminal → Display → Terminal options** for six retro presets, per-element
-colours, HSL sliders, console/pixel fonts and independent map brightness/live glow.
-Choose Braille, ASCII, pixel-block or cel-shaded geography; confirmed routes stay
-sharp above it. Live packets can use characters or smooth strokes. Settings are
-local, migrate older Terminal choices and synchronize across tabs without changing
-Map/Netgraph preferences or sound. The colour editor always keeps a readable reset.
-Fonts and licences are bundled in `web/public/fonts/terminal/`.
-
-Terminal defaults match the owner-selected screenshots: routes, live packets,
-heatmap, node/place labels, roads and buildings on; clusters, regions, Topo and
-3D off; 15-minute routes and 15% Topo shading. Fine ANSI/BBS Braille, Spectacle,
-Complete detail, High graphics, system motion, standard text and Neon routes.
-Layer/display settings are independent from Map/Netgraph, and saved Terminal
-customizations remain. Reset all display settings restores these Terminal defaults.
-
-## Chronoscope
-
-Open `/chronoscope/` or choose **Experimental → Chronoscope**. Orbit, pan and zoom around newly observed packet shapes as they descend from the Now plane and settle into a growing 3D sculpture. Flat and Slice retain recent-time inspection; Freeze holds the sculpture while the camera remains usable. Region selection, node/packet inspection and shared display/sound controls remain available. The session starts empty, retains a bounded number of whole observations and never reconstructs traffic from route totals. [View guide](docs/chronoscope.md).
-
-## Firehose
-
-Open `/firehose/` for a fully 3D live packet box. Tilt the box, orbit the camera, or pour linked packet beads into the pit. The pile starts empty, preserves confirmed hops and uses GPU rendering with worker physics and bounded resources. [View and controls guide](docs/firehose.md).
-
-## Packet arcade and sculpture
-
-The icon dock keeps Map, Netgraph and Terminal direct, with Chronoscope, Firehose and the new [Pachinko](docs/pachinko.md) under **Experimental**. Canada also groups its four Labs experiences. Pachinko uses one dot per packet, type lanes, buckets and overflow. [Chronoscope](docs/chronoscope.md) now has a true 3D camera and a bounded accumulating sculpture. [Generated scene materials](docs/scene-assets.md) add metallic shading and a quiet enamel playfield.
-
-## Interface palettes
-
-Open **Display → Palette** for Aurora, Glacier, Ember or Violet. Pair any palette
-with light or dark panels; the choice follows ordinary views and open tabs.
-Packet colours retain their meaning. Terminal keeps its independent colour and
-font studio. See the [theme audit](docs/theme-cohesion-audit-2026-10-25.md).
+[MIT licensed](LICENSE).
