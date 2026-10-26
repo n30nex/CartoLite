@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS web-build
+FROM --platform=$BUILDPLATFORM node:24.22.1-bookworm-slim AS web-build
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
@@ -11,7 +11,7 @@ COPY scripts/write-terminal-page.mjs /src/scripts/write-terminal-page.mjs
 RUN --mount=type=secret,id=carto_basemap_api_key,required=false \
     VITE_CARTO_BASEMAP_API_KEY="$(cat /run/secrets/carto_basemap_api_key 2>/dev/null || true)" npm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.26.10-bookworm AS go-build
+FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS go-build
 ARG APP_VERSION=dev
 ARG GIT_SHA=unknown
 ARG BUILD_TIME=unknown
