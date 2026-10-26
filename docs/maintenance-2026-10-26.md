@@ -45,6 +45,19 @@ Keep community examples and optional-page instructions visible.
 
 ## Qualification
 
+The newer browser exposed an existing startup dependency in both editions:
+network layers were installed at MapLibre's global `load` event, which waits for
+basemap tiles. Install plain 2D layers at the public `style.load` lifecycle. A
+regression check holds geographic tile responses pending while requiring topology
+and a live packet to become ready within the unchanged five-second deadline.
+Existing style/context recovery and full rendering suites remain required.
+Cold-start comparisons against the exact released image showed that starting
+terrain during the first style event competes with initial basemap rendering.
+Saved Topo/3D views retain their staged `load` initialization, registered ahead
+of Find's load handler. The existing readiness settlement remains unchanged.
+An early saved-3D check repeats three times without retries and retains its
+five-second deadline. Diagnostic comparisons are not release qualification.
+
 All builds, dependency resolution and automated validation run in Actions.
 Normal PR and exact-main CI remain mandatory; no performance, privacy, topology,
 container or resource gate is relaxed. No backend API or checkpoint schema changes.
