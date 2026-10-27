@@ -4,6 +4,67 @@ import { graphFilters, graphFocus, graphRoutes, openDisplay, viewTool } from './
 import type { StateV2 } from '../src/types';
 
 test.describe('UI audit', () => {
+  test('Regions can retry a worker startup failure without breaking the map', async ({ page }) => {
+    await visualFixture(page);
+    await page.addInitScript(() => {
+      const NativeWorker = window.Worker;
+      let failed = false;
+      window.Worker = new Proxy(NativeWorker, {
+        construct(target, args) {
+          if (String(args[0]).includes('regionWorker') && !failed) {
+            failed = true;
+            throw new Error('Synthetic region worker startup failure');
+          }
+          return Reflect.construct(target, args);
+        },
+      });
+    });
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto('/');
+    await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
+    await page.locator('#layers-summary').click();
+    const regions = page.locator('#regions-button');
+    await regions.click();
+    await expect(regions).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
+    await regions.click(); await regions.click();
+    await expect(page.locator('#map')).toHaveAttribute('data-regions-loaded', 'true', { timeout: 20_000 });
+    expect(errors).toEqual([]);
+  });
+
+  test('leaving a map settles an unresponsive region worker and tolerates repeated cleanup', async ({ page }) => {
+    await visualFixture(page);
+    await page.addInitScript(() => {
+      window.addEventListener('cartolite-map-ready', event => {
+        Object.assign(window, { auditView: (event as CustomEvent).detail.view });
+      }, { once: true });
+      const NativeWorker = window.Worker;
+      window.Worker = new Proxy(NativeWorker, {
+        construct(target, args) {
+          if (String(args[0]).includes('regionWorker')) return {
+            onmessage: null, onerror: null,
+            postMessage() { document.documentElement.dataset.regionWorkerPending = 'true'; },
+            terminate() { document.documentElement.dataset.regionWorkerStopped = 'true'; },
+          };
+          return Reflect.construct(target, args);
+        },
+      });
+    });
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto('/');
+    await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
+    await page.locator('#layers-summary').click(); await page.locator('#regions-button').click();
+    await expect(page.locator('html')).toHaveAttribute('data-region-worker-pending', 'true');
+    await page.evaluate(async () => {
+      const view = (window as unknown as { auditView: { destroy(): void } }).auditView;
+      view.destroy(); view.destroy(); await Promise.resolve();
+    });
+    await expect(page.locator('html')).toHaveAttribute('data-region-worker-stopped', 'true');
+    expect(errors).toEqual([]);
+  });
+
   for (const path of ['/', '/terminal/']) test(`Find refreshes a query entered before map resources finish ${path}`, async ({ page }) => {
     await visualFixture(page);
     let release!: () => void;

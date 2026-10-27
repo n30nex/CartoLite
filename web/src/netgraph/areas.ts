@@ -14,18 +14,23 @@ export interface NetgraphAreaAnchor {
 interface PendingResolution {
   resolve(value: Map<string, NetgraphAreaAnchor>): void;
   reject(reason: Error): void;
+  timeout: ReturnType<typeof setTimeout>;
 }
 
 export class NetgraphRegionResolver {
-  readonly #worker: Worker;
+  #worker?: Worker;
   readonly #pending = new Map<number, PendingResolution>();
   #nextRequestID = 1;
+  #destroyed = false;
 
-  constructor() {
-    this.#worker = new Worker(new URL('../regionWorker.ts', import.meta.url), {
+  #ensureWorker(): Worker {
+    if (this.#worker) return this.#worker;
+    const worker = new Worker(new URL('../regionWorker.ts', import.meta.url), {
       type: 'module',
     });
-    this.#worker.onmessage = (event: MessageEvent<RegionWorkerOutput>): void => {
+    this.#worker = worker;
+    worker.onmessage = (event: MessageEvent<RegionWorkerOutput>): void => {
+      if (this.#worker !== worker) return;
       const message = event.data;
       if (message.type === 'error') {
         const error = new Error(message.message);
@@ -37,40 +42,61 @@ export class NetgraphRegionResolver {
       const request = this.#pending.get(message.requestId);
       if (!request) return;
       this.#pending.delete(message.requestId);
+      clearTimeout(request.timeout);
       request.resolve(new Map(message.assignments.map(({ nodeID, area }) => [nodeID, area])));
     };
-    this.#worker.onerror = (event): void => this.#rejectAll(new Error(event.message));
+    worker.onerror = (event): void => {
+      if (this.#worker === worker) this.#fail(new Error(event.message || 'regional worker failed'));
+    };
+    return worker;
   }
 
   resolve(nodes: readonly NodeV2[]): Promise<Map<string, NetgraphAreaAnchor>> {
+    if (this.#destroyed) return Promise.reject(new Error('regional resolver stopped'));
     const requestId = this.#nextRequestID++;
-    return new Promise((resolve, reject) => {
-      this.#pending.set(requestId, { resolve, reject });
-      this.#worker.postMessage({
-        type: 'resolve',
-        requestId,
-        partitionUrl: regionPartitionURL,
-        registryUrl: regionRegistryURL,
-        nodes: nodes.map(({ id, lat, lng }) => ({ id, lat, lng })),
-      });
+    return new Promise<Map<string, NetgraphAreaAnchor>>((resolve, reject) => {
+      const timeout = setTimeout(() => this.#fail(new Error('regional lookup timed out')), 30_000);
+      this.#pending.set(requestId, { resolve, reject, timeout });
+      try {
+        this.#ensureWorker().postMessage({
+          type: 'resolve',
+          requestId,
+          partitionUrl: regionPartitionURL,
+          registryUrl: regionRegistryURL,
+          nodes: nodes.map(({ id, lat, lng }) => ({ id, lat, lng })),
+        });
+      } catch (error) {
+        this.#fail(error instanceof Error ? error : new Error('regional worker failed'));
+      }
+    }).then(assignments => {
+      if (this.#destroyed) throw new Error('regional resolver stopped');
+      // Only a successful partition lookup establishes that a node is outside it.
+      for (const node of nodes) if (!assignments.has(node.id)) assignments.set(node.id, nearestNetgraphArea(node.lat, node.lng));
+      return assignments;
     });
   }
 
   destroy(): void {
-    this.#worker.terminate();
-    this.#pending.clear();
+    this.#destroyed = true;
+    this.#fail(new Error('regional resolver stopped'));
+  }
+
+  #fail(error: Error): void {
+    this.#worker?.terminate();
+    this.#worker = undefined;
+    this.#rejectAll(error);
   }
 
   #reject(requestId: number, error: Error): void {
     const request = this.#pending.get(requestId);
     if (!request) return;
     this.#pending.delete(requestId);
+    clearTimeout(request.timeout);
     request.reject(error);
   }
 
   #rejectAll(error: Error): void {
-    for (const request of this.#pending.values()) request.reject(error);
-    this.#pending.clear();
+    for (const id of this.#pending.keys()) this.#reject(id, error);
   }
 }
 

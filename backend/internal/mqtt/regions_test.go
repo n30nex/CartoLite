@@ -14,6 +14,8 @@ type regionTestMessage struct {
 	data  string
 }
 
+func (m regionTestMessage) Retained() bool { return false }
+
 func (m regionTestMessage) Topic() string   { return m.topic }
 func (m regionTestMessage) Payload() []byte { return []byte(m.data) }
 
