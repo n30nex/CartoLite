@@ -84,6 +84,9 @@ jobs:
       - name: Synthetic ingest index benchmark
         working-directory: backend
         run: go test ./internal/engine -run '^$' -bench BenchmarkNodeRepresentative -benchmem -benchtime=200ms -count=3
+      - name: Synthetic hex cleanup benchmark
+        working-directory: backend
+        run: go test ./internal/meshcore -run '^$' -bench BenchmarkHexCleanup -benchmem -benchtime=200ms -count=3
       - name: Watchdog transition tests
         run: python3 -m unittest deploy.watchdog.test_cartolite_watchdog deploy.backup.test_cartolite_backup deploy.cloudflare.test_region_cache_rule
       - name: Compose region defaults and overrides
