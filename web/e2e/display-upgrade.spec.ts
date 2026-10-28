@@ -161,9 +161,17 @@ test('preserves controllable desktop camera orientation', async ({ page }, info)
   await expect(page.locator('#map-notice')).toBeHidden();
 });
 
-test('switches buildings between desktop extrusions and mobile footprints on resize', async ({ page }, info) => {
+for (const shortLandscape of [false, true]) for (const coalesced of [false, true]) test(`switches buildings between desktop extrusions and mobile footprints on resize${shortLandscape ? ' in short landscape' : ''}${coalesced ? ' with coalesced canvas notifications' : ''}`, async ({ page }, info) => {
   test.skip(info.project.name !== 'desktop', 'crosses the desktop breakpoint in both directions');
   await visualFixture(page, 15);
+  if (coalesced) await page.addInitScript(() => {
+    window.addEventListener('cartolite-map-ready', event => {
+      const map = (event as CustomEvent).detail.view.map;
+      const fire = map.fire.bind(map);
+      map.fire = (event: string | { type: string }, ...args: unknown[]) =>
+        (typeof event === 'string' ? event : event.type) === 'resize' ? map : fire(event, ...args);
+    }, { once: true });
+  });
   await page.goto('/');
   const map = page.locator('#map');
   await expect(map).toHaveAttribute('data-render-state', 'idle');
@@ -174,7 +182,8 @@ test('switches buildings between desktop extrusions and mobile footprints on res
   await expect(map).toHaveAttribute('data-buildings-loaded', 'true');
   await page.keyboard.press('Escape');
   const size = page.viewportSize()!;
-  await page.setViewportSize({ width: 800, height: 1000 });
+  // Each breakpoint keeps its own original test deadline, including setup.
+  await page.setViewportSize(shortLandscape ? { width: size.width, height: 500 } : { width: 800, height: 1000 });
   await expect(map).toHaveAttribute('data-building-extrusions', 'false');
   await expect(map).toHaveAttribute('data-buildings-visible', 'true');
   await page.setViewportSize(size);

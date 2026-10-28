@@ -44,15 +44,24 @@ function loadDataset(partitionUrl: string, registryUrl: string): Promise<RegionD
   const urls = `${partitionUrl}\n${registryUrl}`;
   if (cachedDataset && cachedURLs === urls) return cachedDataset;
   cachedURLs = urls;
-  cachedDataset = Promise.all([
-    checkedJSON(partitionUrl, 'region partition'),
-    checkedJSON(registryUrl, 'region registry'),
-  ]).then(([partition, registry]) => regionDataset(partition, registry));
-  return cachedDataset;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  const loading = Promise.all([
+    checkedJSON(partitionUrl, 'region partition', controller.signal),
+    checkedJSON(registryUrl, 'region registry', controller.signal),
+  ]).then(([partition, registry]) => regionDataset(partition, registry)).catch(error => {
+    controller.abort();
+    // A failed download must not poison later stream recovery requests. An old
+    // request failing must also not evict a newer URL pair's cached dataset.
+    if (cachedDataset === loading) cachedDataset = undefined;
+    throw error;
+  }).finally(() => clearTimeout(timeout));
+  cachedDataset = loading;
+  return loading;
 }
 
-async function checkedJSON(url: string, label: string): Promise<unknown> {
-  const response = await fetch(url);
+async function checkedJSON(url: string, label: string, signal: AbortSignal): Promise<unknown> {
+  const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
   return response.json();
 }

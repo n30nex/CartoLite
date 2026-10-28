@@ -205,6 +205,7 @@ export class LiveMap {
   #regionsLoaded = false;
   #regionsLoad?: Promise<void>;
   #regionWorker?: Worker;
+  #destroyed = false;
   #regionMapPending?: { resolve(): void; reject(error: Error): void };
   #selectedNodeID: string | null = null;
   #selectedNodeLabel = '';
@@ -334,6 +335,8 @@ export class LiveMap {
     this.map.on('zoom', this.#updateRouteRepresentation);
     this.map.on('zoomend', this.#handleZoomEnd);
     this.map.on('resize', this.#handleInspectorResize);
+    // Building mode follows the viewport, independently of canvas/camera events.
+    window.addEventListener('resize', this.#handleBuildingResize);
     this.map.getCanvas().addEventListener('webglcontextlost', this.#prepareWebGLContextLoss, true);
     this.map.on('webglcontextlost', this.#handleWebGLContextLost);
     this.map.on('webglcontextrestored', this.#handleWebGLContextRestored);
@@ -1022,6 +1025,8 @@ export class LiveMap {
   }
 
   destroy(): void {
+    if (this.#destroyed) return;
+    this.#destroyed = true;
     this.#routeHydrationEpoch += 1;
     this.#routeHydrating = false;
     this.renderEpoch += 1;
@@ -1029,14 +1034,13 @@ export class LiveMap {
     if (this.#routeHydrationTimer !== undefined) window.clearTimeout(this.#routeHydrationTimer);
     if (this.#directorTimer !== undefined) window.clearTimeout(this.#directorTimer);
     if (this.#clusterFlashTimer !== undefined) window.clearTimeout(this.#clusterFlashTimer);
-    this.#regionWorker?.terminate();
-    this.#regionWorker = undefined;
-    this.#regionMapPending = undefined;
+    this.#failRegionWorker(new Error('Region view stopped'));
     this.#closeInspector(false);
     document.removeEventListener('keydown', this.#handleKeyDown);
     this.map.off('zoom', this.#updateRouteRepresentation);
     this.map.off('zoomend', this.#handleZoomEnd);
     this.map.off('resize', this.#handleInspectorResize);
+    window.removeEventListener('resize', this.#handleBuildingResize);
     this.map.getCanvas().removeEventListener('webglcontextlost', this.#prepareWebGLContextLoss, true);
     this.map.off('webglcontextlost', this.#handleWebGLContextLost);
     this.map.off('webglcontextrestored', this.#handleWebGLContextRestored);
@@ -1587,16 +1591,19 @@ export class LiveMap {
   }
 
   #ensureRegionsData(): void {
+    if (this.#destroyed) return;
     if (this.#regionsLoaded) return;
     if (this.#regionsLoad) return;
     if (!this.map.getSource(REGION_ATTRIBUTION_SOURCE_ID)) return;
     this.#regionsLoad = this.#loadRegionsData()
       .then(() => {
+        if (this.#destroyed) return;
         this.#regionsLoaded = true;
         this.container.dataset.regionsLoaded = 'true';
         if (this.#regionsVisible) this.markRendering([REGION_ATTRIBUTION_SOURCE_ID]);
       })
       .catch((error: unknown) => {
+        if (this.#destroyed) return;
         console.warn('Region boundary load failed:', error instanceof Error ? error.message : error);
         this.container.dataset.renderState = 'idle';
       })
@@ -1606,14 +1613,22 @@ export class LiveMap {
   }
 
   #loadRegionsData(): Promise<void> {
-    const worker = this.#ensureRegionWorker();
-    return new Promise((resolve, reject) => {
+    let timeout: number | undefined;
+    return new Promise<void>((resolve, reject) => {
+      const worker = this.#ensureRegionWorker();
       this.#regionMapPending = { resolve, reject };
-      worker.postMessage({
-        type: 'map',
-        partitionUrl: regionPartitionURL,
-        registryUrl: regionRegistryURL,
-      });
+      timeout = window.setTimeout(() => this.#failRegionWorker(new Error('Region lookup timed out')), 30_000);
+      try {
+        worker.postMessage({
+          type: 'map',
+          partitionUrl: regionPartitionURL,
+          registryUrl: regionRegistryURL,
+        });
+      } catch (error) {
+        this.#failRegionWorker(error instanceof Error ? error : new Error('Region worker failed'));
+      }
+    }).finally(() => {
+      if (timeout !== undefined) window.clearTimeout(timeout);
     });
   }
 
@@ -1623,8 +1638,8 @@ export class LiveMap {
       type: 'module',
       name: 'cartolite-regions',
     });
-    worker.onmessage = this.#handleRegionWorkerMessage;
-    worker.onerror = (event): void => this.#failRegionWorker(new Error(event.message || 'regional worker failed'));
+    worker.onmessage = (event): void => { if (this.#regionWorker === worker) this.#handleRegionWorkerMessage(event); };
+    worker.onerror = (event): void => { if (this.#regionWorker === worker) this.#failRegionWorker(new Error(event.message || 'regional worker failed')); };
     this.#regionWorker = worker;
     return worker;
   }
@@ -2048,9 +2063,12 @@ export class LiveMap {
     else this.map.easeTo({ ...camera, duration: 520, essential: true, easeId: 'cartolite-node-selection' });
   }
 
+  #handleBuildingResize = (): void => {
+    this.#updateBuildingLayer();
+  };
+
   #handleInspectorResize = (): void => {
     if(!this.#layersReady)return;
-    this.#updateBuildingLayer();
     if (this.#selectedNodeID) this.#renderNodeInspector(true);
   };
 

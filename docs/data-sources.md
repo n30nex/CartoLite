@@ -40,3 +40,17 @@ node scripts/update-meshcore-canada-regions.mjs
 ```
 
 The updater fails closed unless the registry version, 193-feature count, uniqueness, and partition/seed tag sets remain exact. After a reviewed upstream release changes those contracts, update the expected version and documentation in the same commit.
+
+## Retained and delayed MQTT observations
+
+Retained packets and bridge-envelope timestamps older than five minutes are
+metadata-only: they do not create live packet animations, sounds or route counts.
+Dated observations within the existing node-retention window may fill missing
+metadata, without replacing newer names, roles or coordinates. Retained messages
+with missing, future or expired envelope times are ignored. This does not use the
+radio advert clock. See the [bug-fix audit](system-bugfix-audit-2026-10-27.md).
+
+The ingestion queue has both its configured message-count limit and an 8 MiB
+budget for normalized message data plus conservative per-message overhead. Unused
+JSON fields are discarded before queueing. Rejected burst messages increment the
+existing dropped counter. This bounds queued input, not total process memory.
