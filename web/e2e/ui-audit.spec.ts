@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { visualFixture, visualPacket } from './visualFixtures';
 import { graphFilters, graphFocus, graphRoutes, openDisplay, viewTool } from './dockControls';
+import { openMapOptions } from './mapControls';
 import type { StateV2 } from '../src/types';
 
 test.describe('UI audit', () => {
@@ -23,7 +24,7 @@ test.describe('UI audit', () => {
     page.on('pageerror', error => errors.push(error.message));
     await page.goto('/');
     await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
-    await page.locator('#layers-summary').click();
+    await openMapOptions(page);
     const regions = page.locator('#regions-button');
     await regions.click();
     await expect(regions).toHaveAttribute('aria-pressed', 'true');
@@ -55,7 +56,7 @@ test.describe('UI audit', () => {
     page.on('pageerror', error => errors.push(error.message));
     await page.goto('/');
     await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle');
-    await page.locator('#layers-summary').click(); await page.locator('#regions-button').click();
+    await openMapOptions(page); await page.locator('#regions-button').click();
     await expect(page.locator('html')).toHaveAttribute('data-region-worker-pending', 'true');
     await page.evaluate(async () => {
       const view = (window as unknown as { auditView: { destroy(): void } }).auditView;
