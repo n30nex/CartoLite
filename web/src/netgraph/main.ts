@@ -284,8 +284,8 @@ async function start(): Promise<void> {
         updateSummary(); renderInspector();
       } catch {
         if (disposed) return;
-        stage.dataset.regionsState = 'unavailable';
-        for (const node of nodes) pendingRegions.add(node.id);
+        for (const node of nodes) if (graph.getNodes().has(node.id)) pendingRegions.add(node.id);
+        stage.dataset.regionsState = pendingRegions.size ? 'unavailable' : 'ready';
         regionRetryAt = performance.now() + 30_000;
       } finally {
         firstRegions = false; resolvingRegions = false;
@@ -360,9 +360,8 @@ async function start(): Promise<void> {
       async recover() {
         const snapshot = await fetchState();
         if (disposed) return snapshot;
-        graph.setAreaAssignments(new Map());
+        pendingRegions = graph.retainAreaAssignments(snapshot.nodes);
         liveStore.replace(snapshot);
-        pendingRegions = new Set(snapshot.nodes.map(node => node.id));
         stage.dataset.regionsState = pendingRegions.size ? 'loading' : 'ready';
         syncRegions(); void refreshRegions(true);
         return snapshot;

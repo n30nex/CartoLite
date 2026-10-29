@@ -287,6 +287,18 @@ test.describe('UI audit', () => {
       await graphFocus(page, 'area');
     }
     const empty = page.locator('#empty-state'); await expect(empty).toBeVisible();
+    if (!older) {
+      const stage = page.locator('#netgraph-stage');
+      const center = await stage.getAttribute('data-view-center'), scale = await stage.getAttribute('data-view-scale');
+      await page.evaluate(() => window.dispatchEvent(new CustomEvent('visual-hello', { detail: { bootId: 'recovery-check', seq: 1 } })));
+      await expect(page.locator('html')).toHaveAttribute('data-fixture-streams-opened', '2');
+      await expect(stage).toHaveAttribute('data-regions-state', 'ready');
+      await expect(stage).toHaveAttribute('data-focus-mode', 'area');
+      await expect(stage).toHaveAttribute('data-selected-node-id', 'visual-a');
+      await expect(stage).toHaveAttribute('data-view-center', center!);
+      await expect(stage).toHaveAttribute('data-view-scale', scale!);
+      await expect(empty).toBeVisible();
+    }
     await empty.getByRole('button', { name: older ? 'Use 24h window' : 'Clear focus', exact: true }).click();
     await expect(empty).toBeHidden();
     if (older) await expect(page.locator('#route-window')).toHaveValue('24h');

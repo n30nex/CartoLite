@@ -379,9 +379,18 @@ export class NetgraphRenderer implements ViewportProjector {
     this.#nodesDirty = true; this.#requestStaticDraw();
   }
 
-  setAreaAssignments(assignments: ReadonlyMap<string, NetgraphAreaAnchor>): void {
-    this.#assignedAreas = new Map(assignments);
-    this.#stage.dataset.regionAssignments = String(this.#assignedAreas.size);
+  retainAreaAssignments(nodes: readonly NodeV2[]): Set<string> {
+    const retained = new Map<string, NetgraphAreaAnchor>();
+    const unresolved = new Set<string>();
+    for (const node of nodes) {
+      const previous = this.#nodesByID.get(node.id);
+      const area = this.#assignedAreas.get(node.id);
+      if (area && previous?.lat === node.lat && previous.lng === node.lng) retained.set(node.id, area);
+      else unresolved.add(node.id);
+    }
+    this.#assignedAreas = retained;
+    this.#stage.dataset.regionAssignments = String(retained.size);
+    return unresolved;
   }
 
   updateAreaAssignments(assignments: ReadonlyMap<string, NetgraphAreaAnchor | undefined>): void {
