@@ -53,6 +53,12 @@ export function mountRegionControls(graph: NetgraphRenderer, host: HTMLElement, 
   });
   function sync(): void {
     const prefs = graph.regionLayout(), areas = graph.regions();
+    const selected = graph.selectedNode();
+    const areaReady = selected !== null && graph.hasRegionForNode(selected);
+    host.querySelector<HTMLOptionElement>('option[value="area"]')!.disabled = !areaReady;
+    const focusStatus = host.querySelector('small[role="status"]')!;
+    if (areaReady && focusStatus.textContent === 'Region labels are not available for this node') focusStatus.textContent = '';
+
     document.getElementById('display-button')?.toggleAttribute('data-filtered', prefs.regions !== null || !prefs.routes || (stage.dataset.focusMode ?? 'all') !== 'all');
     spacing.value = String(prefs.spacing); output.value = `${Math.round(prefs.spacing * 100)}%`;
     routes.setAttribute('aria-pressed', String(prefs.routes)); routes.classList.toggle('selected', prefs.routes);

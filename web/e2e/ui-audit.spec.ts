@@ -77,7 +77,9 @@ test('Netgraph keeps startup and stream recovery live while regions stall, then 
   await expect(stage).toHaveAttribute('data-selected-node-id', 'visual-a');
   await expect(stage).toHaveAttribute('data-render-state', 'idle');
   const center = await stage.getAttribute('data-view-center'), scale = await stage.getAttribute('data-view-scale');
-  await graphFilters(page); await page.locator('#region-filter > summary').click();
+  await graphFilters(page);
+  await expect(page.getByLabel('Topology focus').locator('option[value="area"]')).toBeDisabled();
+  await page.locator('#region-filter > summary').click();
   await expect(page.locator('#region-recovery')).toContainText('saved filters still apply');
   await page.screenshot({ path: info.outputPath('regions-unavailable-live.png') });
   fail = false;
@@ -90,6 +92,7 @@ test('Netgraph keeps startup and stream recovery live while regions stall, then 
   await expect(stage).toHaveAttribute('data-view-scale', scale!);
   await expect(page.locator('#region-recovery')).toBeHidden();
   await expect(page.locator('#region-filter > summary')).toBeFocused();
+  await expect(page.getByLabel('Topology focus').locator('option[value="area"]')).toBeEnabled();
   expect(errors).toEqual([]);
 });
 

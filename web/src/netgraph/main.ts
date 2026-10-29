@@ -212,6 +212,7 @@ async function start(): Promise<void> {
         if (app.classList.contains('director-enabled')) app.dataset.followInspect = 'true';
         navigate(); graph.focusNode(nodeID);
       } else if (!nodeID) delete app.dataset.followInspect;
+      syncRegions();
       stage.dataset.nodeSelectionApplyMs = (performance.now() - started).toFixed(1);
     };
 
@@ -222,6 +223,7 @@ async function start(): Promise<void> {
       renderInspector(); navigate();
       if (selectedRouteIDs.length && app.classList.contains('director-enabled')) app.dataset.followInspect = 'true';
       if (focus && selectedRouteIDs.length === 1) graph.focusRoute(selectedRouteIDs[0]!);
+      syncRegions();
     };
 
     const updateStatus = (): void => {
@@ -261,7 +263,9 @@ async function start(): Promise<void> {
       if (disposed || resolvingRegions || !pendingRegions.size || (!retry && performance.now() < regionRetryAt)) return;
       resolvingRegions = true;
       const beforeView = viewSignature();
-      const button = required<HTMLButtonElement>('region-retry'); button.disabled = true;
+      const button = required<HTMLButtonElement>('region-retry');
+      if (document.activeElement === button) button.closest('details')?.querySelector('summary')?.focus({ preventScroll: true });
+      button.disabled = true;
       const nodes = [...pendingRegions].map(id => graph.getNodes().get(id)).filter((node): node is NodeV2 => !!node);
       pendingRegions.clear();
       try {

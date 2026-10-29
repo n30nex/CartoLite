@@ -363,6 +363,8 @@ export class NetgraphRenderer implements ViewportProjector {
 
   getRoute(id: string): RouteV2 | undefined { return this.#visibleRouteIDs.has(id) ? this.#routesByID.get(id) : undefined; }
 
+  hasRegionForNode(id: string): boolean { return Boolean(this.#layout.positions.get(id)?.areaCode); }
+
   regionForNode(id: string): string {
     const code = this.#layout.positions.get(id)?.areaCode;
     const area = this.#layout.areas.find(area => area.code === code);

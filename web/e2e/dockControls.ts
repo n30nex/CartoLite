@@ -43,6 +43,9 @@ export async function graphRoutes(page: Page): Promise<void> {
   if (await page.locator('html').getAttribute('data-mobile-dock') === 'true') await page.keyboard.press('Escape');
 }
 export async function graphFocus(page: Page, value: string): Promise<void> {
-  await graphFilters(page); await page.getByLabel('Topology focus').selectOption(value);
+  await graphFilters(page);
+  const focus = page.getByLabel('Topology focus');
+  await expect(focus.locator(`option[value="${value}"]`)).toBeEnabled();
+  await focus.selectOption(value);
   if (await page.locator('html').getAttribute('data-mobile-dock') === 'true') await page.keyboard.press('Escape');
 }
