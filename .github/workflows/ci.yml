@@ -252,7 +252,7 @@ jobs:
         working-directory: web
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: ux-audit-playwright-report
-        run: bash ../scripts/browser-ci.sh ui-audit.spec.ts labs-ui-audit.spec.ts --output ux-audit-test-results
+        run: bash ../scripts/browser-ci.sh ui-audit.spec.ts labs-ui-audit.spec.ts netgraph-regions.spec.ts --output ux-audit-test-results
       - name: Preserve UI audit screenshots for early review
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -400,12 +400,12 @@ jobs:
           path: |
             web/terminal-test-results/
             web/terminal-playwright-report/
-      - name: Terrain and Netgraph visual regression
+      - name: Terrain visual regression
         working-directory: web
         env:
           CARTOLITE_BASE_URL: http://127.0.0.1:39476
           PLAYWRIGHT_HTML_OUTPUT_DIR: terrain-playwright-report
-        run: bash ../scripts/browser-ci.sh --grep '@terrain|@regions' --output terrain-test-results
+        run: bash ../scripts/browser-ci.sh --grep '@terrain' --output terrain-test-results
       # The scale fixture supplies its own state/event stream. Run all of its
       # viewports with no live publisher competing for the renderer CPU.
       # Preserve every case, route count and timing limit; do not run it twice.

@@ -5,120 +5,123 @@ import { openMapOptions } from './mapControls';
 import type { StateV2 } from '../src/types';
 
 
-for (const path of ['/', '/terminal/', '/netgraph/', '/chronoscope/', '/firehose/', '/pachinko/']) {
-  test(`server time keeps traffic and inspection readable after device clock changes ${path}`, async ({ page }) => {
-    const snapshot = await visualFixture(page);
-    const now = Math.floor(Date.now() / 1000) * 1000;
-    snapshot.serverTime = now;
-    snapshot.nodes = snapshot.nodes.map(node => ({ ...node, lastSeen: now - 120_000 }));
-    snapshot.routes = snapshot.routes.map(route => ({ ...route, lastHeard: now - 120_000 }));
-    await page.route('**/api/state', route => route.fulfill({ json: snapshot, headers: { Date: new Date(now).toUTCString() } }));
-    await page.clock.setFixedTime(new Date(now + 2 * 86_400_000));
-    const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-    await page.goto(path);
-    await expect(page.locator('html')).toHaveAttribute('data-fixture-stream', 'ready');
-    if (path === '/' || path === '/terminal/') await expect(page.locator('#map')).toHaveAttribute('data-eligible-routes', '1');
-    if (path === '/netgraph/') await expect(page.locator('#netgraph-stage')).toHaveAttribute('data-visible-routes', '1');
-    for (const changed of [false, true]) {
-      if (changed) { await page.keyboard.press('Escape'); await page.clock.setFixedTime(new Date(now - 2 * 86_400_000)); }
-      await page.locator('#find-button').click();
-      await page.locator('#node-search').fill('Visual Alpha');
-      await page.locator('.node-search-result').first().click();
-      await expect(page.locator('.node-inspector:visible')).toContainText('2m ago');
-    }
-    expect(errors).toEqual([]);
-  });
-}
+test.describe('UI audit', () => {
+  for (const path of ['/', '/terminal/', '/netgraph/', '/chronoscope/', '/firehose/', '/pachinko/']) {
+    test(`server time keeps traffic and inspection readable after device clock changes ${path}`, async ({ page }) => {
+      const snapshot = await visualFixture(page);
+      const now = Math.floor(Date.now() / 1000) * 1000;
+      snapshot.serverTime = now;
+      snapshot.nodes = snapshot.nodes.map(node => ({ ...node, lastSeen: now - 120_000 }));
+      snapshot.routes = snapshot.routes.map(route => ({ ...route, lastHeard: now - 120_000 }));
+      await page.route('**/api/state', route => route.fulfill({ json: snapshot, headers: { Date: new Date(now).toUTCString() } }));
+      await page.clock.setFixedTime(new Date(now + 2 * 86_400_000));
+      const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+      await page.goto(path);
+      await expect(page.locator('html')).toHaveAttribute('data-fixture-stream', 'ready');
+      if (path === '/' || path === '/terminal/') await expect(page.locator('#map')).toHaveAttribute('data-eligible-routes', '1');
+      if (path === '/netgraph/') await expect(page.locator('#netgraph-stage')).toHaveAttribute('data-visible-routes', '1');
+      for (const changed of [false, true]) {
+        if (changed) { await page.keyboard.press('Escape'); await page.clock.setFixedTime(new Date(now - 2 * 86_400_000)); }
+        await page.locator('#find-button').click();
+        await page.locator('#node-search').fill('Visual Alpha');
+        await page.locator('.node-search-result').first().click();
+        await expect(page.locator('.node-inspector:visible')).toContainText('2m ago');
+      }
+      expect(errors).toEqual([]);
+    });
+  }
 
-test('invalid live kinds recover without playing or retaining malformed activity', async ({ page }) => {
-  await visualFixture(page); await page.goto('/');
-  await expect(page.locator('html')).toHaveAttribute('data-fixture-stream', 'ready');
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('visual-packet', { detail: {
-    seq: 1, id: 'malformed', at: Date.now(), payloadType: 'invalid kind', mode: 'route',
-    segments: [{ routeId: 'visual-hop', fromId: 'visual-a', toId: 'visual-b' }],
-  } })));
-  await expect(page.locator('html')).toHaveAttribute('data-fixture-streams-opened', '2');
-  await expect(page.locator('html')).toHaveAttribute('data-fixture-streams-active', '1');
-  await expect(page.locator('#fatal')).toBeHidden();
-  await visualPacket(page, 1, 'Text');
-  await expect(page.locator('#packet-canvas')).toHaveAttribute('data-last-packet-kind', 'Text');
-});
-
-test('Netgraph keeps startup and stream recovery live while regions stall, then retries in place', async ({ page, context }, info) => {
-  await visualFixture(page); await page.emulateMedia({ reducedMotion: 'reduce' });
-  let release!: () => void;
-  const stalled = new Promise<void>(resolve => { release = resolve; }); let fail = true;
-  await context.route(/\/assets\/meshcore-canada-region.*\.(json|geojson)/, async route => {
-    if (!fail) { await route.continue(); return; }
-    await stalled; await route.fulfill({ status: 503, body: 'Synthetic unavailable regions' });
-  });
-  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-  const stage = page.locator('#netgraph-stage');
-  try {
-    await page.goto('/netgraph/');
-    await expect(page.locator('#netgraph-app')).toHaveAttribute('data-loading', 'false');
-    await expect(stage).toHaveAttribute('data-regions-state', 'loading');
-    await expect(stage).toHaveAttribute('data-visible-routes', '1');
-    await expect(stage).toHaveAttribute('data-areas', '0');
-    await expect(page.locator('#fatal')).toBeHidden();
+  test('invalid live kinds recover without playing or retaining malformed activity', async ({ page }) => {
+    await visualFixture(page); await page.goto('/');
     await expect(page.locator('html')).toHaveAttribute('data-fixture-stream', 'ready');
-    await visualPacket(page, 1, 'Text');
-    await expect(stage).toHaveAttribute('data-last-packet-kind', 'Text');
-    // The snapshot may recover while the same regional download is still stalled.
-    await page.evaluate(() => window.dispatchEvent(new CustomEvent('visual-hello', { detail: { bootId: 'reconnected', seq: 1 } })));
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('visual-packet', { detail: {
+      seq: 1, id: 'malformed', at: Date.now(), payloadType: 'invalid kind', mode: 'route',
+      segments: [{ routeId: 'visual-hop', fromId: 'visual-a', toId: 'visual-b' }],
+    } })));
     await expect(page.locator('html')).toHaveAttribute('data-fixture-streams-opened', '2');
     await expect(page.locator('html')).toHaveAttribute('data-fixture-streams-active', '1');
-    await visualPacket(page, 1, 'Advert');
-    await expect(stage).toHaveAttribute('data-last-packet-kind', 'Advert');
-  } finally { release(); }
-  await expect(stage).toHaveAttribute('data-regions-state', 'unavailable');
-  await page.locator('#find-button').click(); await page.locator('#node-search').fill('Visual Alpha');
-  await page.locator('.node-search-result').first().click();
-  await expect(stage).toHaveAttribute('data-selected-node-id', 'visual-a');
-  await expect(stage).toHaveAttribute('data-render-state', 'idle');
-  const center = await stage.getAttribute('data-view-center'), scale = await stage.getAttribute('data-view-scale');
-  await graphFilters(page);
-  await expect(page.getByLabel('Topology focus').locator('option[value="area"]')).toBeDisabled();
-  await page.locator('#region-filter > summary').click();
-  await expect(page.locator('#region-recovery')).toContainText('saved filters still apply');
-  await page.screenshot({ path: info.outputPath('regions-unavailable-live.png') });
-  fail = false;
-  const retry = page.getByRole('button', { name: 'Retry regions', exact: true });
-  await retry.focus(); await retry.press('Enter');
-  await expect(stage).toHaveAttribute('data-regions-state', 'ready');
-  await expect(stage).toHaveAttribute('data-areas', /[1-9]/);
-  await expect(stage).toHaveAttribute('data-selected-node-id', 'visual-a');
-  await expect(stage).toHaveAttribute('data-view-center', center!);
-  await expect(stage).toHaveAttribute('data-view-scale', scale!);
-  await expect(page.locator('#region-recovery')).toBeHidden();
-  await expect(page.locator('#region-filter > summary')).toBeFocused();
-  await expect(page.getByLabel('Topology focus').locator('option[value="area"]')).toBeEnabled();
-  expect(errors).toEqual([]);
-});
+    await expect(page.locator('#fatal')).toBeHidden();
+    await visualPacket(page, 1, 'Text');
+    await expect(page.locator('#packet-canvas')).toHaveAttribute('data-last-packet-kind', 'Text');
+  });
 
-test('a saved region filter remains restrictive while regional data is unavailable', async ({ page, context }) => {
-  await visualFixture(page);
-  await page.addInitScript(() => localStorage.setItem('cartolite:netgraph-layout:v1', JSON.stringify({ regions: ['TOR'], spacing: 2, centres: {}, routes: false })));
-  let fail = true;
-  await context.route(/\/assets\/meshcore-canada-region.*\.(json|geojson)/, route => fail
-    ? route.fulfill({ status: 503, body: 'Synthetic unavailable regions' }) : route.continue());
-  await page.goto('/netgraph/');
-  const stage = page.locator('#netgraph-stage');
-  await expect(page.locator('#netgraph-app')).toHaveAttribute('data-loading', 'false');
-  await expect(stage).toHaveAttribute('data-regions-state', 'unavailable');
-  await expect(stage).toHaveAttribute('data-visible-routes', '0');
-  await expect(stage).toHaveAttribute('data-connected-nodes', '0');
-  await graphFilters(page); await page.locator('#region-filter > summary').click();
-  await expect(page.locator('input[data-region="TOR"]')).toBeChecked();
-  await expect(page.locator('.region-checks')).toContainText('Region data unavailable');
-  fail = false; await page.getByRole('button', { name: 'Retry regions', exact: true }).click();
-  await expect(stage).toHaveAttribute('data-regions-state', 'ready');
-  await expect(stage).toHaveAttribute('data-visible-routes', '0');
-  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('cartolite:netgraph-layout:v1')!));
-  expect(saved).toEqual({ regions: ['TOR'], spacing: 2, centres: {}, routes: false });
-});
+  test('Netgraph keeps startup and stream recovery live while regions stall, then retries in place', async ({ page, context }, info) => {
+    await visualFixture(page); await page.emulateMedia({ reducedMotion: 'reduce' });
+    let release!: () => void;
+    const stalled = new Promise<void>(resolve => { release = resolve; }); let fail = true;
+    await context.route(/\/assets\/meshcore-canada-region.*\.(json|geojson)/, async route => {
+      if (!fail) { await route.continue(); return; }
+      await stalled; await route.fulfill({ status: 503, body: 'Synthetic unavailable regions' });
+    });
+    const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+    const stage = page.locator('#netgraph-stage');
+    try {
+      await page.goto('/netgraph/');
+      await expect(page.locator('#netgraph-app')).toHaveAttribute('data-loading', 'false');
+      await expect(stage).toHaveAttribute('data-regions-state', 'loading');
+      await expect(stage).toHaveAttribute('data-visible-routes', '1');
+      await expect(stage).toHaveAttribute('data-areas', '0');
+      await expect(page.locator('#fatal')).toBeHidden();
+      await expect(page.locator('html')).toHaveAttribute('data-fixture-stream', 'ready');
+      await visualPacket(page, 1, 'Text');
+      await expect(stage).toHaveAttribute('data-last-packet-kind', 'Text');
+      // The snapshot may recover while the same regional download is still stalled.
+      await page.evaluate(() => window.dispatchEvent(new CustomEvent('visual-hello', { detail: { bootId: 'reconnected', seq: 1 } })));
+      await expect(page.locator('html')).toHaveAttribute('data-fixture-streams-opened', '2');
+      await expect(page.locator('html')).toHaveAttribute('data-fixture-streams-active', '1');
+      await visualPacket(page, 1, 'Advert');
+      await expect(stage).toHaveAttribute('data-last-packet-kind', 'Advert');
+    } finally { release(); }
+    await expect(stage).toHaveAttribute('data-regions-state', 'unavailable');
+    await expect(page.getByLabel('Region to move', { exact: true })).toBeDisabled();
+    await page.locator('#find-button').click(); await page.locator('#node-search').fill('Visual Alpha');
+    await page.locator('.node-search-result').first().click();
+    await expect(stage).toHaveAttribute('data-selected-node-id', 'visual-a');
+    await expect(stage).toHaveAttribute('data-render-state', 'idle');
+    const center = await stage.getAttribute('data-view-center'), scale = await stage.getAttribute('data-view-scale');
+    await graphFilters(page);
+    await expect(page.getByLabel('Topology focus').locator('option[value="area"]')).toBeDisabled();
+    await page.locator('#region-filter > summary').click();
+    await expect(page.locator('#region-recovery')).toContainText('saved filters still apply');
+    await page.screenshot({ path: info.outputPath('regions-unavailable-live.png') });
+    fail = false;
+    const retry = page.getByRole('button', { name: 'Retry regions', exact: true });
+    await retry.focus(); await retry.press('Enter');
+    await expect(stage).toHaveAttribute('data-regions-state', 'ready');
+    await expect(stage).toHaveAttribute('data-areas', /[1-9]/);
+    await expect(page.getByLabel('Region to move', { exact: true })).toBeEnabled();
+    await expect(stage).toHaveAttribute('data-selected-node-id', 'visual-a');
+    await expect(stage).toHaveAttribute('data-view-center', center!);
+    await expect(stage).toHaveAttribute('data-view-scale', scale!);
+    await expect(page.locator('#region-recovery')).toBeHidden();
+    await expect(page.locator('#region-filter > summary')).toBeFocused();
+    await expect(page.getByLabel('Topology focus').locator('option[value="area"]')).toBeEnabled();
+    expect(errors).toEqual([]);
+  });
 
-test.describe('UI audit', () => {
+  test('a saved region filter remains restrictive while regional data is unavailable', async ({ page, context }) => {
+    await visualFixture(page);
+    await page.addInitScript(() => localStorage.setItem('cartolite:netgraph-layout:v1', JSON.stringify({ regions: ['TOR'], spacing: 2, centres: {}, routes: false })));
+    let fail = true;
+    await context.route(/\/assets\/meshcore-canada-region.*\.(json|geojson)/, route => fail
+      ? route.fulfill({ status: 503, body: 'Synthetic unavailable regions' }) : route.continue());
+    await page.goto('/netgraph/');
+    const stage = page.locator('#netgraph-stage');
+    await expect(page.locator('#netgraph-app')).toHaveAttribute('data-loading', 'false');
+    await expect(stage).toHaveAttribute('data-regions-state', 'unavailable');
+    await expect(stage).toHaveAttribute('data-visible-routes', '0');
+    await expect(stage).toHaveAttribute('data-connected-nodes', '0');
+    await graphFilters(page); await page.locator('#region-filter > summary').click();
+    await expect(page.locator('input[data-region="TOR"]')).toBeChecked();
+    await expect(page.locator('.region-checks')).toContainText('Region data unavailable');
+    fail = false; await page.getByRole('button', { name: 'Retry regions', exact: true }).click();
+    await expect(stage).toHaveAttribute('data-regions-state', 'ready');
+    await expect(stage).toHaveAttribute('data-visible-routes', '0');
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('cartolite:netgraph-layout:v1')!));
+    expect(saved).toEqual({ regions: ['TOR'], spacing: 2, centres: {}, routes: false });
+  });
+
+
   test('Regions can retry a worker startup failure without breaking the map', async ({ page }) => {
     await visualFixture(page);
     await page.addInitScript(() => {

@@ -98,6 +98,8 @@ export function mountRegionControls(graph: NetgraphRenderer, host: HTMLElement, 
       }
       for (const input of list.querySelectorAll<HTMLInputElement>('input')) input.checked = prefs.regions === null || prefs.regions.includes(input.dataset.region!);
     }
+    move.disabled = move.options.length === 0;
+    for (const button of layout.querySelectorAll<HTMLButtonElement>('[data-move]')) button.disabled = move.disabled;
   }
   sync();
   return { sync, destroy() { resize?.disconnect(); window.removeEventListener('resize', measure); document.removeEventListener('pointerdown', dismiss); menu.remove(); routes.remove(); scope.remove(); layout.remove(); } };

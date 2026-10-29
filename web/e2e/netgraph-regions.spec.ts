@@ -45,6 +45,7 @@ test('spacing and dragging survive refresh while live packets keep their routes 
   for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowRight');
   await expect(stage).toHaveAttribute('data-region-spacing', '2');
   await expect(stage).toHaveAttribute('data-visible-routes', '2');
+  await expect(page.getByLabel('Region to move', { exact: true })).toBeEnabled();
   const moving = await page.getByLabel('Region to move', { exact: true }).locator('option').evaluateAll(options =>
     (options as HTMLOptionElement[]).find(o => o.textContent!.includes('Toronto') || o.textContent!.includes('43.5'))!.value);
   await page.getByLabel('Region to move', { exact: true }).selectOption(moving);

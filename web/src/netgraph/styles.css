@@ -285,3 +285,5 @@ html:root[data-cinematic]:has(#region-filter[open]) :is(.node-inspector-sheet,.f
  html:root[data-cinematic]:has(#follow-card:not([hidden])) .graph-summary:has(#graph-scope:not([hidden])) { max-width:44vw; }
  html:root[data-cinematic]:has(#follow-card:not([hidden])) .graph-scope { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 }
+
+.graph-layout button:disabled, .graph-layout select:disabled { color: var(--disabled); cursor: not-allowed; opacity: .7; }
