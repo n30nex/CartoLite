@@ -61,6 +61,36 @@ test.describe('UI audit', () => {
     } finally { release(); }
   });
 
+  test('Chronoscope preserves a saved region filter when a selected-node link starts before geography', async ({ page, context }) => {
+    const snapshot = await visualFixture(page);
+    snapshot.nodes = snapshot.nodes.map((node, i) => ({ ...node, lat: 43.65 + i * .001, lng: -79.4 - i * .001 }));
+    await page.route('**/api/state', route => route.fulfill({ json: snapshot }));
+    await page.addInitScript(() => {
+      localStorage.setItem('cartolite:chronoscope:v1', JSON.stringify({ mode: 'sculpture', seconds: 60, regions: ['TOR'] }));
+      window.addEventListener('cartolite-chronoscope-ready', event => { (window as any).chrono = (event as CustomEvent).detail.scene; });
+    });
+    let release!: () => void;
+    const stalled = new Promise<void>(resolve => { release = resolve; });
+    await context.route(/\/assets\/meshcore-canada-region.*\.(json|geojson)/, async route => { await stalled; await route.continue(); });
+    const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('cartolite:chronoscope:v1')!).regions);
+    const stage = page.locator('#chronoscope-stage');
+    try {
+      await page.goto('/chronoscope/?node=visual-a');
+      await expect(page.locator('html')).toHaveAttribute('data-fixture-stream', 'ready');
+      await expect(stage).toHaveAttribute('data-regions-state', 'loading');
+      expect(await saved()).toEqual(['TOR']);
+      await visualPacket(page, 1, 'Text');
+      await expect(stage).toHaveAttribute('data-event-count', '1');
+      await expect(stage).toHaveAttribute('data-visible-events', '0');
+      release();
+      await expect(stage).toHaveAttribute('data-regions-state', 'ready');
+      expect(await saved()).toEqual(['TOR']);
+      expect(await page.evaluate(() => (window as any).chrono.selected)).toBe('visual-a');
+      await expect(stage).toHaveAttribute('data-visible-events', '1');
+      await expect(page.locator('#node-inspector-sheet')).toContainText('Visual Alpha');
+    } finally { release(); }
+  });
+
   for (const path of ['/', '/terminal/', '/netgraph/', '/chronoscope/', '/firehose/', '/pachinko/']) {
     test(`server time keeps traffic and inspection readable after device clock changes ${path}`, async ({ page }) => {
       const snapshot = await visualFixture(page);

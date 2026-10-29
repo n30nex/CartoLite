@@ -30,6 +30,7 @@ const soundPanel=required('sound-panel');
 let renderer: ChronoscopeRenderer | undefined, sonifier: RouteSonifier | undefined, store: LiveStore | undefined;
 let feed: LiveFeed | undefined, resolver: NetgraphRegionResolver | undefined, director: ReturnType<typeof mountGraphFollow> | undefined;
 let connected=false, disposed=false, selected: string | null=null, recentSignature='', regionSignature='', refreshSearch=()=>{};
+let hasRegion:(id:string)=>boolean=()=>false,pendingRegionSelection:string|null=null;
 let minuteTimer: number | undefined;
 let settings=load();
 let liveMode: 'sculpture' | 'flat'=settings.mode==='flat'?'flat':'sculpture';
@@ -107,12 +108,14 @@ function renderRegions() {
 function filterRegions() {const query=required<HTMLInputElement>('region-search').value.trim().toLocaleLowerCase();for(const row of required('region-checks').querySelectorAll('label'))row.hidden=!row.dataset.search?.includes(query);}
 function selectNode(id: string | null) {
   if(!renderer||!store)return;
+  pendingRegionSelection=null;
   selected=id;rememberNode(id);renderer.selectNode(id);
   if(!id){inspector.hidden=true;delete required('chronoscope-app').dataset.followInspect;return;}
   required('chronoscope-app').dataset.followInspect='true';
-  if(!renderer.nodeInRegions(id)){settings.regions=null;renderer.setRegions(null);save();renderRegions();}
+  if(hasRegion(id)&&!renderer.nodeInRegions(id)){settings.regions=null;renderer.setRegions(null);save();renderRegions();}
   if(!renderNodeDetails(id)){selected=null;renderer.selectNode(null);rememberNode(null);return;}
   renderer.focusNode(id);stage.dispatchEvent(new Event('graphnavigate'));
+  if(settings.regions!==null&&!hasRegion(id))pendingRegionSelection=id;
 }
 function renderNodeDetails(id: string): boolean {
   if(!renderer||!store)return false;
@@ -151,6 +154,7 @@ async function start() {
     const updateStatus=()=>{const state=activityLabel(liveStore.snapshot,connected);required('status').dataset.state=state.state;if(required('status-text').textContent!==state.text)required('status-text').textContent=state.text;sync();};
     let resolving=false,areasDirty=true,retryAt=0;
     let assignments=new Map<string,NetgraphAreaAnchor>(),assignmentNodes=new Map<string,NodeV2>();
+    hasRegion=id=>assignments.has(id);
     stage.dataset.regionsState='loading';
     const geographyStatus=()=>{
       const notice=required('region-recovery');notice.hidden=stage.dataset.regionsState==='ready';
@@ -168,7 +172,11 @@ async function start() {
         // The feed keeps running during lookup. Reject moved or deleted-node replies.
         assignments=resolved;assignmentNodes=new Map(nodes.map(node=>[node.id,node]));
         retainAssignments(liveStore.snapshot.nodes);
-        scene.render(liveStore.snapshot,{reset:true});renderRegions();
+        scene.render(liveStore.snapshot,{reset:true});
+        if(pendingRegionSelection&&selected===pendingRegionSelection&&hasRegion(selected)){
+          pendingRegionSelection=null;if(!scene.nodeInRegions(selected))selectNode(selected);
+        }
+        renderRegions();
       }stage.dataset.regionsState='ready';retryAt=0;
       }catch{if(disposed)return;areasDirty=true;retryAt=performance.now()+30_000;stage.dataset.regionsState='unavailable';}
       finally{resolving=false;if(!disposed)geographyStatus();}
@@ -211,4 +219,6 @@ window.addEventListener(DISPLAY_EVENT,()=>{recentSignature='';sync();});
 document.addEventListener('visibilitychange',()=>{sonifier?.setPaused(document.hidden||Boolean(renderer?.frozen));if(!document.hidden)void feed?.resume();});
 window.addEventListener('online',()=>void feed?.resume());window.addEventListener('pageshow',event=>{if(event.persisted)void feed?.resume();});
 window.addEventListener('pagehide',event=>{if(!event.persisted)dispose();});
+// A newer camera or filter action supersedes a selection waiting on geography.
+for(const event of ['graphnavigate','graphfilter'])stage.addEventListener(event,()=>{pendingRegionSelection=null;});
 void start();
