@@ -44,8 +44,10 @@ export function arrangeRegions(base: NetgraphLayout, preferences: RegionLayoutPr
     return { ...area, x, y };
   });
   const positions = new Map([...base.positions].map(([id, p]) => {
-    const shift = shifts.get(p.areaCode)!;
-    return [id, { ...p, x: p.x + shift.x, y: p.y + shift.y }];
+    const shift = shifts.get(p.areaCode);
+    // Unresolved coordinates share the same spacing basis as the camera.
+    return [id, shift ? { ...p, x: p.x + shift.x, y: p.y + shift.y }
+      : { ...p, x: p.x * preferences.spacing, y: p.y * preferences.spacing }];
   }));
   return { ...base, positions, areas, bounds: layoutBounds(positions, areas) };
 }

@@ -1,3 +1,4 @@
+import { trafficNow } from '../clock';
 import { stableHash } from '../trafficVisuals';
 export { stableHash } from '../trafficVisuals';
 import type { SoundCharacter, ViewportProjector } from '../audio';
@@ -105,12 +106,12 @@ export class RollingMetrics {
     }
     for (const hop of packet.hops) {
       const previous = this.#routeCounts.get(hop.routeId);
-      this.#routeCounts.set(hop.routeId, { count: (previous?.count ?? 0) + 1, lastAt: packet.at });
+      this.#routeCounts.set(hop.routeId, { count: (previous?.count ?? 0) + 1, lastAt: Math.max(previous?.lastAt ?? packet.at, packet.at) });
     }
     this.#evict(packet.at);
   }
 
-  snapshot(now = Date.now()): LabMetricSnapshot {
+  snapshot(now = trafficNow()): LabMetricSnapshot {
     this.#evict(now);
     let events10s = 0;
     let events60s = 0;

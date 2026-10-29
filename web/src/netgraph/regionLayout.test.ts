@@ -74,3 +74,16 @@ describe('saved region arrangements', () => {
     }
   });
 });
+
+
+it('keeps unresolved coordinate positions usable with saved spacing and restrictive region filters', () => {
+  const base = buildNetgraphLayout(nodes, routes);
+  const arranged = arrangeRegions(base, normalizeRegionLayout({ spacing: 3, centres: { WEST: { x: 100, y: 100 } }, regions: ['WEST'] }));
+  for (const [id, point] of arranged.positions) {
+    expect(point.x).toBe(base.positions.get(id)!.x * 3);
+    expect(point.y).toBe(base.positions.get(id)!.y * 3);
+  }
+  expect(arranged.connectedNodeIDs).toEqual(base.connectedNodeIDs);
+  expect(arranged.areas).toEqual([]);
+  expect(regionComponents(arranged, routes, new Set(['WEST'])).size).toBe(0);
+});

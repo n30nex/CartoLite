@@ -5,7 +5,7 @@ import { DISPLAY_EVENT, displayColor, displayPreferences, lightScene, packetPale
 import { drawPacketSignature, routeMotion } from '../packetAnimator';
 import { normalizePacketKind, packetSignature, payloadColor } from '../trafficVisuals';
 import { buildNetgraphLayout, extendNetgraphLayout, graphTopologyChanged, routeTopology } from '../netgraph/layout';
-import { nearestNetgraphArea, type NetgraphAreaAnchor } from '../netgraph/areas';
+import type { NetgraphAreaAnchor } from '../netgraph/areas';
 import { distanceToGraphPath } from '../netgraph/camera';
 import type { MapChanges } from '../state';
 import type { EndpointV2, NodeV2, PacketView, StateV2 } from '../types';
@@ -116,7 +116,7 @@ export class Chronoscope3DRenderer {
   }
   private world(endpoint:EndpointV2,out:Position3):boolean{
     let point:{x:number;y:number}|undefined=this.#layout.positions.get(endpoint.id);
-    if(!point){const area=this.#assignments.get(endpoint.id)??nearestNetgraphArea(endpoint.lat,endpoint.lng);point=this.#layout.areas.find(candidate=>candidate.code===area.code);}
+    if(!point){const area=this.#assignments.get(endpoint.id);point=area&&this.#layout.areas.find(candidate=>candidate.code===area.code);}
     if(!point)return false;out.x=(point.x-this.#originX)*this.#scale;out.z=(point.y-this.#originZ)*this.#scale;out.y=this.#mode==='sculpture'?NOW:.1;return true;
   }
   private screen(p:Position3){this.#vector.set(p.x,p.y,p.z).project(this.camera);return{x:(this.#vector.x+1)*this.#width/2,y:(1-this.#vector.y)*this.#height/2,z:this.#vector.z};}

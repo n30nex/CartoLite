@@ -122,6 +122,7 @@ test('native touch pinches, pans, lifts and cancels without jumping or losing se
   await page.goto('/netgraph/');
   const stage = page.locator('#netgraph-stage');
   await expect(page.locator('#netgraph-app')).toHaveAttribute('data-loading', 'false');
+  await expect(stage).toHaveAttribute('data-regions-state', 'ready');
   await page.locator('#find-button').click();
   await page.locator('#node-search').fill('Alpha');
   await page.locator('.node-search-result').first().click();
@@ -179,8 +180,12 @@ test('native touch pinches, pans, lifts and cancels without jumping or losing se
   await touch('touchCancel', []);
   await expect(stage).not.toHaveClass(/is-dragging/);
   const cancelled = await view();
-  await touch('touchStart', [{ id: 3, x, y }]);
-  await touch('touchMove', [{ id: 3, x: x + 24, y }]);
+  // The earlier pinch can put a draggable region label under its midpoint.
+  // Resume on empty canvas so this checks camera pan, not region arrangement.
+  const resume = { id: 3, x: 24, y: Math.round(height * 0.55) };
+  await touch('touchStart', [resume]);
+  await expect(stage).not.toHaveAttribute('data-moving-region', /.+/);
+  await touch('touchMove', [{ ...resume, x: resume.x + 24 }]);
   expect((await view()).center[0]).toBeCloseTo(cancelled.center[0]! - 24 / cancelled.scale, 1);
   await touch('touchEnd', []);
   await expect(stage).toHaveAttribute('data-selected-node-id', 'a');
@@ -226,6 +231,7 @@ test('slow renderers adapt decoration without losing hops and composite camera g
   await page.goto('/netgraph/');
   const stage = page.locator('#netgraph-stage');
   await expect(page.locator('#netgraph-app')).toHaveAttribute('data-loading', 'false');
+  await expect(stage).toHaveAttribute('data-regions-state', 'ready');
   await expect(stage).toHaveAttribute('data-quality-mode', 'full');
   await page.locator('#sound-button').click();
   await page.locator('#sound-toggle').click();

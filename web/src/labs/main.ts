@@ -1,3 +1,4 @@
+import { trafficNow } from '../clock';
 import { required } from '../dom';
 import { requestScreenAwake as requestWakeLock, releaseScreenAwake as releaseWakeLock } from '../screenAwake';
 import { mountMobileDock } from '../mobileDock';
@@ -146,7 +147,7 @@ async function start(): Promise<void> {
 
     unsubscribe = liveStore.subscribe((snapshot, changes) => {
       latestSnapshot = snapshot;
-      if (changes) activeExperiment?.applySnapshot(snapshot);
+      if (changes) activeExperiment?.applySnapshot({ ...snapshot, serverTime: trafficNow() });
       updateConnectionStatus(liveStore.snapshot);
     });
 
@@ -221,7 +222,7 @@ async function start(): Promise<void> {
     resetButton.addEventListener('click', () => {
       metrics.reset();
       activeExperiment?.reset();
-      activeExperiment?.applySnapshot(liveStore.snapshot);
+      activeExperiment?.applySnapshot({ ...liveStore.snapshot, serverTime: trafficNow() });
       showFeedback(userPaused ? 'Scene reset. Paused. Live traffic continues.' : 'Scene reset. Live traffic continues.');
       updateBurstState();
     });
@@ -299,7 +300,7 @@ async function switchExperiment(definition: ExperimentDefinition, snapshot: Read
   });
   activeExperiment = next;
   adaptiveEconomy = false; expensiveFrames = 0;
-  next.applySnapshot(snapshot);
+  next.applySnapshot({ ...snapshot, serverTime: trafficNow() });
   next.setPaused(effectivePause());
   resizeActiveExperiment();
   updateExperimentInformation(definition);

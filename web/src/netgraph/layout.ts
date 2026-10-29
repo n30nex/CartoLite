@@ -1,6 +1,6 @@
 import { stableHash } from '../trafficVisuals';
 import type { NodeV2, RouteV2 } from '../types';
-import { nearestNetgraphArea, type NetgraphAreaAnchor } from './areas';
+import type { NetgraphAreaAnchor } from './areas';
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const AREA_GEO_SCALE_X = 92;
@@ -39,7 +39,7 @@ export interface NetgraphLayout {
 /** Recalculate from the current layout: areas move and components can merge. */
 export function focusedNodeIDs(layout: NetgraphLayout, mode: 'all' | 'area' | 'component', anchorID: string | null): Set<string> | undefined {
   const anchor = anchorID ? layout.positions.get(anchorID) : undefined;
-  if (mode === 'all' || !anchor) return undefined;
+  if (mode === 'all' || !anchor || (mode === 'area' && !anchor.areaCode)) return undefined;
   return new Set([...layout.positions.values()].filter(point => mode === 'area'
     ? point.areaCode === anchor.areaCode : point.component === anchor.component).map(point => point.id));
 }
@@ -93,9 +93,16 @@ export function buildNetgraphLayout(
   });
 
   const areaByCode = new Map<string, AreaDraft>();
+  const positions = new Map<string, NetgraphPosition>();
   for (const id of [...(includeIsolated ? nodeIDs : connectedNodeIDs)].sort((left, right) => compareSortKey(sortKeys, left, right))) {
     const node = nodeByID.get(id)!;
-    const anchor = assignedAreas.get(id) ?? nearestNetgraphArea(node.lat, node.lng);
+    const anchor = assignedAreas.get(id);
+    if (!anchor) {
+      // Unknown region membership is not evidence of an outside-Canada city.
+      positions.set(id, { id, x: node.lng * AREA_GEO_SCALE_X, y: -node.lat * AREA_GEO_SCALE_Y,
+        degree: adjacency.get(id)?.size ?? 0, component: componentByNodeID.get(id) ?? -1, areaCode: '' });
+      continue;
+    }
     let area = areaByCode.get(anchor.code);
     if (!area) {
       area = {
@@ -126,7 +133,6 @@ export function buildNetgraphLayout(
   }
   placeAreas(areaDrafts);
 
-  const positions = new Map<string, NetgraphPosition>();
   for (const area of areaDrafts) {
     const ordered = area.ids;
     const phase = (stableHash(area.code) % 6283) / 1000;
@@ -187,6 +193,7 @@ export function extendNetgraphLayout(
   });
   const stableAreas = new Map(areas.map((area) => [area.code, area]));
   for (const position of canonical.positions.values()) {
+    if (!position.areaCode) { positions.set(position.id, position); continue; }
     const established = previous.positions.get(position.id);
     if (established?.areaCode === position.areaCode) positions.set(position.id, { ...position, x: established.x, y: established.y });
   }

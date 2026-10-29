@@ -27,7 +27,7 @@ export function mountRegionControls(graph: NetgraphRenderer, host: HTMLElement, 
   const layout = graphTemplate<HTMLDetailsElement>('graph-layout-ui');
   document.getElementById('display-panel')!.append(layout);
   const spacing = layout.querySelector('input')!, output = layout.querySelector('output')!, move = layout.querySelector('select')!;
-  let lastAreas: ReturnType<NetgraphRenderer['regions']> | undefined, lastRegions: string[] | null | undefined, signature = '';
+  let lastAreas: ReturnType<NetgraphRenderer['regions']> | undefined, lastRegions: string[] | null | undefined, lastState: string | undefined, signature = '';
   const applyFilter = (values: string[] | null) => { navigate(); graph.setRegions(values); sync(); changed(); };
   menu.querySelector('[data-all]')!.addEventListener('click', () => applyFilter(null));
   menu.querySelector('[data-none]')!.addEventListener('click', () => applyFilter([]));
@@ -53,10 +53,20 @@ export function mountRegionControls(graph: NetgraphRenderer, host: HTMLElement, 
   });
   function sync(): void {
     const prefs = graph.regionLayout(), areas = graph.regions();
+    const selected = graph.selectedNode();
+    const areaReady = selected !== null && graph.hasRegionForNode(selected);
+    host.querySelector<HTMLOptionElement>('option[value="area"]')!.disabled = !areaReady;
+    const focusStatus = host.querySelector('small[role="status"]')!;
+    if (areaReady && focusStatus.textContent === 'Region labels are not available for this node') focusStatus.textContent = '';
+
     document.getElementById('display-button')?.toggleAttribute('data-filtered', prefs.regions !== null || !prefs.routes || (stage.dataset.focusMode ?? 'all') !== 'all');
     spacing.value = String(prefs.spacing); output.value = `${Math.round(prefs.spacing * 100)}%`;
     routes.setAttribute('aria-pressed', String(prefs.routes)); routes.classList.toggle('selected', prefs.routes);
-    summary.textContent = `Regions · ${prefs.regions === null ? 'All' : prefs.regions.length}`;
+    const state = stage.dataset.regionsState;
+    summary.textContent = `Regions · ${state === 'loading' ? 'Loading' : state === 'unavailable' ? 'Unavailable' : prefs.regions === null ? 'All' : prefs.regions.length}`;
+    const recovery = menu.querySelector<HTMLElement>('#region-recovery')!;
+    if (state !== 'unavailable' && recovery.contains(document.activeElement)) summary.focus({ preventScroll: true });
+    recovery.hidden = state !== 'unavailable';
     const focused = stage.dataset.focusMode ?? 'all';
     const description = [prefs.regions === null ? '' : `${prefs.regions.length} ${prefs.regions.length===1?'region':'regions'}`, focused === 'all' ? '' : `${focused === 'area' ? 'Area' : 'Component'} focus`, prefs.routes ? '' : 'Routes hidden'].filter(Boolean).join(' · ');
     if (scope.hidden !== !description) scope.hidden = !description;
@@ -66,10 +76,10 @@ export function mountRegionControls(graph: NetgraphRenderer, host: HTMLElement, 
     clear.disabled = prefs.regions === null && focused === 'all';
     layout.querySelector('[data-save-state]')!.textContent = stage.dataset.layoutSaved === 'false'
       ? 'Kept for this visit; storage unavailable.' : 'Saved on this device.';
-    if (areas !== lastAreas || prefs.regions !== lastRegions) {
-      lastAreas = areas; lastRegions = prefs.regions;
+    if (areas !== lastAreas || prefs.regions !== lastRegions || state !== lastState) {
+      lastAreas = areas; lastRegions = prefs.regions; lastState = state;
       const entries = new Map(areas.map(a => [a.code, [a.name, ...(a.aliases ?? [])]]));
-      for (const code of prefs.regions ?? []) if (!entries.has(code)) entries.set(code, ['No current activity']);
+      for (const code of prefs.regions ?? []) if (!entries.has(code)) entries.set(code, [state === 'ready' ? 'No current activity' : 'Region data unavailable']);
       const next = JSON.stringify([...entries]);
       if (next !== signature) {
         signature = next;
@@ -88,6 +98,8 @@ export function mountRegionControls(graph: NetgraphRenderer, host: HTMLElement, 
       }
       for (const input of list.querySelectorAll<HTMLInputElement>('input')) input.checked = prefs.regions === null || prefs.regions.includes(input.dataset.region!);
     }
+    move.disabled = move.options.length === 0;
+    for (const button of layout.querySelectorAll<HTMLButtonElement>('[data-move]')) button.disabled = move.disabled;
   }
   sync();
   return { sync, destroy() { resize?.disconnect(); window.removeEventListener('resize', measure); document.removeEventListener('pointerdown', dismiss); menu.remove(); routes.remove(); scope.remove(); layout.remove(); } };

@@ -140,11 +140,12 @@ describe('netgraph layout', () => {
   });
 
   it('places multiple newly connected components apart in the same update', () => {
-    const initial = buildNetgraphLayout([node('a'), node('b')], [route('ab', 'a', 'b')]);
+    const known = new Map(['a', 'b', 'c', 'd', 'e', 'f'].map(id => [id, { code: 'TEST', name: 'Synthetic area', lat: 45, lng: -75 }]));
+    const initial = buildNetgraphLayout([node('a'), node('b')], [route('ab', 'a', 'b')], known);
     const next = extendNetgraphLayout(
       initial,
       ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => node(id)),
-      [route('ab', 'a', 'b'), route('cd', 'c', 'd'), route('ef', 'e', 'f')],
+      [route('ab', 'a', 'b'), route('cd', 'c', 'd'), route('ef', 'e', 'f')], known,
     );
 
     const coordinates = ['c', 'd', 'e', 'f'].map((id) => {
@@ -166,7 +167,8 @@ describe('netgraph layout', () => {
       `${area.code}-a`,
       `${area.code}-b`,
     ));
-    const layout = buildNetgraphLayout(nodes, routes);
+    const resolved = new Map(nodes.map(node => [node.id, nearestNetgraphArea(node.lat, node.lng)]));
+    const layout = buildNetgraphLayout(nodes, routes, resolved);
 
     expect(layout.areas).toHaveLength(NETGRAPH_AREA_ANCHORS.length);
     for (let leftIndex = 0; leftIndex < layout.areas.length; leftIndex += 1) {
@@ -186,7 +188,11 @@ describe('netgraph layout', () => {
       `node-${index % nodes.length}`,
       `node-${(index * 17 + 1) % nodes.length}`,
     ));
-    const layout = buildNetgraphLayout(nodes, routes);
+    const resolved = new Map(nodes.map(node => [node.id, { code: 'TEST', name: 'Synthetic area', lat: 45, lng: -75 }]));
+    const layout = buildNetgraphLayout(nodes, routes, resolved);
+    const unresolved = buildNetgraphLayout(nodes, routes);
+    expect(unresolved.positions.size).toBe(4_000);
+    expect(unresolved.areas).toEqual([]);
 
     expect(layout.positions.size).toBe(4_000);
     expect(layout.connectedNodeIDs.size).toBe(4_000);
@@ -206,4 +212,18 @@ it('includes isolated radios for Chronoscope without creating connections', () =
   expect(after.positions.get('alone')).toEqual(time.positions.get('alone'));
   expect(after.positions.has('new')).toBe(true);
   expect(after.connectedNodeIDs).toEqual(time.connectedNodeIDs);
+});
+
+
+it('uses public coordinates without inventing a region while assignments are unavailable', () => {
+  const nodes = [node('a', 'A', 43.4, -80.3), node('b', 'B', 45, -75)];
+  const edges = [route('ab', 'a', 'b')];
+  const layout = buildNetgraphLayout(nodes, edges);
+  expect(layout.areas).toEqual([]);
+  expect(layout.positions.size).toBe(2);
+  expect([...layout.positions.values()].every(point => point.areaCode === '')).toBe(true);
+  expect(layout.positions.get('a')!.x).toBeLessThan(layout.positions.get('b')!.x);
+  const moved = extendNetgraphLayout(layout, [nodes[0]!, { ...nodes[1]!, lng: -74 }], edges);
+  expect(moved.positions.get('a')).toEqual(layout.positions.get('a'));
+  expect(moved.positions.get('b')!.x).toBeGreaterThan(layout.positions.get('b')!.x);
 });

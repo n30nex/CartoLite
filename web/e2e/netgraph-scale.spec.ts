@@ -74,7 +74,7 @@ function scaleState(): StateV2 {
   return state;
 }
 
-test('Netgraph keeps all 4,000 nodes and 7,000 links responsive', async ({ page }, testInfo) => {
+test('Netgraph keeps all 4,000 nodes and 7,000 links responsive @netgraph-scale', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'the scale timing gate runs once on desktop');
   const state = scaleState();
   await page.route('**/api/state', (route) => route.fulfill({ json: state }));
@@ -86,6 +86,8 @@ test('Netgraph keeps all 4,000 nodes and 7,000 links responsive', async ({ page 
   await page.goto('/netgraph/');
   const stage = page.locator('#netgraph-stage');
   await expect(stage).toHaveAttribute('data-connected-nodes', '4000', { timeout: 15_000 });
+  // The feed now starts before optional geography. Measure the completed layout.
+  await expect(stage).toHaveAttribute('data-regions-state', 'ready');
   await expect(stage).toHaveAttribute('data-render-state', 'idle', { timeout: 15_000 });
   await expect(stage).toHaveAttribute('data-connected-nodes', '4000');
   await expect(stage).toHaveAttribute('data-visible-routes', '7000');
@@ -131,7 +133,7 @@ test('Netgraph keeps all 4,000 nodes and 7,000 links responsive', async ({ page 
   expect(Number(await stage.getAttribute('data-node-selection-apply-ms'))).toBeLessThan(100);
 });
 
-test('Netgraph does not repaint 4,000 nodes for last-heard updates', async ({ page }) => {
+test('Netgraph does not repaint 4,000 nodes for last-heard updates @netgraph-scale', async ({ page }) => {
   const state = scaleState();
   await page.route('**/api/state', (route) => route.fulfill({ json: state }));
   await page.addInitScript(() => {
@@ -157,6 +159,8 @@ test('Netgraph does not repaint 4,000 nodes for last-heard updates', async ({ pa
   await page.goto('/netgraph/');
   const stage = page.locator('#netgraph-stage');
   await expect(stage).toHaveAttribute('data-connected-nodes', '4000', { timeout: 15_000 });
+  // Initial region assignment legitimately redraws once; age-only updates must not.
+  await expect(stage).toHaveAttribute('data-regions-state', 'ready');
   await expect(stage).toHaveAttribute('data-render-state', 'idle', { timeout: 15_000 });
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   const paints = await page.evaluate(() => (window as unknown as { graphPaints: number }).graphPaints);
