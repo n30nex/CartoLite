@@ -6,6 +6,61 @@ import type { StateV2 } from '../src/types';
 
 
 test.describe('UI audit', () => {
+  for (const canvas of [false, true]) test(`Chronoscope keeps live activity and recovery independent of regional downloads (${canvas ? 'Canvas' : '3D'})`, async ({ page, context }) => {
+    const snapshot = await visualFixture(page);
+    await page.addInitScript(canvas => {
+      const probe = window as unknown as { chrono: any };
+      window.addEventListener('cartolite-chronoscope-ready', event => { probe.chrono = (event as CustomEvent).detail.scene; });
+      if (canvas) {
+        const get = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function (type: string, ...args: any[]) {
+          return type === 'webgl2' || type === 'webgl' ? null : (get as any).call(this, type, ...args);
+        } as typeof get;
+      }
+    }, canvas);
+    let release!: () => void;
+    const stalled = new Promise<void>(resolve => { release = resolve; });
+    await context.route(/\/assets\/meshcore-canada-region.*\.(json|geojson)/, async route => { await stalled; await route.continue(); });
+    const stage = page.locator('#chronoscope-stage');
+    const state = () => page.evaluate(() => {
+      const scene = (window as any).chrono;
+      return { camera: scene.camera?.position.toArray() ?? null, selected: scene.selected, frozen: scene.frozen,
+        time: scene.frameTime, records: scene.timeline.records.length };
+    });
+    try {
+      await page.goto('/chronoscope/');
+      await expect(page.locator('html')).toHaveAttribute('data-fixture-stream', 'ready');
+      await expect(stage).toHaveAttribute('data-regions-state', 'loading');
+      expect(await page.evaluate(() => (window as any).chrono.regions.length)).toBe(0);
+      await visualPacket(page, 1, 'Text');
+      await expect(stage).toHaveAttribute('data-visible-events', '1');
+      await page.evaluate(() => window.dispatchEvent(new CustomEvent('visual-hello', { detail: { bootId: 'resync', seq: 1 } })));
+      await expect(page.locator('html')).toHaveAttribute('data-fixture-streams-opened', '2');
+      await expect(page.locator('html')).toHaveAttribute('data-fixture-streams-active', '1');
+      await page.evaluate(node => window.dispatchEvent(new CustomEvent('visual-node', { detail: { seq: 1, node } })), snapshot.nodes[0]!);
+      await visualPacket(page, 2, 'Advert');
+      await expect(stage).toHaveAttribute('data-visible-events', '2');
+      await page.locator('#find-button').click(); await page.locator('#node-search').fill('Visual Alpha');
+      await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+      await page.locator('#chrono-pause-button').click();
+      await expect(stage).toHaveAttribute('data-frozen', 'true');
+      const before = await state();
+      release();
+      await expect(stage).toHaveAttribute('data-regions-state', 'ready');
+      await expect.poll(() => page.evaluate(() => (window as any).chrono.regions.length)).toBeGreaterThan(0);
+      expect(await state()).toEqual(before);
+      await expect(stage).toHaveAttribute('data-visible-events', '2');
+      await expect(page.locator('#node-inspector-sheet')).toContainText('Visual Alpha');
+      expect(await page.evaluate(() => {
+        const scene = (window as any).chrono, point = scene.projectEndpoint(scene.nodes.get('visual-a'));
+        return Number.isFinite(point.x) && Number.isFinite(point.y);
+      })).toBe(true);
+      await page.locator('#chrono-pause-button').click();
+      await page.locator('#regions-button').click(); await page.locator('#regions-none').click();
+      await expect(stage).toHaveAttribute('data-visible-events', '0');
+    } finally { release(); }
+  });
+
   for (const path of ['/', '/terminal/', '/netgraph/', '/chronoscope/', '/firehose/', '/pachinko/']) {
     test(`server time keeps traffic and inspection readable after device clock changes ${path}`, async ({ page }) => {
       const snapshot = await visualFixture(page);

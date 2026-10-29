@@ -112,6 +112,7 @@ test('Chronoscope shares preferences across tabs without losing frozen inspectio
   test.skip(info.project.name!=='desktop');await visualFixture(page);
   await page.addInitScript(()=>window.addEventListener('cartolite-chronoscope-ready',event=>{(window as any).__chrono=(event as CustomEvent).detail.scene;}));
   await page.goto('/chronoscope/');await expect(page.locator('html')).toHaveAttribute('data-fixture-stream','ready');
+  await expect(page.locator('#chronoscope-stage')).toHaveAttribute('data-regions-state','ready');
   await page.evaluate(()=>window.dispatchEvent(new CustomEvent('visual-packet',{detail:{seq:1,id:'shared',at:Date.now(),payloadType:'Text',mode:'route',segments:[{routeId:'visual-hop',fromId:'visual-a',toId:'visual-b'}]}})));
   await page.locator('#find-button').click();await page.locator('#node-search').fill('Alpha');await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
   await page.locator('#time-button').click();await page.locator('#freeze-button').click();await page.keyboard.press('Escape');
@@ -131,6 +132,7 @@ test('Chronoscope keeps the camera still when a distant region appears',async({p
   test.skip(info.project.name!=='desktop');await visualFixture(page);
   await page.addInitScript(()=>window.addEventListener('cartolite-chronoscope-ready',event=>{(window as any).__chrono=(event as CustomEvent).detail.scene;}));
   await page.goto('/chronoscope/');await expect(page.locator('html')).toHaveAttribute('data-fixture-stream','ready');
+  await expect(page.locator('#chronoscope-stage')).toHaveAttribute('data-regions-state','ready');
   const before=await page.evaluate(()=>{const scene=(window as any).__chrono;return scene.projectEndpoint(scene.nodes.get('visual-a'));});
   await page.evaluate(()=>window.dispatchEvent(new CustomEvent('visual-node',{detail:{seq:1,node:{id:'new-region',label:'New region radio',lat:-17.7,lng:179.8,role:'repeater',observer:false,lastSeen:Date.now()}}})));
   await expect(page.locator('#chronoscope-stage')).toHaveAttribute('data-total-nodes','4');

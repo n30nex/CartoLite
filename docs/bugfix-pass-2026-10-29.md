@@ -11,14 +11,16 @@ This pass fixes browser behaviour and preserves the existing service and API v2.
 | --- | --- | --- |
 | Device-clock errors can hide retained routes or show incorrect node ages; changing the clock can skip or stall Follow. | Anchor data age to the fresh HTTP Date header and monotonic elapsed time. Keep the cached JSON snapshot timestamp unchanged. Ignore failed/invalid clock samples and superseded requests; retain local-time fallback when no valid server reference exists. Use monotonic elapsed time for Follow dwell. | Unit tests cover cached snapshots, delayed bodies, out-of-order requests and clock changes. Browser cases cover Map, Terminal, Netgraph, Chronoscope, Firehose and Pachinko, plus Follow timing. |
 | Live event JSON was trusted through type casts, allowing malformed node/status/packet data into the model. An unresolved multi-hop packet could also queue partial/dangling routes before returning null. | Validate stream envelopes and bodies before applying them or advancing the cursor. Recover from malformed data using the existing snapshot path. Resolve every endpoint before changing any route count or batch. | Malformed sequence, reset, role, coordinates, status, kind and segment fixtures; browser recovery after an invalid live kind; atomic route-history tests. |
-| Canada Netgraph startup and recovery awaited region data, so a failed or stalled optional lookup could hide otherwise healthy live traffic. Missing assignments also fell back to unrelated outside-Canada metro names. | Start and recover the feed independently. Coalesce regional work, reject stale moved-node assignments, retry with bounded backoff or a compact menu action, and stop pending work on disposal. Unresolved nodes use public coordinates without invented region membership; saved filters stay restrictive. Preserve manual camera/selection on retry. | Stalled download during startup and stream recovery, failed lookup/retry, saved filters/spacing, keyboard focus, unassigned geometry and full retained topology. |
+| Canada Netgraph and Chronoscope startup and recovery awaited region data, so a failed or stalled optional lookup could hide otherwise healthy live traffic. Missing assignments also fell back to unrelated outside-Canada metro names. | Start and recover feeds independently. Coalesce regional work, reject moved/deleted-node replies, bound retries and stop pending work on disposal. Netgraph has a compact retry action; Chronoscope retries in the background. Unresolved nodes use public coordinates without invented membership; saved filters stay restrictive. Keep camera, selection and frozen observations through lookup completion. | Stalled downloads during startup and stream recovery in Netgraph and both Chronoscope renderers; failed lookup/retry, saved filters/spacing, keyboard focus, unassigned geometry and full retained topology. |
 | An older Labs observation could move a route's last-use time backward and prematurely remove a recently active route from the reuse display. | Keep the newest observed last-use time. Use the same data-age clock for Labs metrics and snapshot-driven decoration. | Out-of-order metric fixture and existing Labs browser suites. |
 
 The regional and Labs corrections are Canada-specific. Worldwide keeps its
 coordinate-derived global grid and does not acquire country datasets or Labs.
 Canada's partition geometry and successful outside-partition assignment rules
-are unchanged. Chronoscope's unresolved coordinate fallback also avoids guessing
-an outside-Canada metro. There are no new radio paths, payload fields, backend
+are unchanged. Chronoscope fits its first regional geometry inside the existing
+scene without resetting camera controls, packet time or frozen records. Its
+unresolved coordinate fallback avoids guessing an outside-Canada metro. There
+are no new radio paths, payload fields, backend
 endpoints, dependencies, saved settings or native APK changes.
 
 ## Validation and release

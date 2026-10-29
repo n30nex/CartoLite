@@ -26,6 +26,7 @@ export class ChronoscopeCanvasRenderer {
   #points = new Map<string, Point>();
   #nodes = new Map<string, NodeV2>();
   #assignments = new Map<string, NetgraphAreaAnchor>();
+  #geographyReady = false;
   #layout = buildNetgraphLayout([], []);
   #bounds = this.#layout.bounds;
   #framed = false;
@@ -67,7 +68,11 @@ export class ChronoscopeCanvasRenderer {
   get sliceSeconds(): number { return this.#slice; }
   get frozen(): boolean { return this.timeline.frozen; }
   get frameTime(): number { return this.timeline.clock(performance.now()); }
-  setAssignments(areas: Map<string, NetgraphAreaAnchor>): void { this.#assignments = areas; }
+  setAssignments(areas: Map<string, NetgraphAreaAnchor>): void {
+    // Fit the initial geographic data once, without resetting pan, zoom or time.
+    if (!this.#geographyReady && areas.size) { this.#geographyReady = true; this.#framed = false; }
+    this.#assignments = areas;
+  }
   render(state: Readonly<StateV2>, changes: MapChanges | null): void {
     if (!changes) return;
     const started = performance.now();

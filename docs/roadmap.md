@@ -2,7 +2,7 @@
 
 ## Browser reliability (0.21.6)
 
-[Bug-fix pass](bugfix-pass-2026-10-29.md): server-aligned data age, stable Follow timing, live-event validation and atomic route updates. Canada also decouples Netgraph from optional region downloads and preserves recent Labs metrics. Qualification and deployment are recorded in release evidence.
+[Bug-fix pass](bugfix-pass-2026-10-29.md): server-aligned data age, stable Follow timing, live-event validation and atomic route updates. Canada also decouples Netgraph and Chronoscope from optional region downloads and preserves recent Labs metrics. Qualification and deployment are recorded in release evidence.
 
 ## System bug fixes (0.21.5)
 

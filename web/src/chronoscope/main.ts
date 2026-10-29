@@ -14,7 +14,8 @@ import { RouteSonifier, type SoundScene } from '../audio';
 import { populateSoundScenes } from '../soundScenes';
 import { updateSoundChrome } from '../soundControls';
 import { mountSoundPreview } from '../soundPreview';
-import { NetgraphRegionResolver } from '../netgraph/areas';
+import { NetgraphRegionResolver, type NetgraphAreaAnchor } from '../netgraph/areas';
+import type { NodeV2 } from '../types';
 import { mountGraphFollow } from '../netgraph/follow';
 import { normalizePacketKind } from '../trafficVisuals';
 import { createChronoscopeRenderer, type ChronoscopeRenderer } from './renderer';
@@ -139,8 +140,6 @@ async function start() {
     const scene=await createChronoscopeRenderer(stage,required<HTMLCanvasElement>('chrono-canvas'),required<HTMLCanvasElement>('chrono-effects'),{node:selectNode,packet:inspectPacket,change:sync});if(disposed){scene.destroy();return;}renderer=scene;
     const areas=new NetgraphRegionResolver();resolver=areas;
     const initial=await fetchState();if(disposed)return;
-    try{scene.setAssignments(await areas.resolve(initial.nodes));}catch{/* Coordinate-derived fallback remains usable. */}
-    if(disposed)return;
     const liveStore=new LiveStore(initial);store=liveStore;
     const sound=new RouteSonifier(scene,stage);sonifier=sound;
     mountSoundPreview(sound,soundPanel);sound.setStatusListener(status=>updateSoundChrome(status,sound.getVolume(),sound.getScene()));
@@ -150,14 +149,29 @@ async function start() {
     updateSoundChrome(sound.status(),sound.getVolume(),sound.getScene());
     if(!sound.supported()){for(const id of ['sound-button','sound-toggle','sound-scene','sound-volume'])required<HTMLButtonElement>(id).disabled=true;required('sound-state').textContent='Unavailable';required('sound-panel-state').textContent='Unavailable';}
     const updateStatus=()=>{const state=activityLabel(liveStore.snapshot,connected);required('status').dataset.state=state.state;if(required('status-text').textContent!==state.text)required('status-text').textContent=state.text;sync();};
-    let resolving=false,areasDirty=false;
+    let resolving=false,areasDirty=true,retryAt=0;
+    let assignments=new Map<string,NetgraphAreaAnchor>(),assignmentNodes=new Map<string,NodeV2>();
+    stage.dataset.regionsState='loading';
+    const geographyStatus=()=>{
+      const notice=required('region-recovery');notice.hidden=stage.dataset.regionsState==='ready';
+      notice.textContent=stage.dataset.regionsState==='loading'?'Loading region labels. Live traffic continues.':'Region labels unavailable. Retrying in the background.';
+    };
+    const retainAssignments=(nodes:readonly NodeV2[])=>{
+      const current=new Map(nodes.map(node=>[node.id,node]));
+      for(const id of assignments.keys()){const before=assignmentNodes.get(id),after=current.get(id);if(!before||!after||before.lat!==after.lat||before.lng!==after.lng)assignments.delete(id);}
+      scene.setAssignments(assignments);
+    };
     const refreshAreas=async()=>{
-      if(resolving)return;resolving=true;
-      try{while(areasDirty&&!disposed){areasDirty=false;const nodes=liveStore.snapshot.nodes;const assignments=await areas.resolve(nodes);if(disposed)return;
-        // A newer coordinate update gets another bounded pass; no worker queue grows.
-        if(nodes.some(node=>{const current=scene.nodes.get(node.id);return current&& (current.lng!==node.lng||current.lat!==node.lat);})){areasDirty=true;continue;}
-        scene.setAssignments(assignments);scene.render(liveStore.snapshot,{reset:true});renderRegions();
-      }}catch{/* Keep coordinate-derived fallback until the next update. */}finally{resolving=false;}
+      if(disposed||resolving||!areasDirty||performance.now()<retryAt)return;resolving=true;
+      stage.dataset.regionsState='loading';geographyStatus();
+      try{while(areasDirty&&!disposed){areasDirty=false;const nodes=liveStore.snapshot.nodes;const resolved=await areas.resolve(nodes);if(disposed)return;
+        // The feed keeps running during lookup. Reject moved or deleted-node replies.
+        assignments=resolved;assignmentNodes=new Map(nodes.map(node=>[node.id,node]));
+        retainAssignments(liveStore.snapshot.nodes);
+        scene.render(liveStore.snapshot,{reset:true});renderRegions();
+      }stage.dataset.regionsState='ready';retryAt=0;
+      }catch{if(disposed)return;areasDirty=true;retryAt=performance.now()+30_000;stage.dataset.regionsState='unavailable';}
+      finally{resolving=false;if(!disposed)geographyStatus();}
     };
     liveStore.subscribe((state,changes)=>{scene.render(state,changes);renderRegions();refreshSearch();updateStatus();if(selected&&(changes?.reset||changes?.nodes?.some(n=>n.id===selected)||changes?.routes?.some(r=>r.fromId===selected||r.toId===selected)))if(!renderNodeDetails(selected))selectNode(null);});
     applySettings();
@@ -165,15 +179,19 @@ async function start() {
     const following=mountGraphFollow({holdView(){},selectedNode:()=>selected,captureFollowArea(){const ids=new Set([...scene.nodes.values()].filter(n=>{const p=scene.projectEndpoint(n);return p.x>=0&&p.y>=0&&p.x<=stage.clientWidth&&p.y<=stage.clientHeight;}).map(n=>n.id));return id=>ids.has(id);},nodeInRegions:id=>scene.nodeInRegions(id),projectEndpoint:endpoint=>scene.projectEndpoint(endpoint),followPacket:packet=>{if(!scene.frozen)scene.focusNode(packet.mode==='observer'?packet.observer.id:packet.segments[0]!.from.id);}},id=>selectNode(id),stage);director=following;
     const liveFeed=new LiveFeed(initial,{
       onConnection(value){connected=value;updateStatus();},
-      onNode(event){const previous=scene.nodes.get(event.node.id);liveStore.upsertNode(event.node,event.seq);if(!previous||previous.lat!==event.node.lat||previous.lng!==event.node.lng){areasDirty=true;void refreshAreas();}},
+      onNode(event){const previous=scene.nodes.get(event.node.id),moved=!previous||previous.lat!==event.node.lat||previous.lng!==event.node.lng;
+        if(moved){assignments.delete(event.node.id);scene.setAssignments(assignments);}
+        liveStore.upsertNode(event.node,event.seq);
+        if(moved){if(previous)scene.render(liveStore.snapshot,{reset:true});areasDirty=true;void refreshAreas();}},
       onPacket(event,replayed){const packet=liveStore.applyPacket(event);if(!packet||replayed||document.hidden)return;scene.addPacket(packet);if(!scene.frozen){sound.play(packet);following.offer(packet);}sync();},
       onStatus:event=>liveStore.updateStatus(event.status,event.seq),
-      async recover(){const snapshot=await fetchState();if(disposed)return snapshot;if(snapshot.bootId!==liveStore.snapshot.bootId)scene.clear();try{scene.setAssignments(await areas.resolve(snapshot.nodes));}catch{/* Keep public coordinate fallback. */}if(!disposed)liveStore.replace(snapshot);return snapshot;},
+      async recover(){const snapshot=await fetchState();if(disposed)return snapshot;if(snapshot.bootId!==liveStore.snapshot.bootId)scene.clear();retainAssignments(snapshot.nodes);liveStore.replace(snapshot);areasDirty=true;retryAt=0;void refreshAreas();return snapshot;},
       onError(){connected=false;updateStatus();},
     });feed=liveFeed;liveFeed.start();
     if(requestedNode())selectNode(requestedNode());
-    minuteTimer=window.setInterval(()=>{if(!document.hidden&&selected)renderNodeDetails(selected);},60_000);
+    minuteTimer=window.setInterval(()=>{if(!document.hidden){if(selected)renderNodeDetails(selected);void refreshAreas();}},60_000);
     window.dispatchEvent(new CustomEvent('cartolite-chronoscope-ready',{detail:{scene}}));
+    void refreshAreas();
   } catch {dispose();required('fatal').hidden=false;required('status').dataset.state='offline';required('status-text').textContent='Unavailable';}
 }
 

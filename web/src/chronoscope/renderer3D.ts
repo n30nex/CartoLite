@@ -29,7 +29,7 @@ export class Chronoscope3DRenderer {
   readonly #dots=new SculptureDots(MAX_SEGMENTS*3+MAX_EVENTS*2,this.#uniforms);
   #known=new SculptureDots(16,this.#uniforms);
   #frameGeometry=new THREE.Group();#floorMaterial=new THREE.MeshStandardMaterial({color:0x0b2230,roughness:.8,metalness:.15});
-  #layout=buildNetgraphLayout([],[]);#nodes=new Map<string,NodeV2>();#assignments=new Map<string,NetgraphAreaAnchor>();#topology=new Map<string,string>();
+  #layout=buildNetgraphLayout([],[]);#nodes=new Map<string,NodeV2>();#assignments=new Map<string,NetgraphAreaAnchor>();#topology=new Map<string,string>();#geographyReady=false;
   #regions:Set<string>|null=null;#selected:string|null=null;#selectedEvent:number|null=null;
   #mode:ChronoscopeMode='sculpture';#seconds=60;#slice=0;#framed=false;#originX=0;#originZ=0;#scale=1;
   #stacks=new Map<Observation,Stack>();#levels=new Map<string,{next:number;refs:number}>();
@@ -65,7 +65,12 @@ export class Chronoscope3DRenderer {
   get frameTime(){return this.timeline.clock(performance.now());}
   get settledCount(){const at=this.frameTime;return this.visibleRecords().filter(record=>this.drop(record,at)>=1).length;}
   get metrics(){return{frames:this.#frames,drawCalls:this.gpu.info.render.calls,geometries:this.gpu.info.memory.geometries,textures:this.gpu.info.memory.textures,stackRecords:this.#stacks.size,stackNodes:this.#levels.size};}
-  setAssignments(value:Map<string,NetgraphAreaAnchor>){this.#assignments=value;}
+  setAssignments(value:Map<string,NetgraphAreaAnchor>){
+    // Keep the sculpture inside its box when the first regional labels arrive.
+    // This changes geographic normalization, never the camera or packet clock.
+    if(!this.#geographyReady&&value.size){this.#geographyReady=true;this.#framed=false;}
+    this.#assignments=value;
+  }
   render(state:Readonly<StateV2>,changes:MapChanges|null){
     if(!changes)return;const started=performance.now();
     const changed=changes.reset||changes.nodes?.some(node=>!this.#nodes.has(node.id))||graphTopologyChanged(this.#topology,changes.routes??[],state.routes.length);
