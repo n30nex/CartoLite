@@ -6,7 +6,7 @@ import type { EndpointV2, NodeV2, PacketView, StateV2 } from '../types';
 import type { MapChanges } from '../state';
 import type { SurfacePoint } from '../terrainProjection';
 import { buildNetgraphLayout, extendNetgraphLayout, graphTopologyChanged, routeTopology } from '../netgraph/layout';
-import { nearestNetgraphArea, type NetgraphAreaAnchor } from '../netgraph/areas';
+import type { NetgraphAreaAnchor } from '../netgraph/areas';
 import { distanceToGraphPath } from '../netgraph/camera';
 import { ChronoscopeTimeline, type ChronoscopeMode, type Observation } from './timeline';
 
@@ -127,8 +127,8 @@ export class ChronoscopeCanvasRenderer {
   projectEndpoint(endpoint: EndpointV2): Point {
     if (!this.nodeInRegions(endpoint.id)) return { x: -10_000, y: -10_000 };
     const point = this.#points.get(endpoint.id); if (point) return point;
-    const anchor = this.#assignments.get(endpoint.id) ?? nearestNetgraphArea(endpoint.lat, endpoint.lng);
-    const area = this.#layout.areas.find(a => a.code === anchor.code);
+    const anchor = this.#assignments.get(endpoint.id);
+    const area = anchor && this.#layout.areas.find(a => a.code === anchor.code);
     return area ? this.world(area) : { x: -10_000, y: -10_000 };
   }
   projectSegment(segment: { from: EndpointV2; to: EndpointV2 }): readonly SurfacePoint[] {

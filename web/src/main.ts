@@ -440,7 +440,7 @@ async function start(): Promise<void> {
     inspectFollow.addEventListener('click', () => {
       const endpoint = currentFollowPacket && followEndpoints(currentFollowPacket)[0];
       if (!endpoint) return;
-      held = true; followQueue.setHeld(true, Date.now()); followPause.textContent = 'Continue'; appElement.dataset.followInspect = 'true'; liveMap.selectNodeByID(endpoint.id, false);
+      held = true; followQueue.setHeld(true, performance.now()); followPause.textContent = 'Continue'; appElement.dataset.followInspect = 'true'; liveMap.selectNodeByID(endpoint.id, false);
     });
     const followQueue = new FollowQueue();
     mapElement.dataset.followDwellMs = String(LIVE_FOLLOW_MIN_INTERVAL_MS);
@@ -458,7 +458,7 @@ async function start(): Promise<void> {
       if (!liveFollow || document.hidden) return;
       if (held) { followCard.dataset.state = 'held'; followState.textContent = 'Held · continue when ready'; return; }
       followCard.dataset.state = 'following';
-      const now = Date.now();
+      const now = performance.now();
       const packet = followQueue.take(now);
       if (packet && followsScope(packet, followScope)) {
         currentFollowPacket = packet; inspectFollow.disabled = false;
@@ -479,7 +479,7 @@ async function start(): Promise<void> {
 
     const queueLiveFollow = (packet: PacketView): void => {
       if (!liveFollow || !followsScope(packet, followScope)) return;
-      followQueue.offer(packet, liveMap.followPriority(packet), Date.now());
+      followQueue.offer(packet, liveMap.followPriority(packet), performance.now());
       tickFollow();
     };
 
@@ -517,7 +517,7 @@ async function start(): Promise<void> {
     };
     followPause.addEventListener('click', () => {
       if (followPaused) { setLiveFollow(true); return; }
-      held = !held; delete appElement.dataset.followInspect; followQueue.setHeld(held, Date.now());
+      held = !held; delete appElement.dataset.followInspect; followQueue.setHeld(held, performance.now());
       followPause.textContent = held ? 'Continue' : 'Hold';
       if (held) liveMap.map.stop();
       tickFollow();

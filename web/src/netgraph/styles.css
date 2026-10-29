@@ -253,7 +253,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .region-checks label[hidden] { display:none; }
 .region-checks input { accent-color:var(--focus-ring); }
 .region-actions { display:flex; gap:6px; margin-block:6px; }
-.region-actions button, .graph-layout > button { min-height:44px; min-width:44px; border:1px solid var(--panel-border); border-radius:var(--radius-control); color:var(--ink-strong); background:var(--field-bg); cursor:pointer; }
+#region-recovery button, .region-actions button, .graph-layout > button { min-height:44px; min-width:44px; border:1px solid var(--panel-border); border-radius:var(--radius-control); color:var(--ink-strong); background:var(--field-bg); cursor:pointer; }
 .graph-layout { padding-block:10px; border-top:1px solid var(--panel-border); }
 .graph-layout summary { cursor:pointer; padding-block:8px; font-weight:700; }
 .graph-layout label { display:flex; align-items:center; gap:8px; margin-block:8px; }

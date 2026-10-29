@@ -107,6 +107,17 @@ describe('Labs geographic helpers', () => {
 });
 
 describe('rolling Labs metrics', () => {
+  it('keeps a recently used route when an older observation arrives afterward', () => {
+    const metrics = new RollingMetrics();
+    const packet = normalizeLabPacket({ seq: 1, id: 'fresh', at: 400_000, payloadType: 'Advert', mode: 'route',
+      segments: [{ routeId: 'r1', from: toronto, to: montreal }] });
+    metrics.record(packet);
+    metrics.record({ ...packet, id: 'late', at: 100_000 });
+    const snapshot = metrics.snapshot(450_000);
+    expect(snapshot.events5m).toBe(1);
+    expect(snapshot.routeReuse.get('r1')).toBe(2);
+  });
+
   it('bounds rolling windows, detects bursts, and counts route reuse', () => {
     const metrics = new RollingMetrics();
     const base = normalizeLabPacket({

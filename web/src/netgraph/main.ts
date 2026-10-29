@@ -1,3 +1,4 @@
+import { trafficNow } from '../clock';
 import { required } from '../dom';
 import { requestScreenAwake, releaseScreenAwake } from '../screenAwake';
 import { updateSoundChrome as updateSound } from '../soundControls';
@@ -93,6 +94,7 @@ async function start(): Promise<void> {
   let store: LiveStore | undefined;
   let feed: LiveFeed | undefined;
   let areaResolver: NetgraphRegionResolver | undefined;
+  let disposed = false;
   let selectedNodeID: string | null = null;
   let selectedRouteIDs: string[] = [];
   let streamConnected = false;
@@ -103,6 +105,17 @@ async function start(): Promise<void> {
   let syncRegions = (): void => undefined;
   let refreshSearch = (): void => undefined;
   const navigate = () => stage.dispatchEvent(new Event('graphnavigate'));
+
+  const dispose = (): void => {
+    if (disposed) return;
+    disposed = true;
+    if (minuteTimer !== undefined) window.clearInterval(minuteTimer);
+    if (trafficTimer !== undefined) window.clearTimeout(trafficTimer);
+    if (soundPulseTimer !== undefined) window.clearTimeout(soundPulseTimer);
+    feed?.stop(); store?.destroy(); sonifier?.destroy(); renderer?.destroy(); areaResolver?.destroy();
+    releaseScreenAwake();
+  };
+  window.addEventListener('pagehide', event => { if (!event.persisted) dispose(); });
 
   try {
     const graph = new NetgraphRenderer(stage, graphCanvas, packetCanvas, {
@@ -133,7 +146,7 @@ async function start(): Promise<void> {
     graph.setRouteWindow(settings.routeWindow);
 
     const initial = await fetchState();
-    graph.setAreaAssignments(await regionResolver.resolve(initial.nodes));
+    if (disposed) return;
     const liveStore = new LiveStore(initial);
     store = liveStore;
 
@@ -165,7 +178,7 @@ async function start(): Promise<void> {
         selectedNodeID,
         graph.getNodes(),
         graph.adjacentRoutes(selectedNodeID),
-        Date.now(),
+        trafficNow(),
         graph.getRouteWindowMS(),
       );
       if (!model) {
@@ -238,6 +251,47 @@ async function start(): Promise<void> {
       if (emptyMessage.textContent !== message) emptyMessage.textContent = message;
     };
 
+    // Geography is optional decoration. It must never hold the traffic feed open
+    // while a download is failing. Coalesce updates and discard moved-node replies.
+    let pendingRegions = new Set(initial.nodes.map(node => node.id));
+    let resolvingRegions = false, regionRetryAt = 0, firstRegions = true;
+    stage.dataset.regionsState = pendingRegions.size ? 'loading' : 'ready';
+    const viewSignature = () => [stage.dataset.viewCenter, stage.dataset.viewScale, stage.dataset.viewYaw, stage.dataset.viewTilt].join('|');
+    const refreshRegions = async (retry = false): Promise<void> => {
+      if (disposed || resolvingRegions || !pendingRegions.size || (!retry && performance.now() < regionRetryAt)) return;
+      resolvingRegions = true;
+      const beforeView = viewSignature();
+      const button = required<HTMLButtonElement>('region-retry'); button.disabled = true;
+      const nodes = [...pendingRegions].map(id => graph.getNodes().get(id)).filter((node): node is NodeV2 => !!node);
+      pendingRegions.clear();
+      try {
+        const assignments = await regionResolver.resolve(nodes);
+        if (disposed) return;
+        for (const node of nodes) {
+          const current = graph.getNodes().get(node.id);
+          if (!current || current.lng !== node.lng || current.lat !== node.lat) assignments.delete(node.id);
+        }
+        graph.updateAreaAssignments(assignments);
+        if (firstRegions && viewSignature() === beforeView) {
+          if (selectedNodeID) graph.focusNode(selectedNodeID);
+          else graph.home(false);
+        }
+        stage.dataset.regionsState = 'ready'; regionRetryAt = 0;
+        updateSummary(); renderInspector();
+      } catch {
+        if (disposed) return;
+        stage.dataset.regionsState = 'unavailable';
+        for (const node of nodes) pendingRegions.add(node.id);
+        regionRetryAt = performance.now() + 30_000;
+      } finally {
+        firstRegions = false; resolvingRegions = false;
+        if (!disposed) {
+          button.disabled = false; syncRegions();
+          if (pendingRegions.size && performance.now() >= regionRetryAt) void refreshRegions();
+        }
+      }
+    };
+
     liveStore.subscribe((state, changes) => {
       graph.render(state, changes);
       if (changes?.reset || changes?.nodes?.length || changes?.routes?.length) refreshSearch();
@@ -258,7 +312,7 @@ async function start(): Promise<void> {
     focusControl.querySelector('select')!.addEventListener('change', event => {
       const select = event.target as HTMLSelectElement;
       const applied = graph.setFocus(select.value as 'all' | 'area' | 'component');
-      focusControl.querySelector('small')!.textContent = applied ? '' : 'Select a node first';
+      focusControl.querySelector('small')!.textContent = applied ? '' : selectedNodeID && select.value === 'area' ? 'Region labels are not available for this node' : 'Select a node first';
       if (!applied) select.value = stage.dataset.focusMode ?? 'all';
       syncRegions(); updateSummary();
     });
@@ -281,13 +335,10 @@ async function start(): Promise<void> {
         const previous = graph.getNodes().get(event.node.id);
         const moved = !previous || previous.lng !== event.node.lng || previous.lat !== event.node.lat;
         liveStore.upsertNode(event.node, event.seq);
-        if (moved) void regionResolver.resolve([event.node]).then(assignments => {
-          const current = graph.getNodes().get(event.node.id);
-          if (current && current.lng === event.node.lng && current.lat === event.node.lat) {
-            graph.updateAreaAssignments(assignments); updateSummary();
-            if (selectedNodeID === event.node.id) renderInspector();
-          }
-        }).catch(() => { /* Retain the last resolved grouping until recovery. */ });
+        if (moved) {
+          graph.updateAreaAssignments(new Map([[event.node.id, undefined]])); updateSummary();
+          pendingRegions.add(event.node.id); void refreshRegions();
+        }
       },
       onPacket(event, replayed) {
         const packet = liveStore.applyPacket(event);
@@ -304,8 +355,12 @@ async function start(): Promise<void> {
       },
       async recover() {
         const snapshot = await fetchState();
-        graph.setAreaAssignments(await regionResolver.resolve(snapshot.nodes));
+        if (disposed) return snapshot;
+        graph.setAreaAssignments(new Map());
         liveStore.replace(snapshot);
+        pendingRegions = new Set(snapshot.nodes.map(node => node.id));
+        stage.dataset.regionsState = pendingRegions.size ? 'loading' : 'ready';
+        syncRegions(); void refreshRegions(true);
         return snapshot;
       },
       onError(error) {
@@ -314,6 +369,8 @@ async function start(): Promise<void> {
     });
     feed = liveFeed;
     liveFeed.start();
+    required('region-retry').addEventListener('click', () => { void refreshRegions(true); });
+    void refreshRegions();
 
     routeWindow.addEventListener('change', () => {
       const window = routeWindow.value as NetgraphWindow;
@@ -389,27 +446,10 @@ async function start(): Promise<void> {
       graph.refreshRouteWindow();
       updateSummary();
       if (selectedNodeID || selectedRouteIDs.length) renderInspector();
+      void refreshRegions();
     }, 60_000);
-    window.addEventListener('pagehide', (event) => {
-      if (event.persisted) return;
-      if (minuteTimer !== undefined) window.clearInterval(minuteTimer);
-      if (trafficTimer !== undefined) window.clearTimeout(trafficTimer);
-      if (soundPulseTimer !== undefined) window.clearTimeout(soundPulseTimer);
-      liveFeed.stop();
-      liveStore.destroy();
-      routeSonifier.destroy();
-      graph.destroy();
-      regionResolver.destroy();
-      releaseScreenAwake();
-    });
   } catch (error) {
-    if (minuteTimer !== undefined) window.clearInterval(minuteTimer);
-    feed?.stop();
-    store?.destroy();
-    sonifier?.destroy();
-    renderer?.destroy();
-    areaResolver?.destroy();
-    releaseScreenAwake();
+    dispose();
     statusElement.dataset.state = 'offline';
     statusText.textContent = 'Unavailable';
     console.warn('Netgraph could not start:', error);

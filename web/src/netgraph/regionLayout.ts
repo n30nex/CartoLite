@@ -44,8 +44,8 @@ export function arrangeRegions(base: NetgraphLayout, preferences: RegionLayoutPr
     return { ...area, x, y };
   });
   const positions = new Map([...base.positions].map(([id, p]) => {
-    const shift = shifts.get(p.areaCode)!;
-    return [id, { ...p, x: p.x + shift.x, y: p.y + shift.y }];
+    const shift = shifts.get(p.areaCode);
+    return [id, shift ? { ...p, x: p.x + shift.x, y: p.y + shift.y } : p];
   }));
   return { ...base, positions, areas, bounds: layoutBounds(positions, areas) };
 }
