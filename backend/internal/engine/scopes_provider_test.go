@@ -166,3 +166,54 @@ func TestProviderHonorsLongRetryAfterWithoutDurationOverflow(t *testing.T) {
 		t.Fatal("provider's longer cooldown was shortened")
 	}
 }
+
+func TestProviderAuthorizationRecoveryRefetchesClearedReports(t *testing.T) {
+	e := newTestEngine(t)
+	now := time.Now().UnixMilli()
+	key := strings.Repeat("AC", 32)
+	e.upsertNode("YKF", key, "Fixture", "repeater", false, 43, -80, true, now)
+	e.initScopeProvider("synthetic-same-credential")
+	e.scopes.Observe(key, "*", now, true)
+	e.scopes.PutReport(scopes.Report{Key: key, Region: "YKF", Source: "mqtt-self", List: true, Entries: []scopes.Entry{{Name: "#native"}}}, now)
+	e.scopes.PutReport(scopes.Report{Key: key, Region: "YKF", Source: "meshmapper-reported", List: true, Entries: []scopes.Entry{{Name: "#cached"}}}, now)
+	p := e.scopeProvider
+	directory := providerSource{URL: providerDirectory, Kind: "directory", ETag: "directory-etag", Checked: now}
+	repeaters := providerSource{URL: "https://ykf.meshmapper.net/get_repeaters.php", Region: "YKF", Kind: "repeaters", ETag: "unchanged-body", Checked: now}
+	p.state.Sources = []providerSource{directory, repeaters}
+	p.apply(e, directory, providerResult{status: 403, failed: true}, now)
+	if len(e.scopes.Save().Reports) != 1 {
+		t.Fatal("authorization failure retained provider evidence")
+	}
+	if p.state.Sources[1].ETag != "" || p.state.Sources[1].Checked != 0 {
+		t.Fatal("cleared repeater evidence retained its validator")
+	}
+	p.client.Transport = scopeRoundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.Header.Get("If-None-Match") != "" {
+			return &http.Response{StatusCode: 304, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
+		}
+		body := fmt.Sprintf(`[{"hex_id":%q,"iata":"YKF","scopes":[{"scope":"ykf","reported_at":%d}],"default_scope":"*","default_scope_state":"named","default_scope_src":"advert","default_scope_at":%d}]`, key, now/1000, now/1000)
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
+	})
+	result := p.fetch(context.Background(), p.state.Sources[1])
+	p.apply(e, p.state.Sources[1], result, now)
+	if result.status != 200 || len(e.scopes.Save().Reports) != 3 || len(e.scopes.Save().Buckets) != 1 {
+		t.Fatal("same-key recovery failed to restore reports/defaults or changed native evidence")
+	}
+}
+
+func TestProviderDirectoryChangeInvalidatesSurvivingGroupExports(t *testing.T) {
+	e := newTestEngine(t)
+	now := time.Now().UnixMilli()
+	e.initScopeProvider("synthetic-group-key")
+	p := e.scopeProvider
+	directory := providerSource{URL: providerDirectory, Kind: "directory", Checked: now}
+	kept := providerSource{URL: "https://ykf.meshmapper.net/get_repeaters.php", Region: "YKF", Kind: "repeaters", ETag: "group-body", Checked: now}
+	removed := providerSource{URL: "https://ytz.meshmapper.net/get_repeaters.php", Region: "YTZ", Kind: "repeaters", ETag: "group-body", Checked: now}
+	p.state.Sources = []providerSource{directory, kept, removed}
+	p.apply(e, directory, providerResult{status: 200, sources: []providerSource{{URL: kept.URL, Region: kept.Region, Kind: kept.Kind}}}, now)
+	for _, source := range p.state.Sources {
+		if source.Kind == "repeaters" && (source.ETag != "" || source.Checked != 0) {
+			t.Fatal("directory shrink preserved a validator for cleared overlapping evidence")
+		}
+	}
+}

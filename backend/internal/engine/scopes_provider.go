@@ -261,6 +261,20 @@ func (p *scopeProvider) fetch(ctx context.Context, source providerSource) provid
 	return result
 }
 
+func (p *scopeProvider) clearEvidence(e *Engine, region string, now int64) {
+	e.scopes.ClearProvider(region, now)
+	for i := range p.state.Sources {
+		source := &p.state.Sources[i]
+		// Repeater exports may contain a whole group. Any cleared region can be
+		// present in several exports, so all repeater validators must be dropped.
+		// Otherwise304 could certify a cache whose report data no longer exists.
+		if region == "" || source.Region == region || source.Kind == "repeaters" {
+			source.ETag = ""
+			source.Checked = 0
+		}
+	}
+}
+
 func (p *scopeProvider) apply(e *Engine, task providerSource, result providerResult, now int64) {
 	index := -1
 	for i, s := range p.state.Sources {
@@ -274,9 +288,9 @@ func (p *scopeProvider) apply(e *Engine, task providerSource, result providerRes
 	}
 	if result.status == 401 || result.status == 403 {
 		if result.status == 401 || task.Kind == "directory" {
-			e.scopes.ClearProvider("", now)
+			p.clearEvidence(e, "", now)
 		} else {
-			e.scopes.ClearProvider(task.Region, now)
+			p.clearEvidence(e, task.Region, now)
 		}
 		p.state.Sources[index].ETag = ""
 		p.state.Next = max(p.state.Next, now+24*scopes.Hour)
@@ -308,14 +322,14 @@ func (p *scopeProvider) apply(e *Engine, task providerSource, result providerRes
 					}
 					delete(old, s.URL)
 				}
-				for _, s := range old {
-					if s.Kind != "directory" {
-						e.scopes.ClearProvider(s.Region, now)
-					}
-				}
 				next = append(next, p.state.Sources[index])
 				p.state.Sources = next
 				index = len(next) - 1
+				for _, removed := range old {
+					if removed.Kind != "directory" {
+						p.clearEvidence(e, removed.Region, now)
+					}
+				}
 				status = "ready"
 			}
 		case "scopes":
