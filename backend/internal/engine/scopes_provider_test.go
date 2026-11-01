@@ -153,3 +153,16 @@ func TestProviderConditionalRefreshKeepsNamesWithoutRefreshingReportAges(t *test
 		t.Fatal("cache validation and report age were conflated")
 	}
 }
+
+func TestProviderHonorsLongRetryAfterWithoutDurationOverflow(t *testing.T) {
+	e := newTestEngine(t)
+	e.initScopeProvider("synthetic-retry-key")
+	e.scopeProvider.client.Transport = scopeRoundTrip(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 503, Header: http.Header{"Retry-After": []string{"2678400"}}, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
+	})
+	before := time.Now().UnixMilli()
+	result := e.scopeProvider.fetch(context.Background(), providerSource{URL: providerDirectory, Kind: "directory"})
+	if result.retryAt < before+31*24*scopes.Hour {
+		t.Fatal("provider's longer cooldown was shortened")
+	}
+}

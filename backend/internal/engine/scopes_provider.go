@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -216,8 +217,12 @@ func (p *scopeProvider) fetch(ctx context.Context, source providerSource) provid
 	}
 	defer response.Body.Close()
 	result.status = response.StatusCode
-	if wait, err := strconv.ParseInt(response.Header.Get("Retry-After"), 10, 64); err == nil && wait > 0 && wait < 31*24*3600 {
-		result.retryAt = time.Now().Add(time.Duration(wait) * time.Second).UnixMilli()
+	if wait, err := strconv.ParseInt(response.Header.Get("Retry-After"), 10, 64); err == nil && wait > 0 {
+		now := time.Now().UnixMilli()
+		result.retryAt = math.MaxInt64
+		if wait <= (math.MaxInt64-now)/1000 {
+			result.retryAt = now + wait*1000
+		}
 	} else if at, err := http.ParseTime(response.Header.Get("Retry-After")); err == nil {
 		result.retryAt = at.UnixMilli()
 	}
