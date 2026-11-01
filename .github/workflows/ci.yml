@@ -155,9 +155,10 @@ jobs:
     needs: [backend, frontend]
     # Keep the browser dependency environment stable across hosted-runner rollouts.
     runs-on: ubuntu-24.04
-    # Full baseline took 49 minutes; the new visual suite adds about two.
-    # Added repeated Terminal startup checks; this is orchestration headroom only.
-    timeout-minutes: 60
+    # The expanded scope UI and 4k-node/7k-route journeys need orchestration
+    # headroom beyond the old 60m job. Every per-test/frame/work budget remains
+    # unchanged, and browsers still run one at a time for meaningful timings.
+    timeout-minutes: 75
     permissions:
       contents: read
       packages: write
