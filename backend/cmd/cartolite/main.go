@@ -57,7 +57,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	state, err := engine.New(engine.Options{Checkpoint: cfg.Checkpoint, QueueSize: cfg.QueueSize, Version: cfg.Version, GitSHA: cfg.GitSHA, Logger: log})
+	state, err := engine.New(engine.Options{Checkpoint: cfg.Checkpoint, QueueSize: cfg.QueueSize, Version: cfg.Version, GitSHA: cfg.GitSHA, Logger: log, MeshMapperKey: cfg.MeshMapperKey})
 	if err != nil {
 		return err
 	}

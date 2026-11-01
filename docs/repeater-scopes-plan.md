@@ -49,6 +49,13 @@ at least the existing 55-minute scope-source cooldown; keep a conservative local
 budget because the authorized credential is shared with another application.
 Current provider contract: https://wiki.meshmapper.net/api-keys/ .
 
+The implementation admits at most 96 provider reads per UTC day and one per
+minute, shared across its own sources. Directory/repeater refreshes wait 24h;
+scope catalogues wait 6h. Retry-After can extend these intervals. Only regions
+with MQTT repeater identities are fetched, and initial coverage fills gradually.
+Request admission is checkpointed before HTTP; decoding happens outside ingest.
+Report metadata has a separate 2 MiB budget and counts have 65,536 hourly cells.
+
 The existing MESHMAPPER_API_KEY is authorized for secure runtime-only transfer
 from the owning private store. Do not print, commit or expose it to browsers or
 images. Provider absence must not prevent startup; MQTT and cached evidence

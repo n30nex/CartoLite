@@ -17,6 +17,7 @@ type Config struct {
 	MQTTClientID  string
 	MQTTUsername  string
 	MQTTPassword  string
+	MeshMapperKey string
 	Regions       map[string]struct{}
 	QueueSize     int
 	Version       string
@@ -33,6 +34,7 @@ func Load(version, gitSHA string) (Config, error) {
 		MQTTClientID:  strings.TrimSpace(os.Getenv("MQTT_CLIENT_ID")),
 		MQTTUsername:  strings.TrimSpace(os.Getenv("MQTT_USERNAME")),
 		MQTTPassword:  strings.TrimSpace(os.Getenv("MQTT_PASSWORD")),
+		MeshMapperKey: strings.TrimSpace(os.Getenv("MESHMAPPER_API_KEY")),
 		QueueSize:     envInt("MQTT_INGEST_QUEUE_SIZE", 4096),
 		Version:       cleanBuildValue(version, "dev"),
 		GitSHA:        cleanBuildValue(gitSHA, "unknown"),

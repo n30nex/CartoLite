@@ -127,8 +127,8 @@ export function mountScopeControls(view: LiveMap): void {
   render(); void refresh();
 }
 
-export function scopeInspector(doc: Document, node: NodeScopes | undefined, snapshot: ScopeSnapshot | undefined, settings: ScopeSettings): HTMLElement {
-  const root=element(doc,'details'); root.className='scope-inspector'; root.open=true;
+export function scopeInspector(doc: Document, node: NodeScopes | undefined, snapshot: ScopeSnapshot | undefined, settings: ScopeSettings): HTMLDetailsElement {
+  const root=element(doc,'details'); root.className='scope-inspector';
   root.append(element(doc,'summary',`Repeater scopes · ${settings.hours}h`));
   const index=scopeWindowIndex(settings.hours);
   const total=node?.scopes.reduce((sum,e)=>sum+e.repeats[index]!,0) ?? 0;
@@ -151,7 +151,7 @@ export function scopeInspector(doc: Document, node: NodeScopes | undefined, snap
   for (const report of node?.reports ?? []) {
     const row=element(doc,'div'); row.className='scope-evidence-row'; row.append(element(doc,'strong',`${sourceNames[report.source]} · ${age(report.at)}`));
     if (report.list) row.append(element(doc,'span',report.entries.length ? report.entries.map(e=>`${scopeLabel(e.name)} (${age(e.at)})`).join(', ') : 'Explicitly reported empty list.'));
-    if (report.defaultState) row.append(element(doc,'span',`Default: ${report.defaultState==='named' ? scopeLabel(report.default!) : report.defaultState==='none' ? 'none' : 'name unresolved'}.`));
+    if (report.defaultState) row.append(element(doc,'span',`Default${report.defaultSource ? ` from ${report.defaultSource}` : ''}: ${report.defaultState==='named' ? scopeLabel(report.default!) : report.defaultState==='none' ? 'none' : 'name unresolved'}.`));
     list.append(row);
   }
   if (!node?.reports.length) list.append(element(doc,'small','No explicit scope configuration report available.'));

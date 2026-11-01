@@ -46,11 +46,12 @@ var sensitiveLabelPatterns = []*regexp.Regexp{
 }
 
 type Options struct {
-	Checkpoint string
-	QueueSize  int
-	Version    string
-	GitSHA     string
-	Logger     *slog.Logger
+	Checkpoint    string
+	QueueSize     int
+	Version       string
+	GitSHA        string
+	Logger        *slog.Logger
+	MeshMapperKey string
 }
 
 type Engine struct {
@@ -71,6 +72,8 @@ type Engine struct {
 	snapshot             atomic.Value
 	scopeSnapshot        atomic.Value
 	scopes               *scopes.Store
+	scopeCommands        chan scopeCommand
+	scopeProvider        *scopeProvider
 	processed            atomic.Int64
 	snapshotBytes        atomic.Int64
 	publicNodes          atomic.Int64
@@ -115,19 +118,20 @@ func New(options Options) (*Engine, error) {
 		return nil, fmt.Errorf("generate boot id: %w", err)
 	}
 	e := &Engine{
-		checkpoint: options.Checkpoint,
-		version:    options.Version,
-		gitSHA:     options.GitSHA,
-		bootID:     bootID,
-		log:        options.Logger,
-		input:      make(chan mqtt.Message, options.QueueSize),
-		feedWake:   make(chan struct{}, 1),
-		done:       make(chan struct{}),
-		nodes:      nodes,
-		nodeIDs:    make(map[string]*privateNode),
-		prefixes:   make(map[string]map[string]struct{}),
-		routes:     routes,
-		scopes:     scopes.New(savedScopes, scopePolicy, time.Now().UnixMilli()),
+		checkpoint:    options.Checkpoint,
+		version:       options.Version,
+		gitSHA:        options.GitSHA,
+		bootID:        bootID,
+		log:           options.Logger,
+		input:         make(chan mqtt.Message, options.QueueSize),
+		feedWake:      make(chan struct{}, 1),
+		done:          make(chan struct{}),
+		nodes:         nodes,
+		nodeIDs:       make(map[string]*privateNode),
+		prefixes:      make(map[string]map[string]struct{}),
+		routes:        routes,
+		scopes:        scopes.New(savedScopes, scopePolicy, time.Now().UnixMilli()),
+		scopeCommands: make(chan scopeCommand),
 	}
 	e.checkpointOK.Store(true)
 	e.lastCheckpointNodes.Store(int64(len(e.nodes)))
@@ -141,7 +145,8 @@ func New(options Options) (*Engine, error) {
 		e.indexNode(key, node)
 	}
 	prunedRoutes, prunedNodes := e.pruneDurableState(time.Now().UnixMilli())
-	e.checkpointDirty = prunedRoutes > 0 || prunedNodes > 0
+	e.checkpointDirty = prunedRoutes > 0 || prunedNodes > 0 || savedScopes != nil
+	e.initScopeProvider(options.MeshMapperKey)
 	e.prunedRoutes.Add(int64(prunedRoutes))
 	e.prunedNodes.Add(int64(prunedNodes))
 	e.updateSnapshot(time.Now())
@@ -183,6 +188,9 @@ func (e *Engine) SetFeed(connected bool) {
 
 func (e *Engine) Run(ctx context.Context) {
 	defer close(e.done)
+	if e.scopeProvider != nil {
+		go e.scopeProvider.run(ctx, e)
+	}
 	snapshotTick := time.NewTicker(snapshotInterval)
 	checkpointTick := time.NewTicker(checkpointInterval)
 	scopeTick := time.NewTicker(30 * time.Second)
@@ -221,6 +229,7 @@ func (e *Engine) Run(ctx context.Context) {
 			if desired := e.desiredFeed.Load(); e.feed != desired {
 				e.feed = desired
 				e.scopes.LastGap = time.Now().UnixMilli()
+				dirtyCheckpoint = true
 				dirtySnapshot = true
 			}
 		case now := <-snapshotTick.C:
@@ -235,6 +244,20 @@ func (e *Engine) Run(ctx context.Context) {
 				e.updateSnapshot(now)
 				dirtySnapshot = false
 			}
+		case command := <-e.scopeCommands:
+			changed, err := command.apply(e)
+			dirtyCheckpoint = changed || dirtyCheckpoint
+			if err == nil && changed && command.durable {
+				reset, saved := e.flushCheckpointAndReset(time.Now(), dirtyCheckpoint)
+				if reset {
+					dirtySnapshot = false
+				}
+				dirtyCheckpoint = !saved
+				if !saved {
+					err = fmt.Errorf("scope checkpoint unavailable")
+				}
+			}
+			command.done <- err
 		case now := <-scopeTick.C:
 			e.updateScopeSnapshot(now)
 		case now := <-checkpointTick.C:
