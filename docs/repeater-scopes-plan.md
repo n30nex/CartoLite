@@ -1,5 +1,11 @@
 # Repeater scopes implementation plan
 
+Implementation is complete in [PR 124](https://github.com/n30nex/CartoLite/pull/124),
+with legend placement and explanatory-text contrast corrected in
+[PR 125](https://github.com/n30nex/CartoLite/pull/125). The release process below
+remains mandatory; final Actions, image and live acceptance evidence belongs to
+the tagged 0.22.0 release.
+
 ## Evidence contract
 
 Count accepted live MQTT FLOOD and TRANSPORT_FLOOD hearing reports only. Exclude
