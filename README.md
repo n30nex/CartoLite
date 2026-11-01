@@ -48,6 +48,24 @@ This repository powers the Canadian instance. Its published image is `ghcr.io/n3
 
 CartoLite is an **MQTT client, not a broker**. A reachable MeshCore broker and its subscription details are required; installing CartoLite does not open an MQTT listener on port 1883. Operator logs are available with `docker compose logs --tail=100 cartolite` from the installation directory.
 
+## Repeater scopes
+
+Map → Layers → Map details → **Repeater scopes** shows native repeat reports in
+1h, 6h or 24h windows. Select a visible-area legend row to highlight or isolate
+members, and inspect a node for proportions, timestamps and separately labelled
+reported configuration. Settings stay on this device; **Copy scope link** shares
+exact, case-sensitive focus and window settings.
+
+Color requires one largest observed repeat count. Ties, missing evidence,
+unresolved scoped traffic and palette overflow stay neutral. Reports can include
+several observers of one transmission; they are not RF airtime or unique packet
+counts. Windows include the current partial UTC hour, with coverage gaps stated.
+Filtering markers does not claim that a connection carried a particular scope.
+
+Canada optionally uses a cached backend MeshMapper catalogue for names and
+reported/default metadata. Its key stays on the server, and provider totals
+never become native repeat counts.
+
 ## Privacy and scope
 
 Public data contains sanitized node labels, locations and confirmed topology. It does **not** expose keys, observer identities, raw paths, packet hashes, payloads, message text, credentials or resolver details. Route interpretation stays fail-closed; terrain and diagram heights are visual context, not radio coverage or antenna measurements. See [privacy](docs/privacy.md), [public API v2](docs/public-api.md) and [security reporting](SECURITY.md).

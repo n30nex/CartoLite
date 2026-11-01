@@ -100,7 +100,7 @@ export const ROUTE_FILTER_LAYER_IDS = [ROUTE_HIT_LAYER_ID] as const;
 export const SELECTED_NODE_LAYER_ID = 'selected-node';
 export const SELECTED_NODE_OUTER_LAYER_ID = 'selected-node-outer';
 export const NEIGHBOR_NODE_LAYER_ID = 'neighbor-nodes';
-export const MESHCORE_REGION_ATTRIBUTION = 'Regions &copy; <a href="https://meshcore.ca/config/map/">MeshCore Canada</a> Â· Contains information licensed under the <a href="https://www.statcan.gc.ca/en/reference/licence">Statistics Canada Open Licence</a>';
+export const MESHCORE_REGION_ATTRIBUTION = 'Regions &copy; <a href="https://meshcore.ca/config/map/">MeshCore Canada</a> · Contains information licensed under the <a href="https://www.statcan.gc.ca/en/reference/licence">Statistics Canada Open Licence</a>';
 export const ROUTE_HOVER_LAYER_IDS = ['route-hover-glow', 'route-hover-core'] as const;
 const ROUTE_NATIONAL_LAYER_IDS = ['route-national-glow', 'route-national-core'] as const;
 const ROUTE_REGIONAL_LAYER_IDS = ['route-regional-glow', 'route-regional-core'] as const;
@@ -1054,10 +1054,10 @@ export class LiveMap {
       const swatch = document.createElement('i');
       swatch.style.backgroundColor = regionTint(tag);
       swatch.setAttribute('aria-hidden', 'true');
-      row.append(swatch, document.createTextNode(`${tag} Â· ${name}`));
+      row.append(swatch, document.createTextNode(`${tag} · ${name}`));
       list.append(row);
     }
-    if (!regions.length) list.textContent = this.#regionsLoaded ? 'No regions in view' : 'Loading region boundariesâ€¦';
+    if (!regions.length) list.textContent = this.#regionsLoaded ? 'No regions in view' : 'Loading region boundaries…';
   };
 
   #hillshadeStrength(): ExpressionSpecification {
@@ -1331,7 +1331,7 @@ export class LiveMap {
         'text-field': [
           'step', ['zoom'],
           ['upcase', ['get', 'tag']],
-          7, ['concat', ['upcase', ['get', 'tag']], ' Â· ', ['get', 'label']]
+          7, ['concat', ['upcase', ['get', 'tag']], ' · ', ['get', 'label']]
         ],
         'text-font': LOCAL_FONTS,
         'text-size': ['interpolate', ['linear'], ['zoom'], 5, 10, 9, 11, 13, 12],
@@ -1899,7 +1899,7 @@ export class LiveMap {
     this.#presentTooltip(
       event,
       String(properties.label ?? 'MeshCore node'),
-      `${role}${properties.observer ? ' Â· observer' : ''}${Number.isFinite(seen) ? ` Â· ${relativeTime(seen)}` : ''}`,
+      `${role}${properties.observer ? ' · observer' : ''}${Number.isFinite(seen) ? ` · ${relativeTime(seen)}` : ''}`,
       'node'
     );
   }
@@ -1921,8 +1921,8 @@ export class LiveMap {
     this.#setHoveredRoute(route.id);
     this.#presentTooltip(
       event,
-      `${from.label} â†” ${to.label}`,
-      `${route.lastKind} Â· ${observationTotal(route.packetCount)} Â· heard ${relativeTime(route.lastHeard)}`,
+      `${from.label} ↔ ${to.label}`,
+      `${route.lastKind} · ${observationTotal(route.packetCount)} · heard ${relativeTime(route.lastHeard)}`,
       'route'
     );
     return true;
@@ -3109,7 +3109,7 @@ export function routeRepresentationForZoom(_zoom: number): RouteRepresentation {
 export function routeWindowLabel(window: RouteWindow, zoom: number): string {
   const age = effectiveRouteWindowMS(window, zoom);
   const label = age === 15 * 60_000 ? '15m' : age === 60 * 60_000 ? '1h' : age === 6 * 60 * 60_000 ? '6h' : '24h';
-  return window === 'auto' ? `Auto Â· ${label}` : label;
+  return window === 'auto' ? `Auto · ${label}` : label;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

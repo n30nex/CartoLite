@@ -41,7 +41,7 @@ export function scopeColor(name: string, light = false): string {
   return `hsl(${(hash >>> 0) % 360}, ${light ? 74 : 83}%, ${light ? 31 : 70}%)`;
 }
 export const scopeNeutral = (light: boolean): string => light ? '#576775' : '#b0bdc9';
-export const scopeLabel = (name: string): string => name === '*' ? '* Â· Unscoped flood' : name === '?' ? '? Â· Unresolved scope' : name;
+export const scopeLabel = (name: string): string => name === '*' ? '* · Unscoped flood' : name === '?' ? '? · Unresolved scope' : name;
 
 export function scopeMembership(node: NodeScopes | undefined, hours: ScopeSettings['hours']): Map<string, number> {
   const names = new Map<string, number>();

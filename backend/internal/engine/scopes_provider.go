@@ -320,7 +320,8 @@ func (p *scopeProvider) apply(e *Engine, task providerSource, result providerRes
 				}
 				accepted := reports[:0]
 				for _, r := range reports {
-					if allowed[r.Region] && e.nodes[nodeMapKey(r.Region, r.Key)] != nil {
+					node := e.nodeIDs[opaqueID("n", r.Key)]
+					if allowed[r.Region] && node != nil && node.Key == r.Key {
 						accepted = append(accepted, r)
 					}
 				}
