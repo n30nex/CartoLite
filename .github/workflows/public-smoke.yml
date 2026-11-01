@@ -32,7 +32,7 @@ jobs:
           - suite: network
             specs: netgraph-3d.spec.ts netgraph-regions.spec.ts audio-voices.spec.ts android-motion.spec.ts recovery.spec.ts cinematic.spec.ts display-upgrade.spec.ts navigation.spec.ts
           - suite: map
-            specs: dock-terrain.spec.ts terrain.spec.ts mobile-ux.spec.ts terminal.spec.ts ui-audit.spec.ts
+            specs: dock-terrain.spec.ts terrain.spec.ts mobile-ux.spec.ts terminal.spec.ts ui-audit.spec.ts scopes.spec.ts
           - suite: labs
             specs: labs.spec.ts labs-mobile-ux.spec.ts labs-ui-audit.spec.ts
     steps:

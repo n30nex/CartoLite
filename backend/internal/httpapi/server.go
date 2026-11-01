@@ -48,6 +48,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /api/state", s.state)
+	mux.HandleFunc("GET /api/scopes", s.scopes)
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("/", s.frontend)
 	return securityHeaders(mux)
@@ -81,6 +82,15 @@ func (s *Server) state(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(s.engine.StateJSON())
+}
+
+func (s *Server) scopes(w http.ResponseWriter, _ *http.Request) {
+	controller := http.NewResponseController(w)
+	_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	defer controller.SetWriteDeadline(time.Time{})
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = w.Write(s.engine.ScopesJSON())
 }
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {

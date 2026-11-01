@@ -22,6 +22,7 @@ import (
 	"github.com/n30nex/cartolite/backend/internal/config"
 	"github.com/n30nex/cartolite/backend/internal/meshcore"
 	"github.com/n30nex/cartolite/backend/internal/mqtt"
+	"github.com/n30nex/cartolite/backend/internal/scopes"
 )
 
 const (
@@ -45,11 +46,12 @@ var sensitiveLabelPatterns = []*regexp.Regexp{
 }
 
 type Options struct {
-	Checkpoint string
-	QueueSize  int
-	Version    string
-	GitSHA     string
-	Logger     *slog.Logger
+	Checkpoint    string
+	QueueSize     int
+	Version       string
+	GitSHA        string
+	Logger        *slog.Logger
+	MeshMapperKey string
 }
 
 type Engine struct {
@@ -68,6 +70,10 @@ type Engine struct {
 	seq                  atomic.Uint64
 	checkpointOK         atomic.Bool
 	snapshot             atomic.Value
+	scopeSnapshot        atomic.Value
+	scopes               *scopes.Store
+	scopeCommands        chan scopeCommand
+	scopeProvider        *scopeProvider
 	processed            atomic.Int64
 	snapshotBytes        atomic.Int64
 	publicNodes          atomic.Int64
@@ -99,7 +105,8 @@ func New(options Options) (*Engine, error) {
 	if options.Logger == nil {
 		options.Logger = slog.Default()
 	}
-	nodes, routes, err := loadCheckpoint(options.Checkpoint)
+	var savedScopes *scopes.Saved
+	nodes, routes, err := loadCheckpoint(options.Checkpoint, &savedScopes)
 	if err != nil {
 		return nil, err
 	}
@@ -111,18 +118,20 @@ func New(options Options) (*Engine, error) {
 		return nil, fmt.Errorf("generate boot id: %w", err)
 	}
 	e := &Engine{
-		checkpoint: options.Checkpoint,
-		version:    options.Version,
-		gitSHA:     options.GitSHA,
-		bootID:     bootID,
-		log:        options.Logger,
-		input:      make(chan mqtt.Message, options.QueueSize),
-		feedWake:   make(chan struct{}, 1),
-		done:       make(chan struct{}),
-		nodes:      nodes,
-		nodeIDs:    make(map[string]*privateNode),
-		prefixes:   make(map[string]map[string]struct{}),
-		routes:     routes,
+		checkpoint:    options.Checkpoint,
+		version:       options.Version,
+		gitSHA:        options.GitSHA,
+		bootID:        bootID,
+		log:           options.Logger,
+		input:         make(chan mqtt.Message, options.QueueSize),
+		feedWake:      make(chan struct{}, 1),
+		done:          make(chan struct{}),
+		nodes:         nodes,
+		nodeIDs:       make(map[string]*privateNode),
+		prefixes:      make(map[string]map[string]struct{}),
+		routes:        routes,
+		scopes:        scopes.New(savedScopes, scopePolicy, time.Now().UnixMilli()),
+		scopeCommands: make(chan scopeCommand),
 	}
 	e.checkpointOK.Store(true)
 	e.lastCheckpointNodes.Store(int64(len(e.nodes)))
@@ -136,10 +145,13 @@ func New(options Options) (*Engine, error) {
 		e.indexNode(key, node)
 	}
 	prunedRoutes, prunedNodes := e.pruneDurableState(time.Now().UnixMilli())
-	e.checkpointDirty = prunedRoutes > 0 || prunedNodes > 0
+	scopePruned := e.scopes.Prune(time.Now().UnixMilli(), e.scopeNodeIDs(false))
+	e.checkpointDirty = prunedRoutes > 0 || prunedNodes > 0 || scopePruned || savedScopes != nil
+	e.initScopeProvider(options.MeshMapperKey)
 	e.prunedRoutes.Add(int64(prunedRoutes))
 	e.prunedNodes.Add(int64(prunedNodes))
 	e.updateSnapshot(time.Now())
+	e.updateScopeSnapshot(time.Now())
 	return e, nil
 }
 
@@ -177,10 +189,15 @@ func (e *Engine) SetFeed(connected bool) {
 
 func (e *Engine) Run(ctx context.Context) {
 	defer close(e.done)
+	if e.scopeProvider != nil {
+		go e.scopeProvider.run(ctx, e)
+	}
 	snapshotTick := time.NewTicker(snapshotInterval)
 	checkpointTick := time.NewTicker(checkpointInterval)
+	scopeTick := time.NewTicker(30 * time.Second)
 	defer snapshotTick.Stop()
 	defer checkpointTick.Stop()
+	defer scopeTick.Stop()
 	dirtySnapshot := true
 	dirtyCheckpoint := e.checkpointDirty
 	lastStatus := PublicStatus{}
@@ -212,6 +229,9 @@ func (e *Engine) Run(ctx context.Context) {
 		case <-e.feedWake:
 			if desired := e.desiredFeed.Load(); e.feed != desired {
 				e.feed = desired
+				e.scopes.LastGap = time.Now().UnixMilli()
+				e.updateScopeSnapshot(time.Now())
+				dirtyCheckpoint = true
 				dirtySnapshot = true
 			}
 		case now := <-snapshotTick.C:
@@ -226,6 +246,22 @@ func (e *Engine) Run(ctx context.Context) {
 				e.updateSnapshot(now)
 				dirtySnapshot = false
 			}
+		case command := <-e.scopeCommands:
+			changed, err := command.apply(e)
+			dirtyCheckpoint = changed || dirtyCheckpoint
+			if err == nil && changed && command.durable {
+				reset, saved := e.flushCheckpointAndReset(time.Now(), dirtyCheckpoint)
+				if reset {
+					dirtySnapshot = false
+				}
+				dirtyCheckpoint = !saved
+				if !saved {
+					err = fmt.Errorf("scope checkpoint unavailable")
+				}
+			}
+			command.done <- err
+		case now := <-scopeTick.C:
+			e.updateScopeSnapshot(now)
 		case now := <-checkpointTick.C:
 			// Expiry is clock-driven even when no new MQTT state needs saving.
 			reset, saved := e.flushCheckpointAndReset(now, dirtyCheckpoint)
@@ -268,6 +304,10 @@ func (e *Engine) OperationalStats() OperationalStats {
 }
 
 func (e *Engine) process(message mqtt.Message) bool {
+	scopeChanged := e.processScopeReports(message)
+	if message.Topic.Kind == "neighbors" {
+		return scopeChanged
+	}
 	metadataOnly := message.Retained || (message.ReceivedAt > 0 && message.ReportedAt > 0 &&
 		message.ReceivedAt-message.ReportedAt > mqtt.MaxLiveDelay.Milliseconds())
 	if metadataOnly {
@@ -275,22 +315,22 @@ func (e *Engine) process(message mqtt.Message) bool {
 		// use a reported time within retention; an unknown age stays unknown.
 		if message.ReceivedAt <= 0 || message.ReportedAt <= 0 || message.ReportedAt > message.ReceivedAt ||
 			message.ReceivedAt-message.ReportedAt > nodeRetentionWindow.Milliseconds() {
-			return false
+			return scopeChanged
 		}
 		message.HeardAt = message.ReportedAt
 	}
 	if message.Topic.Kind == "status" {
 		lat, lng, ok := mqtt.Coordinates(message.Payload)
 		if !ok {
-			return false
+			return scopeChanged
 		}
 		_, changed := e.upsertNode(message.Topic.Region, message.Topic.PublisherKey, mqtt.Name(message.Payload), mqtt.Role(message.Payload), true, lat, lng, true, message.HeardAt)
-		return changed
+		return e.processScopeReports(message) || scopeChanged || changed
 	}
 	observer, observerChanged := e.observePublisher(message)
 	packet, err := meshcore.ParseHex(message.RawHex)
 	if err != nil {
-		return observerChanged
+		return scopeChanged || observerChanged
 	}
 	if !metadataOnly && message.HeardAt > e.lastPacket {
 		e.lastPacket = message.HeardAt
@@ -307,8 +347,9 @@ func (e *Engine) process(message mqtt.Message) bool {
 		}
 	}
 	if metadataOnly {
-		return changed || observerChanged
+		return scopeChanged || changed || observerChanged
 	}
+	scopeChanged = e.recordScopeRepeats(message, packet, observer) || scopeChanged
 	if source == nil {
 		source = e.sourceNode(message.Topic.Region, packet)
 	}
@@ -320,7 +361,7 @@ func (e *Engine) process(message mqtt.Message) bool {
 		endpoint := endpointFor(observer)
 		e.emitPacket(message.HeardAt, payloadKind, nil, &endpoint)
 	}
-	return changed || observerChanged || routed
+	return scopeChanged || changed || observerChanged || routed
 }
 
 func (e *Engine) observePublisher(message mqtt.Message) (*privateNode, bool) {
@@ -588,6 +629,7 @@ func (e *Engine) publicStatus(now time.Time) PublicStatus {
 
 func (e *Engine) flushCheckpoint(now time.Time, dirty bool) (bool, bool) {
 	prunedRoutes, prunedNodes := e.pruneDurableState(now.UnixMilli())
+	dirty = e.scopes.Prune(now.UnixMilli(), e.scopeNodeIDs(false)) || dirty
 	pruned := prunedRoutes > 0 || prunedNodes > 0
 	if !dirty && !pruned {
 		return false, true
@@ -595,7 +637,7 @@ func (e *Engine) flushCheckpoint(now time.Time, dirty bool) (bool, bool) {
 	e.prunedNodes.Add(int64(prunedNodes))
 	e.prunedRoutes.Add(int64(prunedRoutes))
 	started := time.Now()
-	if err := writeCheckpoint(e.checkpoint, e.nodes, e.routes); err != nil {
+	if err := writeCheckpoint(e.checkpoint, e.nodes, e.routes, e.scopes.Save()); err != nil {
 		e.checkpointOK.Store(false)
 		e.log.Error("checkpoint write failed", "error", err)
 		return pruned, false

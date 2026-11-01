@@ -87,3 +87,9 @@ export type HelloV2 = { seq: number; bootId: string };
 export type NodeEventV2 = { seq: number; node: NodeV2 };
 export type StatusEventV2 = { seq: number; status: StatusV2 };
 export type ResetV2 = { seq: number; bootId: string };
+// Optional scope evidence has its own additive contract; traffic API v2 is unchanged.
+export interface ScopeEntry { name: string; at?: number }
+export interface ScopeEvidence { name: string; repeats: [number, number, number]; heard: [number, number, number]; first?: number; last?: number }
+export interface ScopeReport { source: 'mqtt-self' | 'mqtt-neighbor' | 'mqtt-status' | 'meshmapper-reported' | 'meshmapper-uploaded' | 'meshmapper-default'; at?: number; list: boolean; entries: ScopeEntry[]; default?: string; defaultState?: 'named' | 'unknown' | 'none'; defaultSource?: 'advert' | 'reported' }
+export interface NodeScopes { id: string; scopes: ScopeEvidence[]; reports: ScopeReport[] }
+export interface ScopeSnapshot { schemaVersion: 1; serverTime: number; since: number; sessionStart: number; lastGap: number; limitedAt?: number; connected: boolean; nodes: NodeScopes[] }
