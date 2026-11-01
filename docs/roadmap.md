@@ -1,8 +1,8 @@
 # CartoLite delivery roadmap
 
-## Repeater scopes (in progress)
+## Repeater scopes (0.22.0)
 
-[Implementation plan](repeater-scopes-plan.md): observed repeat reports, explicit source provenance, persisted scope controls and bounded map rendering. Qualification and deployment remain pending.
+[Implemented scope layer](repeater-scopes-plan.md): observed repeat reports, explicit source provenance, persisted scope controls and bounded map rendering. The final visual review also corrected desktop legend/dock overlap and theme-transition contrast. Exact-image qualification and live deployment evidence accompany the tagged release; implementation alone does not establish deployment.
 
 ## Browser reliability (0.21.6)
 
