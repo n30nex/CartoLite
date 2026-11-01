@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -161,6 +162,9 @@ func (p *scopeProvider) run(ctx context.Context, e *Engine) {
 				return false, nil
 			}
 			source := &p.state.Sources[index]
+			if source.Kind == "scopes" && !e.scopes.HasCatalogue(source.Region) {
+				source.ETag = ""
+			}
 			copy := *source
 			task = &copy
 			source.Next = now + 6*scopes.Hour
@@ -281,6 +285,9 @@ func (p *scopeProvider) apply(e *Engine, task providerSource, result providerRes
 	status := "unavailable"
 	if !result.failed && result.status == http.StatusNotModified && task.Checked > 0 {
 		status = "ready"
+		if task.Kind == "scopes" {
+			e.scopes.ConfirmCatalogue(task.Region, now)
+		}
 	}
 	if !result.failed && result.status == http.StatusOK {
 		switch task.Kind {
@@ -392,7 +399,9 @@ func decodeProviderCatalogue(region string, body []byte, now int64) (scopes.Cata
 	if err != nil || at.UnixMilli() > now || at.UnixMilli() < now-30*24*scopes.Hour {
 		return scopes.Catalogue{}, false
 	}
-	out := scopes.Catalogue{Region: region, At: at.UnixMilli(), Names: []string{}}
+	// This is catalogue validation time, not a report/observation timestamp.
+	// Native and provider evidence dates retain their original, separate clocks.
+	out := scopes.Catalogue{Region: region, At: now, Names: []string{}}
 	for _, s := range data.Scopes {
 		name, ok := scopes.Name(s.Name)
 		if !ok {
@@ -403,24 +412,66 @@ func decodeProviderCatalogue(region string, body []byte, now int64) (scopes.Cata
 	return out, true
 }
 
-func decodeProviderReports(body []byte, now int64) ([]scopes.Report, bool) {
-	var rows []struct {
-		Key    string `json:"hex_id"`
-		Region string `json:"iata"`
-		Scopes []struct {
-			Name     string `json:"scope"`
-			Reported *int64 `json:"reported_at"`
-			Uploaded *int64 `json:"uploaded_at"`
-		} `json:"scopes"`
-		Checked       *int64  `json:"scopes_checked_at"`
-		Default       *string `json:"default_scope"`
-		DefaultState  string  `json:"default_scope_state"`
-		DefaultAt     *int64  `json:"default_scope_at"`
-		DefaultSource string  `json:"default_scope_src"`
+type providerRepeater struct {
+	Key           string          `json:"hex_id"`
+	Region        string          `json:"iata"`
+	Scopes        json.RawMessage `json:"scopes"`
+	Checked       *int64          `json:"scopes_checked_at"`
+	Default       *string         `json:"default_scope"`
+	DefaultState  string          `json:"default_scope_state"`
+	DefaultAt     *int64          `json:"default_scope_at"`
+	DefaultSource string          `json:"default_scope_src"`
+}
+
+type providerScopeEntry struct {
+	Name     string `json:"scope"`
+	Reported *int64 `json:"reported_at"`
+	Uploaded *int64 `json:"uploaded_at"`
+}
+
+func decodeProviderEntries(raw json.RawMessage) ([]providerScopeEntry, bool) {
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, true
 	}
-	if json.Unmarshal(body, &rows) != nil || len(rows) > 10000 {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('[') {
 		return nil, false
 	}
+	entries := make([]providerScopeEntry, 0)
+	for decoder.More() {
+		if len(entries) >= scopes.MaxNames {
+			return nil, false
+		}
+		var entry providerScopeEntry
+		if decoder.Decode(&entry) != nil {
+			return nil, false
+		}
+		name, ok := scopes.Name(entry.Name)
+		if !ok {
+			return nil, false
+		}
+		entry.Name = name
+		entries = append(entries, entry)
+	}
+	if token, err = decoder.Token(); err != nil || token != json.Delim(']') {
+		return nil, false
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return nil, false
+	}
+	return entries, true
+}
+
+func decodeProviderReports(body []byte, now int64) ([]scopes.Report, bool) {
+	// Stream bounded rows before allocating their slices. A short JSON array of
+	// millions of empty objects must not expand past the container's RAM limit.
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('[') {
+		return nil, false
+	}
+	rows := 0
 	at := func(value *int64) int64 {
 		if value == nil || *value <= 0 || *value > now/1000 {
 			return 0
@@ -428,14 +479,26 @@ func decodeProviderReports(body []byte, now int64) ([]scopes.Report, bool) {
 		return *value * 1000
 	}
 	out := make([]scopes.Report, 0)
-	for _, row := range rows {
+	for decoder.More() {
+		if rows >= 10000 {
+			return nil, false
+		}
+		rows++
+		var row providerRepeater
+		if decoder.Decode(&row) != nil {
+			return nil, false
+		}
+		entries, valid := decodeProviderEntries(row.Scopes)
+		if !valid {
+			continue
+		}
 		key := strings.ToUpper(row.Key)
-		if !scopes.FullKey(key) || !validCheckpointRegion(row.Region) || len(row.Scopes) > scopes.MaxNames {
+		if !scopes.FullKey(key) || !validCheckpointRegion(row.Region) {
 			continue
 		}
 		for _, source := range []string{"meshmapper-reported", "meshmapper-uploaded"} {
 			r := scopes.Report{Key: key, Region: row.Region, Source: source, List: true, Entries: []scopes.Entry{}}
-			for _, entry := range row.Scopes {
+			for _, entry := range entries {
 				stamp := at(entry.Reported)
 				if source == "meshmapper-uploaded" {
 					stamp = at(entry.Uploaded)
@@ -446,7 +509,7 @@ func decodeProviderReports(body []byte, now int64) ([]scopes.Report, bool) {
 					r.At = max(r.At, stamp)
 				}
 			}
-			if source == "meshmapper-reported" && row.Scopes != nil && len(row.Scopes) == 0 {
+			if source == "meshmapper-reported" && entries != nil && len(entries) == 0 {
 				r.At = at(row.Checked)
 			}
 			if r.At > 0 {
@@ -460,6 +523,12 @@ func decodeProviderReports(body []byte, now int64) ([]scopes.Report, bool) {
 			}
 			out = append(out, r)
 		}
+	}
+	if token, err = decoder.Token(); err != nil || token != json.Delim(']') {
+		return nil, false
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return nil, false
 	}
 	return out, true
 }

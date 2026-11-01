@@ -69,6 +69,19 @@ func TestProviderDoesNotFollowRedirectOrLeakCredentials(t *testing.T) {
 	}
 }
 
+func TestProviderRejectsExpansionBeyondRowAndEntryBounds(t *testing.T) {
+	now := time.Now().UnixMilli()
+	if _, ok := decodeProviderReports([]byte("["+strings.Repeat("{},", 10000)+"{}]"), now); ok {
+		t.Fatal("unbounded row array accepted")
+	}
+	if _, ok := decodeProviderEntries([]byte("[" + strings.Repeat(`{"scope":"ykf"},`, 64) + `{"scope":"ykf"}]`)); ok {
+		t.Fatal("unbounded scope list accepted")
+	}
+	if _, ok := decodeProviderReports([]byte("[] {}"), now); ok {
+		t.Fatal("trailing response accepted")
+	}
+}
+
 func TestProviderPersistsQuotaBeforeRequestAndRestoresCooldown(t *testing.T) {
 	e := newTestEngine(t)
 	e.initScopeProvider("synthetic-test-key")
@@ -121,5 +134,22 @@ func TestProviderRevocationAndKeyChangeKeepNativeEvidence(t *testing.T) {
 	p.apply(e, task, providerResult{status: 503, failed: true, retryAt: now + 3*scopes.Hour}, now)
 	if p.state.Next < now+3*scopes.Hour {
 		t.Fatal("shared quota retry-after ignored")
+	}
+}
+
+func TestProviderConditionalRefreshKeepsNamesWithoutRefreshingReportAges(t *testing.T) {
+	e := newTestEngine(t)
+	now := time.Now().UnixMilli()
+	key := strings.Repeat("AF", 32)
+	e.upsertNode("YKF", key, "Fixture", "repeater", false, 43, -80, true, now)
+	e.initScopeProvider("synthetic-cache-key")
+	e.scopes.PutCatalogue(scopes.Catalogue{Region: "YKF", Names: []string{"#ykf"}, At: now - 29*24*scopes.Hour}, now)
+	e.scopes.PutReport(scopes.Report{Key: key, Region: "YKF", Source: "meshmapper-reported", At: now - 10*scopes.Hour, List: true, Entries: []scopes.Entry{{Name: "#ykf", At: now - 10*scopes.Hour}}}, now)
+	task := providerSource{URL: "https://ykf.meshmapper.net/get_scopes.php", Region: "YKF", Kind: "scopes", Checked: now - 6*scopes.Hour}
+	e.scopeProvider.state.Sources = append(e.scopeProvider.state.Sources, task)
+	e.scopeProvider.apply(e, task, providerResult{status: 304}, now)
+	saved := e.scopes.Save()
+	if saved.Catalogues[0].At != now || saved.Reports[0].At != now-10*scopes.Hour {
+		t.Fatal("cache validation and report age were conflated")
 	}
 }

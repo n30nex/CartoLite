@@ -145,7 +145,8 @@ func New(options Options) (*Engine, error) {
 		e.indexNode(key, node)
 	}
 	prunedRoutes, prunedNodes := e.pruneDurableState(time.Now().UnixMilli())
-	e.checkpointDirty = prunedRoutes > 0 || prunedNodes > 0 || savedScopes != nil
+	scopePruned := e.scopes.Prune(time.Now().UnixMilli(), e.scopeNodeIDs(false))
+	e.checkpointDirty = prunedRoutes > 0 || prunedNodes > 0 || scopePruned || savedScopes != nil
 	e.initScopeProvider(options.MeshMapperKey)
 	e.prunedRoutes.Add(int64(prunedRoutes))
 	e.prunedNodes.Add(int64(prunedNodes))

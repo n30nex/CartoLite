@@ -176,6 +176,7 @@ export interface TooltipSize {
 // Native private members keep renderer internals minifiable without renaming public/browser APIs.
 export class LiveMap {
   readonly map: maplibregl.Map;
+  onScopeClear?: () => void;
   #lastState?: Readonly<StateV2>;
   #nodesByID = new Map<string, NodeV2>();
   #scopeSettings: ScopeSettings = { ...DEFAULT_SCOPES };
@@ -183,6 +184,7 @@ export class LiveMap {
   #scopeNodes = new Map<string, NodeScopes>();
   #scopePalette: string[] = [];
   #scopeEpoch = 0;
+  #scopeDataSignature = '';
   #scopeInspectorOpen = false;
   #routesByID = new Map<string, RouteV2>();
   #routeIDsByNode = new Map<string, Set<string>>();
@@ -819,13 +821,16 @@ export class LiveMap {
   setScopes(snapshot: ScopeSnapshot | undefined, settings: ScopeSettings): void {
     if (snapshot === this.#scopeSnapshot && JSON.stringify(settings) === JSON.stringify(this.#scopeSettings)) return;
     this.#scopeSnapshot = snapshot;
+    const signature = JSON.stringify([snapshot?.nodes, settings]);
+    const changed = signature !== this.#scopeDataSignature;
+    this.#scopeDataSignature = signature;
     this.#scopeSettings = { ...settings };
     this.#scopeNodes = new Map((snapshot?.nodes ?? []).map(node => [node.id, node]));
     this.#scopePalette = scopePalette(snapshot?.nodes ?? [], settings.hours);
     this.container.dataset.repeaterScopes = String(settings.enabled);
     this.container.dataset.scopeMode = settings.mode;
     this.container.dataset.scopeFocus = settings.focus ?? '';
-    this.#refreshScopeNodes();
+    if (changed) this.#refreshScopeNodes();
     if (this.#selectedNodeID) this.#renderNodeInspector(true);
   }
 
@@ -848,6 +853,7 @@ export class LiveMap {
 
   #refreshScopeNodes(): void {
     if (!this.#layersReady) return;
+    this.container.dataset.scopeRenderState = 'updating';
     const epoch = ++this.#scopeEpoch;
     const nodes = this.#scopeNodeCollection([...this.#nodesByID.values()], trafficNow());
     this.#nodeFeatureIDs = new Set(nodes.features.map(feature => String(feature.id)));
@@ -873,6 +879,7 @@ export class LiveMap {
       : ['interpolate', ['linear'], ['zoom'], 3, .84, 6.2, .98, DETAIL_ZOOM, .5]);
     this.map.setPaintProperty(NODE_LABEL_LAYER_ID, 'text-opacity', enabled && this.#scopeSettings.focus
       ? ['case', ['==', ['coalesce', ['get','scopeMatch'], 1], 0], .28, .96] : .96);
+    if (!enabled) applyOverlayPalette(this.map, this.#originalOverlayColors, light);
     this.container.dataset.scopeRenderState = 'ready';
   }
 
@@ -2073,6 +2080,13 @@ export class LiveMap {
       evidence.open = this.#scopeInspectorOpen;
       evidence.addEventListener('toggle', () => { this.#scopeInspectorOpen = evidence.open; });
       content.insertBefore(evidence, content.querySelector('h3'));
+      if (this.#scopeSettings.focus && this.#scopeSettings.mode === 'isolate' && !scopeMembership(this.#scopeNodes.get(model.node.id), this.#scopeSettings.hours).has(this.#scopeSettings.focus)) {
+        const note = document.createElement('p'); note.className = 'scope-outside';
+        note.textContent = 'This node is outside the current scope filter. ';
+        const reveal = document.createElement('button'); reveal.type = 'button'; reveal.className = 'control-button'; reveal.textContent = 'Reveal this node';
+        reveal.addEventListener('click', () => this.onScopeClear?.()); note.append(reveal);
+        content.insertBefore(note, evidence);
+      }
     }
     if (mobile) {
       this.#closePopup(false);
