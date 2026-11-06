@@ -1,5 +1,9 @@
 # CartoLite delivery roadmap
 
+## Performance and animation (0.22.1)
+
+[Audit and phased plan](performance-animation-audit-2026-11-06.md): the first package reduces shared GPU allocation, duplicate physics uploads and idle redraws, improves Chronoscope frame scheduling, and makes Netgraph graphics preferences effective. Source and regression checks are implemented; exact Actions qualification and delivery are recorded in versioned release evidence. Follow-up phases cover adaptive quality, mobile recovery and sustained-work profiling.
+
 ## Repeater scopes (0.22.0)
 
 [Implemented scope layer](repeater-scopes-plan.md): observed repeat reports, explicit source provenance, persisted scope controls and bounded map rendering. The final visual review also corrected desktop legend/dock overlap and theme-transition contrast. Exact-image qualification and live deployment evidence accompany the tagged release; implementation alone does not establish deployment.
