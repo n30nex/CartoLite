@@ -200,7 +200,8 @@ async function start(): Promise<void> {
     const packetCanvas = required<HTMLCanvasElement>('packet-canvas');
     const liveAnimator = new PacketAnimator(liveMap.map, packetCanvas);
     animator = liveAnimator;
-    window.dispatchEvent(new CustomEvent('cartolite-map-ready', { detail: { view: liveMap, animator: liveAnimator } }));
+    window.dispatchEvent(new CustomEvent('cartolite-map-ready', { detail: { view: liveMap, animator: liveAnimator,
+      pauseFollow: () => pauseLiveFollow(), refreshControls: applyAppearanceChrome } }));
     const routeSonifier = new RouteSonifier(liveAnimator.projection, packetCanvas);
     sonifier = routeSonifier;
     mountSoundPreview(routeSonifier, soundPanel);
@@ -556,6 +557,7 @@ async function start(): Promise<void> {
     }
 
     liveMap.map.on('moveend', () => {
+      if (document.documentElement.hasAttribute('data-terminal-flight') || (mapElement.dataset.terminalFlight && mapElement.dataset.terminalFlight !== 'off')) return;
       updateLayerChrome();
       if (!liveFollow) saveView(browserStorage(), activeViewClass, liveMap.view());
       if (uiPreferences.terrain3D && activeViewClass === 'desktop') {
@@ -573,6 +575,7 @@ async function start(): Promise<void> {
         activeViewClass = next;
         document.documentElement.dataset.viewClass = next;
         setLayersOpen(false);
+        if (document.documentElement.hasAttribute('data-terminal-flight')) return;
         if (liveFollow) setLiveFollow(false, true);
         const restored = loadSavedView(browserStorage(), next);
         if (restored) {

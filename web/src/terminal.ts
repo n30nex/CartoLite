@@ -6,6 +6,7 @@ import { terminalGraphics } from './terminalGraphics';
 import { characterCells } from './terminalGrid';
 import { loadTerminal, TERMINAL_FONTS, TERMINAL_KEY, TERMINAL_LEGACY_KEY, shade, terminalNeedsRecovery } from './terminalProfile';
 import { terminalControls } from './terminalControls';
+import { terminalFlight } from './terminalFlight';
 import './terminal.css';
 
 const ROLES: Record<string, string> = { repeater: 'R', companion: 'C', room_server: 'H', sensor: 'S' };
@@ -18,18 +19,19 @@ document.querySelector<HTMLCanvasElement>('#packet-canvas')?.getContext('2d', { 
 // downloaded by the ordinary Map/Netgraph pages, and there is still one feed.
 window.addEventListener('cartolite-map-ready', event => {
   if (!document.documentElement.hasAttribute('data-terminal')) return;
-  const { view, animator } = (event as CustomEvent<{ view: LiveMap; animator: PacketAnimator }>).detail;
-  const destroy = mountTerminal(view, animator);
+  const { view, animator, pauseFollow, refreshControls } = (event as CustomEvent<{ view: LiveMap; animator: PacketAnimator; pauseFollow?: () => void; refreshControls?: () => void }>).detail;
+  const destroy = mountTerminal(view, animator, { pauseFollow, refreshControls });
   window.addEventListener('pagehide', event => { if (!event.persisted) destroy(); });
 }, { once: true });
 
 /** Presentation only: the existing Map and packet clock still own the scene. */
-export function mountTerminal(view: LiveMap, animator: PacketAnimator): () => void {
+export function mountTerminal(view: LiveMap, animator: PacketAnimator, callbacks: {pauseFollow?: () => void; refreshControls?: () => void} = {}): () => void {
   const map = view.map, host = map.getContainer(), root = document.documentElement;
   let preferences = loadTerminal(browserStorage());
   const originalPaint = new Map<string, { layer: string; property: string; value: Parameters<typeof map.setPaintProperty>[2] }>();
   let labelLayers: string[] = [];
   let disposed = false, failed = false, lastPacket = 0;
+  let flight: ReturnType<typeof terminalFlight> | undefined;
   const canvas = document.createElement('canvas'), effects = document.createElement('canvas');
   canvas.id = 'terminal-map'; effects.id = 'terminal-packets';
   for (const element of [canvas, effects]) { element.className = 'terminal-canvas'; element.setAttribute('aria-hidden', 'true'); host.after(element); }
@@ -206,6 +208,7 @@ export function mountTerminal(view: LiveMap, animator: PacketAnimator): () => vo
     // Restore its GL state before changing paint/layer state for the fallback.
     queueMicrotask(() => {
       if (!failed || disposed) return;
+      flight?.stop();
       // Retry must re-enter the native custom-layer lifecycle as well as rebuild
       // our shaders; keeping the failed layer installed can leave a stale frame.
       capture.detach();
@@ -287,7 +290,7 @@ export function mountTerminal(view: LiveMap, animator: PacketAnimator): () => vo
     const c=preferences.colours;
     root.dataset.terminalRecovery=String(terminalNeedsRecovery(preferences));
     return { columns: Math.max(1,Math.ceil(width/cw)), rows: Math.max(1,Math.ceil(height/ch)), mode:['braille','ascii','blocks','cell'].indexOf(preferences.glyphs),
-      colors:[c.background,c.water,c.terrain,c.roads,c.terrain,c.buildings,c.boundary,c.shore,c.boundary,c.vegetation,c.urban,c.shore],brightness:preferences.mapBrightness,font:font(32) };
+      colors:[c.background,c.water,c.terrain,c.roads,c.terrain,c.buildings,c.boundary,c.shore,c.boundary,c.vegetation,c.urban,c.shore,c.repeater,c.companion,c.room,c.sensor,c.selection],brightness:preferences.mapBrightness,font:font(32),depth:flight?.active??false };
   }, paint, fail, () => !disposed && !failed && !document.hidden);
   const visibility = () => { if (document.hidden) capture.suspend(); else { style(); schedule(); } };
   // Appearance/terrain can finish loading while the camera or feed keeps the
@@ -320,10 +323,11 @@ export function mountTerminal(view: LiveMap, animator: PacketAnimator): () => vo
       lastPacket = now;
     } catch { fail(); }
   });
+  flight = terminalFlight(view, animator, { ...callbacks, changed: () => { style(); schedule(); } });
   sync(); style();
   const destroy = () => {
     if (disposed) return;
-    disposed = true; capture.destroy(); animator.setFrameSink(undefined);
+    disposed = true; flight?.destroy(); capture.destroy(); animator.setFrameSink(undefined);
     map.off('load', style); map.off('style.load',style);map.off('idle', style);
     map.off('render', ensureStyle);
     map.off('webglcontextrestored', restored);

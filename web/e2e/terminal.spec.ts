@@ -110,11 +110,11 @@ test('Terminal keeps geographic controls, live packets and device display choice
   await expect(page.locator('#fatal')).toBeHidden();
   await page.screenshot({ path: info.outputPath('terminal-ansi.png') });
   if (info.project.name === 'desktop') {
-    await page.locator('#terrain-shortcut').click();
+    await openMapOptions(page);await page.locator('#terrain-button').click();await page.keyboard.press('Escape');
     await expect(map).toHaveAttribute('data-terrain3d','true');
     await expect(map).toHaveAttribute('data-camera-moving','false');
     await page.screenshot({path:info.outputPath('terminal-terrain.png')});
-    await page.locator('#terrain-shortcut').click();
+    await openMapOptions(page);await page.locator('#terrain-button').click();await page.keyboard.press('Escape');
     await expect(map).toHaveAttribute('data-terrain3d','false');
   }
   const saved = await page.evaluate(() => [localStorage.getItem('cartolite:ui:v1'), localStorage.getItem('cartolite-server:ui:v1')]);
@@ -364,7 +364,7 @@ test('Terminal cel-shaded 3D retains its profile and routes through graphics-con
   await page.addInitScript(()=>window.addEventListener('cartolite-map-ready',event=>Object.assign(window,{terminalHarness:(event as CustomEvent).detail}),{once:true}));
   await page.goto('/terminal/');await expect(page.locator('#map')).toHaveAttribute('data-render-state','idle');
   await openMapOptions(page);await page.getByLabel('Terminal palette').selectOption('cell');await page.keyboard.press('Escape');
-  await page.locator('#terrain-shortcut').click();
+  await openMapOptions(page);await page.locator('#terrain-button').click();await page.keyboard.press('Escape');
   await expect(page.locator('#map')).toHaveAttribute('data-terrain3d','true');
   await expect(page.locator('#map')).toHaveAttribute('data-camera-moving','false');
   await page.evaluate(()=>{

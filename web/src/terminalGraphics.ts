@@ -5,6 +5,11 @@ void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);gl_Position=vec4(p*2.-
 // One pixel per character in the first pass; screen pixels only sample the font.
 const INK = `int ink(vec3 c){
  if(max(c.r,max(c.g,c.b))<26./255.)return 0;
+ if(c.g>c.r*6.&&c.b>c.g*.25&&c.b<c.g*.7)return 12;
+ if(c.b>c.r*6.&&c.g>c.b*.35&&c.g<c.b*.75)return 13;
+ if(c.r>c.g*6.&&c.b>c.r*.85)return 14;
+ if(c.r>c.g*6.&&c.b<c.r*.08)return 15;
+ if(c.r>c.g*6.&&c.b>c.r*.2&&c.b<c.r*.55)return 16;
  if(c.b>c.r*1.8&&c.b>c.g*1.6)return 1;
  if(max(c.r,max(c.g,c.b))<100./255.&&c.g>c.r*1.5&&c.g>c.b*1.2)return 9;
  if(max(c.r,max(c.g,c.b))<65./255.&&max(c.r,max(c.g,c.b))-min(c.r,min(c.g,c.b))<5./255.)return 10;
@@ -18,56 +23,60 @@ const INK = `int ink(vec3 c){
 }`;
 const CELLS = `#version 300 es
 precision highp float;precision highp int;
-uniform sampler2D terminal_scene;uniform vec2 grid;uniform int ascii;
+uniform sampler2D terminal_scene;uniform vec2 grid;uniform int ascii;uniform bool depth;
 out vec4 result;
 ${INK}
 int at(vec2 p){return ink(texture(terminal_scene,clamp(p,vec2(0),vec2(1))).rgb);}
-int rank(int k){return k==0?-1:k==1||k==9||k==10?0:k==3?1:k==11?2:3;}
+int rank(int k){return k==0?-1:k==1||k==9||k==10?0:k==3?1:k==11?2:k>=12?4:3;}
 void main(){
  vec2 cell=floor(gl_FragCoord.xy),stepSize=1./(grid*vec2(2,4));
  int mask=0,color=0,priority=-1,count=0;
+ float lighting=0.;
  int bits[8]=int[8](1,8,2,16,4,32,64,128);
  for(int y=0;y<4;y++)for(int x=0;x<2;x++){
   vec2 p=(cell+vec2((float(x)+.5)/2.,(3.5-float(y))/4.))/grid;
   // Conservative coverage: thin roads/routes must not fall between dot centres.
-  int k=at(p);
+  vec3 c=texture(terminal_scene,clamp(p,vec2(0),vec2(1))).rgb;
+  int k=ink(c);float light=max(c.r,max(c.g,c.b));
   for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
-   int sampleInk=at(p+vec2(i,j)*stepSize/3.);
-   if(rank(sampleInk)>rank(k))k=sampleInk;
+   vec3 sampled=texture(terminal_scene,clamp(p+vec2(i,j)*stepSize/3.,vec2(0),vec2(1))).rgb;
+   int sampleInk=ink(sampled);
+   if(rank(sampleInk)>rank(k)){k=sampleInk;light=max(sampled.r,max(sampled.g,sampled.b));}
   }
   if((k==0||k==9||k==10)&&(at(p+vec2(stepSize.x,0))==1||at(p-vec2(stepSize.x,0))==1||at(p+vec2(0,stepSize.y))==1||at(p-vec2(0,stepSize.y))==1))k=11;
   int priorityNow=rank(k);
   if(k==0||priorityNow<priority)continue;
   // Do not recolour every water/land dot when a bright route crosses one dot.
-  if(priorityNow>priority){mask=0;count=0;color=k;priority=priorityNow;}
+  if(priorityNow>priority){mask=0;count=0;lighting=0.;color=k;priority=priorityNow;}
   if((k==9||k==10)&&(x+y)%2==0)continue;
-  mask|=bits[y*2+x];count++;
+  mask|=bits[y*2+x];count++;lighting+=light;
  }
  int glyph=ascii==1&&mask!=0?(color==1?260:count<3?257:count<6?258:259):mask;
- result=vec4(float(glyph%16)/255.,float(glyph/16)/255.,float(color)/255.,1);
+ result=vec4(float(glyph%16)/255.,float(glyph/16)/255.,float(color)/255.,depth?clamp(.35+lighting/max(1.,float(count))*.8,.35,1.):1.);
 }`;
 const GLYPHS = `#version 300 es
 precision highp float;precision highp int;
-uniform sampler2D cells;uniform sampler2D glyphs;uniform sampler2D terminal_scene;uniform vec2 grid;uniform vec2 viewport;uniform vec3 colors[12];uniform int mode;uniform float brightness;
+uniform sampler2D cells;uniform sampler2D glyphs;uniform sampler2D terminal_scene;uniform vec2 grid;uniform vec2 viewport;uniform vec3 colors[17];uniform int mode;uniform float brightness;uniform bool depth;
 out vec4 result;
 ${INK}
 void main(){
  if(mode==3){
-  vec2 uv=gl_FragCoord.xy/viewport;int k=ink(texture(terminal_scene,uv).rgb);
+  vec2 uv=gl_FragCoord.xy/viewport;vec3 sampleColor=texture(terminal_scene,uv).rgb;int k=ink(sampleColor);
+  float light=depth?clamp(.35+max(sampleColor.r,max(sampleColor.g,sampleColor.b))*.8,.35,1.):1.;
   float edge=0.,shore=0.;vec2 stepSize=vec2(1.5)/viewport;
   for(int i=0;i<4;i++) {vec2 p=uv+vec2(i<2?(i==0?stepSize.x:-stepSize.x):0.,i>1?(i==2?stepSize.y:-stepSize.y):0.);int next=ink(texture(terminal_scene,clamp(p,vec2(0),vec2(1))).rgb);if(next!=k)edge=1.;if(k!=1&&next==1)shore=1.;}
-  result=vec4(mix(mix(colors[0],colors[k]*brightness,1.-edge*.4),colors[11]*brightness,shore),1);return;
+  result=vec4(mix(mix(colors[0],colors[k]*brightness*light,1.-edge*.4),colors[11]*brightness,shore),1);return;
  }
  vec2 p=gl_FragCoord.xy/viewport*grid;
- vec3 cell=floor(texture(cells,(floor(p)+.5)/grid).rgb*255.+.5);
+ vec4 encoded=texture(cells,(floor(p)+.5)/grid);vec3 cell=floor(encoded.rgb*255.+.5);
  vec2 local=clamp(vec2(fract(p.x),1.-fract(p.y)),vec2(.5/24.,.5/40.),vec2(1.-.5/24.,1.-.5/40.));
  vec2 uv=(cell.xy+local)/vec2(16,17);
  float coverage=texture(glyphs,uv).a;
  if(mode==2){int bits[8]=int[8](1,8,2,16,4,32,64,128);int x=int(local.x*2.);int y=int(local.y*4.);coverage=(int(cell.x+cell.y*16.)&bits[y*2+x])!=0?1.:0.;}
- result=vec4(mix(colors[0],colors[int(cell.z)]*brightness,coverage),1);
+ result=vec4(mix(colors[0],colors[int(cell.z)]*brightness*(depth?encoded.a:1.),coverage),1);
 }`;
 
-export function terminalGraphics(map: LibreMap, config: () => { columns: number; rows: number; mode: number; colors: string[]; brightness: number; font: string }, frame: () => void, failure: () => void, enabled: () => boolean) {
+export function terminalGraphics(map: LibreMap, config: () => { columns: number; rows: number; mode: number; colors: string[]; brightness: number; font: string; depth?: boolean }, frame: () => void, failure: () => void, enabled: () => boolean) {
   let gl: WebGL2RenderingContext | undefined, programs: WebGLProgram[] = [], textures: WebGLTexture[] = [], shaders: WebGLShader[] = [];
   let framebuffer: WebGLFramebuffer | null = null, vao: WebGLVertexArrayObject | null = null;
   let locations: Record<string, WebGLUniformLocation | null>[] = [], width = 0, height = 0, columns = 0, rows = 0, disposed = false, lastLabels = 0;
@@ -93,7 +102,7 @@ export function terminalGraphics(map: LibreMap, config: () => { columns: number;
         g.attachShader(p, s);
       }
       g.linkProgram(p); if (!g.getProgramParameter(p, g.LINK_STATUS)) throw new Error('Terminal program unavailable');
-      locations.push(Object.fromEntries(['terminal_scene','grid','ascii','cells','glyphs','viewport','colors[0]','mode','brightness'].map(name => [name,g.getUniformLocation(p,name)])));
+      locations.push(Object.fromEntries(['terminal_scene','grid','ascii','cells','glyphs','viewport','colors[0]','mode','brightness','depth'].map(name => [name,g.getUniformLocation(p,name)])));
     }
     for (const s of shaders) g.deleteShader(s); shaders = [];
     framebuffer = g.createFramebuffer(); vao = g.createVertexArray();
@@ -149,11 +158,11 @@ export function terminalGraphics(map: LibreMap, config: () => { columns: number;
         }
         g.viewport(0,0,columns,rows); g.useProgram(programs[0]!);
         const a=locations[0]!, b=locations[1]!;
-        g.uniform1i(a.terminal_scene!,0); g.uniform2f(a.grid!,columns,rows); g.uniform1i(a.ascii!,Number(options.mode===1)); g.drawArrays(g.TRIANGLES,0,3);
+        g.uniform1i(a.terminal_scene!,0); g.uniform2f(a.grid!,columns,rows); g.uniform1i(a.ascii!,Number(options.mode===1));g.uniform1i(a.depth!,Number(Boolean(options.depth))); g.drawArrays(g.TRIANGLES,0,3);
         g.bindFramebuffer(g.FRAMEBUFFER,target); g.viewport(0,0,w,h); g.useProgram(programs[1]!);
         g.activeTexture(g.TEXTURE2); g.bindTexture(g.TEXTURE_2D,textures[2]!);
         g.uniform1i(b.cells!,1); g.uniform1i(b.glyphs!,2); g.uniform2f(b.grid!,columns,rows); g.uniform2f(b.viewport!,w,h);
-        g.uniform1i(b.terminal_scene!,0);g.uniform1i(b.mode!,options.mode);g.uniform1f(b.brightness!,options.brightness);
+        g.uniform1i(b.terminal_scene!,0);g.uniform1i(b.mode!,options.mode);g.uniform1f(b.brightness!,options.brightness);g.uniform1i(b.depth!,Number(Boolean(options.depth)));
         g.uniform3fv(b['colors[0]']!, options.colors.flatMap(color => { const n=parseInt(color.slice(1),16); return [(n>>16&255)/255,(n>>8&255)/255,(n&255)/255]; }));
         g.drawArrays(g.TRIANGLES,0,3);
         metrics.terminalRenderer='webgl2'; metrics.terminalGridCells=String(columns*rows);

@@ -9,6 +9,7 @@ export interface SurfacePoint {
   progress?: number;
   breakBefore?: boolean;
   ground?: readonly [number, number, number, number];
+  visible?: boolean;
 }
 
 interface TerrainMap {
@@ -18,6 +19,7 @@ interface TerrainMap {
 }
 
 const radians = Math.PI / 180;
+const outsideCamera: SurfacePoint = { x: -1_000_000, y: -1_000_000, scale: 1, visible: false };
 
 export function geographicSegmentPoint(from: EndpointV2, to: EndpointV2, progress: number): [number, number] {
   return routeCoordinate([from.lng, from.lat], [to.lng, to.lat], progress);
@@ -26,11 +28,21 @@ export function geographicSegmentPoint(from: EndpointV2, to: EndpointV2, progres
 export class TerrainProjector {
   #points = new Map<string, SurfacePoint>();
   #paths = new Map<string, readonly SurfacePoint[]>();
+  #cameraDepth?: (coordinates: [number, number]) => number;
 
   constructor(private readonly map: TerrainMap) {}
 
   enabled(): boolean { return Boolean(this.map.getTerrain?.()); }
-  project(coordinates: [number, number]): SurfacePoint { return this.map.project(coordinates); }
+  project(coordinates: [number, number]): SurfacePoint {
+    return this.#cameraDepth && !(this.#cameraDepth(coordinates) >= 4) ? outsideCamera : this.map.project(coordinates);
+  }
+
+  #rawProject(coordinates: [number, number]): SurfacePoint {
+    const point = this.map.project(coordinates);
+    return this.#cameraDepth && !Number.isFinite(point.x + point.y) ? { ...outsideCamera } : point;
+  }
+
+  setCameraClip(depth?: (coordinates: [number, number]) => number): void { this.#cameraDepth = depth; this.reset(); }
 
   reset(): void {
     this.#points.clear();
@@ -38,17 +50,22 @@ export class TerrainProjector {
   }
 
   projectEndpoint(endpoint: EndpointV2): SurfacePoint {
-    if (!this.enabled()) return this.project([endpoint.lng, endpoint.lat]);
+    if (this.#cameraDepth && !(this.#cameraDepth([endpoint.lng, endpoint.lat]) >= 4)) return outsideCamera;
+    return this.#rawEndpoint(endpoint);
+  }
+
+  #rawEndpoint(endpoint: EndpointV2): SurfacePoint {
+    if (!this.enabled()) return this.#rawProject([endpoint.lng, endpoint.lat]);
     const key = `${endpoint.lng}:${endpoint.lat}`;
     const cached = this.#points.get(key);
     if (cached) return cached;
-    const point: SurfacePoint = this.project([endpoint.lng, endpoint.lat]);
+    const point: SurfacePoint = this.#rawProject([endpoint.lng, endpoint.lat]);
     const step = 360 * 8 / (512 * 2 ** (this.map.getZoom?.() ?? 0));
     const eastSign = endpoint.lng + step > 180 ? -1 : 1;
     const latitudeStep = step * Math.cos(endpoint.lat * radians);
     const northSign = endpoint.lat + latitudeStep > 85.051129 ? -1 : 1;
-    const east = this.project([endpoint.lng + step * eastSign, endpoint.lat]);
-    const north = this.project([endpoint.lng, endpoint.lat + latitudeStep * northSign]);
+    const east = this.#rawProject([endpoint.lng + step * eastSign, endpoint.lat]);
+    const north = this.#rawProject([endpoint.lng, endpoint.lat + latitudeStep * northSign]);
     const ground = [(east.x - point.x) / (8 * eastSign), (east.y - point.y) / (8 * eastSign), (north.x - point.x) / (8 * northSign), (north.y - point.y) / (8 * northSign)] as const;
     if (ground.every(Number.isFinite) && Math.max(...ground.map(Math.abs)) < 4) {
       point.ground = ground;
@@ -73,7 +90,7 @@ export class TerrainProjector {
         const sample = (local: number): SurfacePoint => {
           const t = start + (end - start) * local;
           const [lng, lat] = geographicSegmentPoint(from, to, t);
-          return this.projectEndpoint({ ...from, lng: wrapped ? lng - Math.sign(boundary) * 360 : lng, lat });
+          return this.#rawEndpoint({ ...from, lng: wrapped ? lng - Math.sign(boundary) * 360 : lng, lat });
         };
         const points = this.enabled() ? adaptiveSurfacePath(sample, 3) : [{ ...sample(0), progress: 0 }, { ...sample(1), progress: 1 }];
         return points.map((point) => ({ ...point, progress: start + (end - start) * point.progress! }));
@@ -81,21 +98,49 @@ export class TerrainProjector {
       const left = section(0, crossing, false);
       const right = section(crossing, 1, true);
       if (right[0]) right[0].breakBefore = true;
-      const points = [...left, ...right];
+      const points = this.#clipPath([...left, ...right], segment);
       if (this.#paths.size >= 1024) this.#paths.delete(this.#paths.keys().next().value!);
       this.#paths.set(key, points);
       return points;
     }
-    const first = this.projectEndpoint(from);
-    const last = this.projectEndpoint({ ...to, lng: endLongitude });
-    const points = this.enabled() ? adaptiveSurfacePath((t) => {
-      const point = t === 0 ? first : t === 1 ? last : this.project(geographicSegmentPoint(from, to, t));
+    const first = this.#rawEndpoint(from);
+    const last = this.#rawEndpoint({ ...to, lng: endLongitude });
+    const raw = this.enabled() ? adaptiveSurfacePath((t) => {
+      const point = t === 0 ? first : t === 1 ? last : this.#rawProject(geographicSegmentPoint(from, to, t));
       return { ...point, progress: t, scale: (first.scale ?? 1) + ((last.scale ?? 1) - (first.scale ?? 1)) * t };
     }) : [first, last];
+    const points = this.#clipPath(raw, segment);
     if (this.#paths.size >= 1024) this.#paths.delete(this.#paths.keys().next().value!);
     this.#paths.set(key, points);
     return points;
   }
+
+  #clipPath(points: SurfacePoint[], segment: RouteSegmentView): SurfacePoint[] {
+    if (!this.#cameraDepth) return points;
+    const coordinate = (t: number) => geographicSegmentPoint(segment.from, segment.to, t);
+    return clipSurfacePath(points, t => this.#cameraDepth!(coordinate(t)), t => this.map.project(coordinate(t)));
+  }
+}
+
+/** Clip only presentation at the near plane; keep original route progress/time. */
+export function clipSurfacePath(points: readonly SurfacePoint[], depth: (progress: number) => number, project: (progress: number) => SurfacePoint): SurfacePoint[] {
+  const out: SurfacePoint[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const b = points[i]!, bt = fraction(points, i), inside = depth(bt) >= 4;
+    if (i === 0 || b.breakBefore) {
+      if (inside) out.push({ ...b, progress: bt, breakBefore: out.length > 0 });
+      continue;
+    }
+    const at = fraction(points, i - 1), before = depth(at) >= 4;
+    if (before !== inside) {
+      let lo = at, hi = bt;
+      for (let n = 0; n < 14; n++) { const mid = (lo + hi) / 2; if ((depth(mid) >= 4) === before) lo = mid; else hi = mid; }
+      const progress = inside ? hi : lo, p = project(progress);
+      if (Number.isFinite(p.x + p.y)) out.push({ ...p, progress, breakBefore: inside && out.length > 0 });
+    }
+    if (inside) out.push({ ...b, progress: bt });
+  }
+  return out;
 }
 
 /** Four seed intervals catch relief away from the midpoint; subdivision is capped at 65 vertices. */
@@ -131,13 +176,15 @@ function interpolatePoint(from: SurfacePoint, to: SurfacePoint, t: number): Surf
 }
 
 export function surfacePathPoint(points: readonly SurfacePoint[], progress: number): SurfacePoint {
-  if (points.length === 0) return { x: -1_000_000, y: -1_000_000, scale: 1 };
+  if (points.length === 0) return outsideCamera;
   if (points.length === 1) return points[0]!;
   progress = Math.max(0, Math.min(1, progress));
+  if (progress < fraction(points, 0) || progress > fraction(points, points.length - 1)) return outsideCamera;
   let index = 0;
   while (index < points.length - 2 && fraction(points, index + 1) <= progress) index += 1;
   const from = points[index]!;
   const to = points[index + 1]!;
+  if (to.breakBefore && progress < fraction(points, index + 1)) return outsideCamera;
   const t = (progress - fraction(points, index)) / Math.max(0.000001, fraction(points, index + 1) - fraction(points, index));
   return interpolatePoint(from, to, t);
 }
