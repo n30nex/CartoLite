@@ -5,6 +5,7 @@ scene to first-person flight. Use MapLibre 6.15's public camera APIs and the
 existing GPU ASCII pass; retain one feed, the packet clock and the current map.
 
 - Keyboard movement, drag-to-look, height controls and touch movement buttons.
+  Drag up to look up; Look down restores a useful downward angle without moving.
 - Real terrain and OpenFreeMap building extrusions, with ASCII face shading.
 - Polygon node beacons at public node coordinates; their size is illustrative,
   not an antenna-height measurement. Existing inspection and Find remain usable.
@@ -25,4 +26,6 @@ verify public pages, traffic, checkpoint progress and sustained health.
 References: [MapLibre first-person example](https://github.com/maplibre/maplibre-gl-js/blob/v6.15.0/test/examples/walk-around-a-map-in-first-person.html)
 and [camera centre/elevation model](https://github.com/maplibre/maplibre-gl-js/blob/v6.15.0/developer-guides/center-point.md).
 
-Implementation and qualification are in progress. Worldwide is outside this patch.
+The source includes implementation and focused acceptance checks. Exact Actions,
+image and live deployment evidence belongs to the tagged release record;
+source implementation alone is not deployment proof. Worldwide is outside this patch.

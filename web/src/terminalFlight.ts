@@ -16,7 +16,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   button.title = 'Fly around the ASCII map in 3D'; button.disabled = true;
   document.querySelector('#terrain-shortcut')!.before(button);
   const hud = document.createElement('section'); hud.id = 'terminal-flight-hud'; hud.className = 'terminal-flight-hud glass'; hud.hidden = true; hud.setAttribute('aria-label','Terminal flight controls');
-  hud.innerHTML = '<header><strong>FLY 3D</strong><button type="button" data-exit aria-label="Exit Terminal flight">Exit ×</button></header>'
+  hud.innerHTML = '<header><strong>FLY 3D</strong><button type="button" data-look aria-label="Look toward the ground">Look down</button><button type="button" data-exit aria-label="Exit Terminal flight">Exit ×</button></header>'
     + '<p class="flight-state" role="status">Loading terrain…</p><output class="flight-position" aria-live="off"></output>'
     + '<label class="flight-speed">Speed <output>60 m/s</output><input type="range" min="10" max="300" step="10" value="60" aria-label="Flight speed"></label>'
     + '<div class="flight-pad">'+[['KeyA','←','Strafe left'],['KeyW','↑','Fly forward'],['KeyS','↓','Fly backward'],['KeyD','→','Strafe right'],['KeyQ','−','Fly down'],['KeyE','+','Fly up']].map(([key,icon,label])=>`<button type="button" data-move="${key}" aria-label="${label}" title="${label}">${icon}</button>`).join('')+'</div>'
@@ -108,7 +108,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     animator.projection.setCameraClip(at=>{const z=ground(at);return z===undefined?-Infinity:flightDepth(pose,at,z);});
     stateText.textContent=flat?'Flat flight · terrain unavailable':'Drag to look. Focus the map to use flight keys.';
     hud.querySelector<HTMLButtonElement>('[data-retry]')!.hidden=!flat;
-    hud.querySelectorAll<HTMLButtonElement>('[data-move]').forEach(b=>b.disabled=false);
+    hud.querySelectorAll<HTMLButtonElement>('[data-move],[data-look]').forEach(b=>b.disabled=false);
     camera();nodeLayer();chrome();callbacks.changed();canvas.focus({preventScroll:true});request();
     map.getContainer().dataset.flightState='flying';
   }
@@ -116,7 +116,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     clearInput();loading=true;flat=false;terrainFailed=false;terrainReady=false;terrainWaitExpired=false;anchor=at;
     map.getContainer().dataset.flightState='loading';
     stateText.textContent='Loading terrain…';hud.querySelector<HTMLButtonElement>('[data-retry]')!.hidden=true;
-    hud.querySelectorAll<HTMLButtonElement>('[data-move]').forEach(b=>b.disabled=true);
+    hud.querySelectorAll<HTMLButtonElement>('[data-move],[data-look]').forEach(b=>b.disabled=true);
     animator.projection.setCameraClip();map.stop();map.setCenterClampedToGround(true);
     view.setTerminalFlight('terrain',focusNode);map.jumpTo({center:anchor,zoom:15.5,bearing:pose.bearing,pitch:50,roll:0},{terminalFlight:true});
     clearTimeout(loadingTimer);loadingTimer=window.setTimeout(()=>{terrainWaitExpired=true;ready(true);},8000);
@@ -156,7 +156,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     if(blocked()){clearInput();return;}
     refreshTerrain();
     const delta=last?(now-last)/1000:1/60;last=now;
-    pose.bearing=((pose.bearing+pendingLook[0]*.18)%360+360)%360;pose.pitch=Math.max(2,Math.min(175,pose.pitch+pendingLook[1]*.18));
+    pose.bearing=((pose.bearing+pendingLook[0]*.18)%360+360)%360;pose.pitch=Math.max(2,Math.min(175,pose.pitch-pendingLook[1]*.18));
     const looked=Boolean(pendingLook[0]||pendingLook[1]);pendingLook=[0,0];
     const held=(code:string)=>keys.has(code)||[...touches.values()].includes(code);
     const input={forward:Number(held('KeyW')||held('ArrowUp'))-Number(held('KeyS')||held('ArrowDown')),right:Number(held('KeyD')||held('ArrowRight'))-Number(held('KeyA')||held('ArrowLeft')),up:Number(held('KeyE'))-Number(held('KeyQ'))};
@@ -193,6 +193,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   const appearance=()=>{queueMicrotask(chrome);};
   const leaveForCamera=()=>{if(active)stop();};
   const close=()=>stop();hud.querySelector('[data-exit]')!.addEventListener('click',close);
+  hud.querySelector('[data-look]')!.addEventListener('click',()=>{if(active&&!loading&&!recovering){clearInput();pose.pitch=60;restoreCamera=true;request();canvas.focus({preventScroll:true});}});
   const retry=()=>load([pose.lng,pose.lat]);hud.querySelector('[data-retry]')!.addEventListener('click',retry);
   const pads=[...hud.querySelectorAll<HTMLButtonElement>('[data-move]')];
   const padDown=(event:PointerEvent)=>{if(!active||loading||recovering||blocked())return;const target=event.currentTarget as HTMLButtonElement;event.preventDefault();target.setPointerCapture(event.pointerId);touches.set(event.pointerId,target.dataset.move!);request();};

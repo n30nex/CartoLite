@@ -15,10 +15,9 @@ async function fixture(page: Page) {
   await page.route('**/api/state',route=>route.fulfill({json:state}));
   await page.addInitScript(()=>window.addEventListener('cartolite-map-ready',event=>{
     const {view,animator}=(event as CustomEvent).detail;
-    const timing={frames:[] as number[],longTasks:[] as number[]};let started=0;
+    const timing={frameGaps:[] as number[],longTasks:[] as number[]};let last=performance.now();
     Object.assign(window,{flightView:view,flightAnimator:animator,flightTiming:timing});
-    view.map.on('renderstart',()=>started=performance.now());
-    view.map.on('render',()=>{timing.frames.push(performance.now()-started);if(timing.frames.length>60)timing.frames.shift();});
+    view.map.on('render',()=>{const now=performance.now();timing.frameGaps.push(now-last);last=now;if(timing.frameGaps.length>60)timing.frameGaps.shift();});
     if(PerformanceObserver.supportedEntryTypes.includes('longtask'))new PerformanceObserver(list=>{for(const entry of list.getEntries())timing.longTasks.push(entry.duration);timing.longTasks=timing.longTasks.slice(-40);}).observe({type:'longtask'});
   },{once:true}));
   await page.goto('/terminal/');
@@ -69,12 +68,14 @@ test('@terminal-flight Terminal looks above the horizon without mirrored packet 
   test.skip(info.project.name!=='desktop');
   test.slow(); // Exercise native terrain across the horizon, not a timing benchmark.
   await fixture(page);await enter(page);
-  await page.mouse.move(1000,300);await page.mouse.down();await page.mouse.move(1000,760,{steps:8});await page.mouse.up();
-  await expect.poll(()=>page.locator('#map').getAttribute('data-flight-pitch').then(Number)).toBeGreaterThan(110);
+  await page.mouse.move(1000,770);await page.mouse.down();await page.mouse.move(1000,120,{steps:8});await page.mouse.up();
+  await expect.poll(()=>page.locator('#map').getAttribute('data-flight-pitch').then(Number)).toBeGreaterThan(160);
   await visualPacket(page,1,'Text');
   const geometry=await page.evaluate(()=>{const animator=(window as any).flightAnimator;return animator.projection.projectEndpoint({id:'visual-a',lng:-80.35,lat:43.45});});
   expect(geometry.visible).toBe(false);
   await page.screenshot({path:info.outputPath('terminal-flight-look-up.png')});
+  await page.getByRole('button',{name:'Look toward the ground'}).click();
+  await expect(page.locator('#map')).toHaveAttribute('data-flight-pitch','60.0');
   await page.locator('.maplibregl-canvas').focus();await page.keyboard.down('KeyW');
   await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
   const pos=await page.locator('#map').getAttribute('data-flight-lat');await page.waitForTimeout(700);await page.keyboard.up('KeyW');
@@ -131,10 +132,12 @@ test('@terminal-flight Terminal recovers its flight camera and ASCII node layer 
   });
   await expect(page.locator('#map')).toHaveAttribute('data-route-context-restores','1');
   await expect(page.locator('#map')).toHaveAttribute('data-terminal-renderer','webgl2');
+  await page.evaluate(async()=>{const map=(window as any).flightView.map;if(!map.loaded())await new Promise<void>(resolve=>map.once('idle',resolve));});
   await expect.poll(()=>page.evaluate(()=>Boolean((window as any).flightView.map.getLayer('terminal-flight-nodes')))).toBe(true);
   expect(await page.locator('#map').getAttribute('data-flight-lng')).toBe(pose);
-  await page.locator('.maplibregl-canvas').focus();await page.keyboard.down('KeyD');await page.waitForTimeout(350);await page.keyboard.up('KeyD');
-  await expect.poll(()=>page.locator('#map').getAttribute('data-flight-lng').then(Number)).toBeGreaterThan(Number(pose));
+  await page.locator('.maplibregl-canvas').focus();await page.keyboard.down('KeyD');
+  try { await expect(page.locator('#map')).not.toHaveAttribute('data-flight-lng',pose!); } finally { await page.keyboard.up('KeyD'); }
+  expect(Number(await page.locator('#map').getAttribute('data-flight-lng'))).toBeGreaterThan(Number(pose));
   await visualPacket(page,1,'Text');
   await page.screenshot({path:info.outputPath('terminal-flight-recovered.png')});
   await page.locator('#terminal-flight-hud [data-exit]').click();expect(errors).toEqual([]);
