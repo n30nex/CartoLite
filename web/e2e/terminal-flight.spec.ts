@@ -4,15 +4,26 @@ import { openMapOptions } from './mapControls';
 
 test.describe.configure({ retries: 0 });
 test.use({ trace: 'off' });
+test.afterEach(async({page},info)=>{
+  if(!page.isClosed())await info.attach('flight-render-diagnostics',{body:JSON.stringify(await page.evaluate(()=>({timing:(window as any).flightTiming,metrics:{...document.querySelector<HTMLElement>('#map')?.dataset}}))),contentType:'application/json'});
+});
 
 async function fixture(page: Page) {
   const state=await visualFixture(page,15.5,true);
   state.nodes[1]!.lng=-80.348;state.nodes[1]!.lat=43.451;
   state.nodes[2]!.lng=-80.352;state.nodes[2]!.lat=43.451;
   await page.route('**/api/state',route=>route.fulfill({json:state}));
-  await page.addInitScript(()=>window.addEventListener('cartolite-map-ready',event=>Object.assign(window,{flightView:(event as CustomEvent).detail.view,flightAnimator:(event as CustomEvent).detail.animator}),{once:true}));
+  await page.addInitScript(()=>window.addEventListener('cartolite-map-ready',event=>{
+    const {view,animator}=(event as CustomEvent).detail;
+    const timing={frames:[] as number[],longTasks:[] as number[]};let started=0;
+    Object.assign(window,{flightView:view,flightAnimator:animator,flightTiming:timing});
+    view.map.on('renderstart',()=>started=performance.now());
+    view.map.on('render',()=>{timing.frames.push(performance.now()-started);if(timing.frames.length>60)timing.frames.shift();});
+    if(PerformanceObserver.supportedEntryTypes.includes('longtask'))new PerformanceObserver(list=>{for(const entry of list.getEntries())timing.longTasks.push(entry.duration);timing.longTasks=timing.longTasks.slice(-40);}).observe({type:'longtask'});
+  },{once:true}));
   await page.goto('/terminal/');
   await expect(page.locator('#map')).toHaveAttribute('data-terminal-renderer','webgl2',{timeout:20000});
+  await expect(page.locator('#map')).toHaveAttribute('data-render-state','idle');
   await expect(page.locator('#terminal-flight-button')).toBeEnabled();
 }
 
@@ -20,7 +31,7 @@ async function enter(page: Page) {
   await page.locator('#terminal-flight-button').click();
   await expect(page.locator('#map')).toHaveAttribute('data-flight-state','flying',{timeout:20000});
   await expect(page.locator('#map')).toHaveAttribute('data-building-extrusions','true');
-  await expect.poll(()=>page.locator('#map').getAttribute('data-flight-beacons').then(Number)).toBe(3);
+  await expect(page.locator('#map')).toHaveAttribute('data-flight-beacons','3');
 }
 
 test('@terminal-flight Terminal flies through ASCII buildings and polygon nodes, then restores the map',async({page},info)=>{
@@ -109,6 +120,7 @@ test('@terminal-flight Terminal touch flight fits 320px and releases held contro
 
 test('@terminal-flight Terminal recovers its flight camera and ASCII node layer after graphics loss',async({page},info)=>{
   test.skip(info.project.name!=='desktop');
+  test.slow(); // Recreate native terrain and ASCII shaders on software graphics.
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await fixture(page);await enter(page);
   const pose=await page.locator('#map').getAttribute('data-flight-lng');
