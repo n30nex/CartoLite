@@ -687,6 +687,7 @@ export class PacketAnimator {
     if (segment && elapsed <= item.duration) {
       const path = this.projection.projectSegment(segment);
       const head = surfacePathPoint(path, motion.localProgress);
+      if (head.visible !== false) {
       const points = surfaceTrail(path, motion.localProgress, (quality === 'full' ? 46 : quality === 'balanced' ? 38 : 28) * (head.scale ?? 1) * displayPreferences().trailLength);
       const trail: PacketTrail = { points, tail: points[0]!, head, length: points.slice(1).reduce((sum, point, index) => sum + Math.hypot(point.x - points[index]!.x, point.y - points[index]!.y), 0) };
       const before = surfacePathPoint(path, Math.max(0, motion.localProgress - 0.01));
@@ -714,6 +715,7 @@ export class PacketAnimator {
         drawPacketSignature(this.#context, head, tangent, item.color, item.signature, elapsed);
         if (item.longHaul) this.#drawLongHaulMarker(head, tangent, item.color, elapsed);
       }
+    }
     }
     }
     const first = item.packet.segments[0];

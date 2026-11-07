@@ -16,7 +16,7 @@ CartoLite turns the Canada MQTT feed into a compact live map, an interactive top
 |---|---|
 | **Map** | Watch confirmed hops on a geographic map; explore terrain, buildings, heatmaps and optional 3D. |
 | **Netgraph** | Follow the topology with recognizable geographic groups, optional 3D, region filters and draggable region layouts. |
-| **Terminal** | Turn the map into a live BBS display with Braille, ASCII, pixel and cel-shaded modes, six presets, custom colours and fonts. |
+| **Terminal** | Explore a live BBS map with Braille, ASCII, pixel and cel-shaded modes. **Fly 3D** adds free flight, shaded buildings and polygon node beacons; your colours and fonts carry over. |
 | **Chronoscope** | Orbit a growing, session-only sculpture of observed packets and routes. |
 | **Firehose** | Watch linked packet beads tumble into a 3D box; tilt it to pour them out. |
 | **Pachinko** | Watch individual packets bounce into colour-coded buckets and overflow into a drain. |
@@ -32,6 +32,7 @@ The dock keeps **Map**, **Netgraph** and **Terminal** close at hand. **Experimen
 
 - **Find, inspect and follow:** search public node names, inspect confirmed neighbours and routes, or use ten-second Live Follow with a countdown, area/node scopes and Hold/Next controls.
 - **Make it yours:** Aurora, Glacier, Ember and Violet interface palettes; light/dark panels; Night, Daylight and Streets scenes; six route presets and advanced line controls. Terminal has its own colour/font studio.
+- **Fly through Terminal:** use the glowing **Fly 3D** button, drag to look, WASD/arrows to move, Q/E for height, and Shift to boost. Phones have held movement controls. Exit restores the previous camera and layers. Node beacons show locations, not measured antenna heights; missing terrain is clearly marked as flat flight.
 - **Hear the mesh:** [31 opt-in sound voices](docs/sound-voices.md), including Dial-up Modem, with preview and volume controls. Only eligible visible live hops make sound.
 - **Phone-friendly:** one compact view picker, coordinated sheets, touch controls, reduced-motion support and recovery after sleep or a lost connection.
 - **A small service:** one Go process, bounded memory and one atomic topology checkpoint. No database, accounts, chat, visitor analytics or persistent packet history.

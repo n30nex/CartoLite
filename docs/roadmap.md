@@ -1,5 +1,9 @@
 # CartoLite delivery roadmap
 
+## Terminal flight (Canada 0.23.0)
+
+[Flight implementation and acceptance](terminal-flight-2026-11-06.md): an opt-in glowing control, geographic first-person camera, GPU ASCII face shading, building extrusions and polygon node beacons. Keyboard/touch input, near-plane packet clipping, missing-terrain fallback and camera/settings restoration are covered by focused Actions checks alongside the existing gates. Exact image and deployment qualification are recorded with the release. Worldwide is outside this patch.
+
 ## Performance and animation (0.22.1)
 
 [Audit and phased plan](performance-animation-audit-2026-11-06.md): the first package reduces shared GPU allocation, duplicate physics uploads and idle redraws, improves Chronoscope frame scheduling, and makes Netgraph graphics preferences effective. Source and regression checks are implemented; exact Actions qualification and delivery are recorded in versioned release evidence. Follow-up phases cover adaptive quality, mobile recovery and sustained-work profiling.

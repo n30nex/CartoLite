@@ -58,6 +58,16 @@ describe('route hop sonification', () => {
     expect(routeSoundPlan(route, projector, 100, 100)).toEqual([]);
   });
 
+  it('pans from visible flight geometry without changing hop timing or voice', () => {
+    const route = packet([endpoint('a',20,50),endpoint('b',80,50)]);
+    const ordinary = routeSoundPlan(route,projector,100,100)[0]!;
+    const flight = routeSoundPlan(route,{...projector,projectSegment:()=>[
+      {x:60,y:50,progress:.7},{x:80,y:50,progress:1}
+    ]},100,100)[0]!;
+    expect(flight.pan).toBeGreaterThan(0);
+    expect({...flight,pan:ordinary.pan}).toEqual(ordinary);
+  });
+
   it('does not sound a diagonal whose bounding box only grazes the viewport', () => {
     const route = packet([
       endpoint('a', -20, 90),

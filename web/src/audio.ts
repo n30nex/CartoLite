@@ -182,7 +182,10 @@ export function routeSoundPlan(
     const startMS = Math.round(elapsed);
     elapsed += totalDuration * weight;
     if (!screen.some((point, index) => index > 0 && !point.breakBefore && segmentIntersectsViewport(screen[index - 1]!, point, width, height))) return [];
-    const midpointX = surfacePathPoint(screen, 0.5).x;
+    const midpoint = surfacePathPoint(screen, 0.5);
+    // Flight can clip the route's geographic midpoint behind the camera while
+    // another part remains visible. Pan from retained geometry, not the sentinel.
+    const midpointX = (midpoint.visible === false ? screen[Math.floor(screen.length / 2)]! : midpoint).x;
     const step = (phraseSeed + stableHash(`${segment.from.id}|${segment.to.id}`) + index * 2) % voice.intervals.length;
     const variation = stableHash(`${packet.id}|${segment.routeId}|${index}|${scene}`) % sceneProfile.harmonics.length;
     const octave = index >= voice.intervals.length ? 12 : 0;

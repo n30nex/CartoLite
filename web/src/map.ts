@@ -180,6 +180,7 @@ export class LiveMap {
   onScopeClear?: () => void;
   #lastState?: Readonly<StateV2>;
   #nodesByID = new Map<string, NodeV2>();
+  #terminalNodeRevision = 0;
   #scopeSettings: ScopeSettings = { ...DEFAULT_SCOPES };
   #scopeSnapshot?: ScopeSnapshot;
   #scopeNodes = new Map<string, NodeScopes>();
@@ -215,6 +216,8 @@ export class LiveMap {
   #clustersVisible = true;
   #hillshadeVisible = false;
   #terrain3D = false;
+  #terminalFlight: 'terrain' | 'flat' | null = null;
+  #flightFocus?: (node: NodeV2) => void;
   #terrainLayersReady = false;
   #regionsLoaded = false;
   #regionsLoad?: Promise<void>;
@@ -338,7 +341,7 @@ export class LiveMap {
     this.map.on('moveend', () => {
       this.container.dataset.cameraMoving = 'false';
       this.container.dataset.cameraZoom = String(Math.round(this.map.getZoom() * 100) / 100);
-      if (this.#terrain3D && viewClass() === 'desktop') {
+      if (this.#terrain3D && !this.#terminalFlight && viewClass() === 'desktop') {
         this.#appearance.terrainPitch = this.map.getPitch();
         this.#appearance.terrainBearing = this.map.getBearing();
         this.container.dataset.cameraPitch = String(Math.round(this.map.getPitch() * 10) / 10);
@@ -375,6 +378,8 @@ export class LiveMap {
     const routeFeatureIDs = new Set(changes?.routeGeometry ?? []);
     if (changes?.nodes?.length) {
       for (const node of changes.nodes) {
+        const previous = this.#nodesByID.get(node.id);
+        if (!previous || previous.lng !== node.lng || previous.lat !== node.lat || previous.role !== node.role || previous.label !== node.label) this.#terminalNodeRevision++;
         this.#nodesByID.set(node.id, node);
         heatNodeIDs.add(node.id);
       }
@@ -411,6 +416,7 @@ export class LiveMap {
   }
 
   #resetSources(state: Readonly<StateV2>): void {
+    this.#terminalNodeRevision++;
     const now = trafficNow();
     this.#nodesByID = new Map(state.nodes.map((node) => [node.id, node]));
     this.#routesByID = new Map(state.routes.map((route) => [route.id, route]));
@@ -788,7 +794,7 @@ export class LiveMap {
       const light = this.#lightScene();
       this.#historicalRouteLayer.setLightBackground(light);
       applyOverlayPalette(this.map, this.#originalOverlayColors, light);
-      if (this.#terrain3D) this.#updateSky();
+      if (this.#terrain3D || this.#terminalFlight) this.#updateSky();
     }
     if (force || previous.basemap !== preferences.basemap || previous.mapLabels !== preferences.mapLabels || previous.roads !== preferences.roads) {
       for (const layer of cartoVectorStyle().layers) {
@@ -804,8 +810,8 @@ export class LiveMap {
     this.#historicalRouteLayer.setOpacity(preferences.routeOpacity);
     this.#historicalRouteLayer.refreshAppearance();
     this.container.dataset.routePreset = displayPreferences().preset;
-    if (this.#terrain3D && previous.terrainExaggeration !== preferences.terrainExaggeration) {
-      this.map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: preferences.terrainExaggeration });
+    if (this.#terrainActive() && previous.terrainExaggeration !== preferences.terrainExaggeration) {
+      this.map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: this.#terminalFlight ? 1 : preferences.terrainExaggeration });
     }
     this.#updateBuildingLayer();
     if (this.map.getLayer(HILLSHADE_LAYER_ID)) {
@@ -855,6 +861,7 @@ export class LiveMap {
 
   #refreshScopeNodes(): void {
     if (!this.#layersReady) return;
+    this.#terminalNodeRevision++;
     this.#configureScopeClustering();
     this.container.dataset.scopeRenderState = 'updating';
     const epoch = ++this.#scopeEpoch;
@@ -928,6 +935,24 @@ export class LiveMap {
 
   getSelectedNodeID(): string | null { return this.#selectedNodeID; }
 
+  getTerminalNodeFeatures(): FeatureCollection<Point> {
+    return this.#scopeNodeCollection([...this.#nodesByID.values()], trafficNow());
+  }
+
+  getTerminalNodeRevision(): number { return this.#terminalNodeRevision; }
+
+  /** Session-only exploration; never overwrites the user's saved layer choices. */
+  setTerminalFlight(mode: 'terrain' | 'flat' | null, focus?: (node: NodeV2) => void): void {
+    this.#terminalFlight = mode;
+    this.#flightFocus = mode ? focus : undefined;
+    this.container.dataset.terminalFlight = mode ?? 'off';
+    this.setTerrain3D(this.#terrain3D);
+    this.setHillshadeVisible(this.#hillshadeVisible);
+    this.setClustersVisible(this.#clustersVisible);
+  }
+
+  #terrainActive(): boolean { return this.#terminalFlight ? this.#terminalFlight === 'terrain' : this.#terrain3D; }
+
   shouldFollow(packet: PacketView): boolean {
     return packetMatchesFollow(packet, this.#selectedNodeID);
   }
@@ -994,32 +1019,36 @@ export class LiveMap {
 
   setClustersVisible(visible: boolean): void {
     this.#clustersVisible = visible;
-    this.container.dataset.clustersVisible = String(visible);
-    if (!visible) this.#setHighlightedCluster(null);
+    const effective = visible && !this.#terminalFlight;
+    this.container.dataset.clustersVisible = String(effective);
+    if (!effective) this.#setHighlightedCluster(null);
     if (!this.#layersReady) return;
-    if (applyClusterVisibility(this.map, visible)) this.markRendering();
+    if (applyClusterVisibility(this.map, effective)) this.markRendering();
   }
 
   setHillshadeVisible(visible: boolean): void {
     this.#hillshadeVisible = visible;
-    this.container.dataset.hillshadeVisible = String(visible);
+    const effective = visible || Boolean(this.#terminalFlight);
+    this.container.dataset.hillshadeVisible = String(effective);
     if (!this.#layersReady) return;
-    if (visible) this.#ensureTerrainLayers();
+    if (effective) this.#ensureTerrainLayers();
     if (!this.map.getLayer(HILLSHADE_LAYER_ID)) return;
-    this.map.setLayoutProperty(HILLSHADE_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
+    this.map.setLayoutProperty(HILLSHADE_LAYER_ID, 'visibility', effective ? 'visible' : 'none');
     this.markRendering();
   }
 
   setTerrain3D(enabled: boolean): void {
     this.#terrain3D = enabled;
-    this.container.dataset.terrain3d = String(enabled);
+    const terrain = this.#terrainActive();
+    this.container.dataset.terrain3d = String(enabled || Boolean(this.#terminalFlight));
     if (!this.#layersReady) return;
-    if (enabled) this.#ensureTerrainLayers();
-    this.map.setTerrain(enabled ? { source: TERRAIN_SOURCE_ID, exaggeration: this.#appearance.terrainExaggeration } : null);
+    if (terrain) this.#ensureTerrainLayers();
+    this.map.setTerrain(terrain ? { source: TERRAIN_SOURCE_ID, exaggeration: this.#terminalFlight ? 1 : this.#appearance.terrainExaggeration } : null);
     this.#updateSky();
     this.map.setLight({ anchor: 'map', color: '#ffffff', intensity: 0.3, position: [1.5, 195, 50] });
     this.#updateBuildingLayer();
     this.#updateTerrainRoutes();
+    if (this.#terminalFlight) { this.markRendering(); return; }
     this.#setTerrainGestures(enabled);
     const camera = this.#cameraOrientation();
     this.container.dataset.cameraPitch = String(camera.pitch);
@@ -1048,13 +1077,19 @@ export class LiveMap {
   }
 
   #updateBuildingLayer(): void {
-    this.container.dataset.buildingsVisible = String(this.#appearance.buildings);
-    this.container.dataset.buildingExtrusions = String(this.#appearance.buildings && this.#terrain3D && viewClass() === 'desktop');
+    const visible = this.#appearance.buildings || Boolean(this.#terminalFlight);
+    const extrusions = Boolean(this.#terminalFlight) || (this.#terrain3D && viewClass() === 'desktop');
+    this.container.dataset.buildingsVisible = String(visible);
+    this.container.dataset.buildingExtrusions = String(visible && extrusions);
     if (!this.#layersReady) return;
-    this.#buildingSourceID = updateBuildings(this.map, this.#appearance.buildings, this.#terrain3D, viewClass() === 'desktop', this.#lightScene());
+    this.#buildingSourceID = updateBuildings(this.map, visible, extrusions, true, this.#lightScene());
   }
 
   #updateSky(): void {
+    if (this.#terminalFlight) {
+      this.map.setSky({ 'sky-color': '#030609', 'horizon-color': '#030609', 'fog-color': '#030609', 'horizon-fog-blend': 0 });
+      return;
+    }
     const light = this.#lightScene();
     this.map.setSky(this.#terrain3D ? { 'sky-color': light ? '#cfe1e8' : '#14242e', 'horizon-color': light ? '#eef1ee' : '#29424a', 'fog-color': light ? '#dce7e5' : '#14242e', 'horizon-fog-blend': 0.15 } : {});
   }
@@ -1189,7 +1224,7 @@ export class LiveMap {
         id: HILLSHADE_LAYER_ID,
         type: 'hillshade',
         source: HILLSHADE_SOURCE_ID,
-        layout: { visibility: this.#hillshadeVisible ? 'visible' : 'none' },
+        layout: { visibility: this.#hillshadeVisible || this.#terminalFlight ? 'visible' : 'none' },
         paint: {
           'hillshade-illumination-anchor': 'map',
           'hillshade-method': 'multidirectional',
@@ -1223,7 +1258,7 @@ export class LiveMap {
   }
 
   #updateTerrainRoutes(): void {
-    this.container.dataset.routeSurface = this.#terrain3D ? 'terrain' : 'flat';
+    this.container.dataset.routeSurface = this.#terrainActive() ? 'terrain' : 'flat';
     this.#historicalRouteLayer.setVisible(this.routesVisible);
   }
 
@@ -1309,7 +1344,7 @@ export class LiveMap {
   }
 
   #installLayers(): void {
-    if (this.#hillshadeVisible || this.#terrain3D) this.#ensureTerrainLayers();
+    if (this.#hillshadeVisible || this.#terrainActive()) this.#ensureTerrainLayers();
     this.map.addSource(REGION_ATTRIBUTION_SOURCE_ID, {
       type: 'geojson',
       data: EMPTY_REGIONS,
@@ -1660,7 +1695,7 @@ export class LiveMap {
     });
 
     this.#applyFocusState();
-    applyClusterVisibility(this.map, this.#clustersVisible);
+    applyClusterVisibility(this.map, this.#clustersVisible && !this.#terminalFlight);
 
     this.map.on('mousemove', NODE_HIT_LAYER_ID, (event) => this.#showNodeTooltip(event));
     this.map.on('mouseleave', NODE_HIT_LAYER_ID, () => {
@@ -1709,7 +1744,7 @@ export class LiveMap {
     this.#layersReady = true;
     this.setAppearance(this.#appearance, true);
     this.showFollowPacket(this.#followedPacket);
-    if (this.#terrain3D) this.setTerrain3D(true);
+    if (this.#terrain3D || this.#terminalFlight) this.setTerrain3D(this.#terrain3D);
     if (this.#regionsVisible) this.#ensureRegionsData();
     this.render(this.#lastState, { reset: true }, true);
   }
@@ -1853,6 +1888,10 @@ export class LiveMap {
   }
 
   #handleMapClick(event: MapMouseEvent): void {
+    if (this.#terminalFlight && this.map.getLayer('terminal-flight-nodes')) {
+      const beacon = this.map.queryRenderedFeatures(event.point, { layers: ['terminal-flight-nodes'] })[0];
+      if (beacon) { this.selectNodeByID(String(beacon.properties.id), false); return; }
+    }
     if (this.map.queryRenderedFeatures(event.point, { layers: [NODE_HIT_LAYER_ID] }).length > 0) {
       this.#selectNode(event);
       return;
@@ -2188,6 +2227,7 @@ export class LiveMap {
   }
 
   #centerNodeIfNeeded(node: NodeV2): void {
+    if (this.#flightFocus) { this.#flightFocus(node); return; }
     const point = this.map.project([node.lng, node.lat]);
     const mobile = this.container.clientWidth <= 900 || window.matchMedia('(pointer: coarse)').matches;
     const margin = 72;
@@ -2252,9 +2292,9 @@ export class LiveMap {
       const before = this.map.getLayer(ROUTE_FOCUS_LAYER_IDS[0]) ? ROUTE_FOCUS_LAYER_IDS[0] : undefined;
       this.map.addLayer(layer, before);
       this.setAppearance(this.#appearance,true);
-      if (this.#terrain3D) {
+      if (this.#terrainActive()) {
         this.#ensureTerrainLayers();
-        this.map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: this.#appearance.terrainExaggeration });
+        this.map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: this.#terminalFlight ? 1 : this.#appearance.terrainExaggeration });
       }
       this.render(this.#lastState,{reset:true},true);
       this.showFollowPacket(this.#followedPacket);
