@@ -129,7 +129,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     saved={center:map.getCenter().toArray(),zoom:map.getZoom(),pitch:map.getPitch(),bearing:map.getBearing(),roll:map.getRoll(),elevation:map.getCenterElevation(),clamped:map.getCenterClampedToGround(),maxPitch:map.getMaxPitch(),maxZoom:map.getMaxZoom(),bounds:map.getMaxBounds()};
     enabled=handlers.map(h=>h.isEnabled());handlers.forEach(h=>h.disable());
     controlled=[...document.querySelectorAll<HTMLButtonElement|HTMLInputElement>(CONTROLLED)].map(element=>({element,disabled:element.disabled,pressed:element.getAttribute('aria-pressed')}));
-    active=true;root.dataset.terminalFlight='true';button.setAttribute('aria-pressed','true');hud.hidden=false;
+    active=true;ignoreClick=false;restoreCamera=false;root.dataset.terminalFlight='true';button.setAttribute('aria-pressed','true');hud.hidden=false;
     pose.bearing=saved.bearing;
     const nodes=view.getTerminalNodeFeatures().features, chosen=nodes.find(n=>String(n.id)===view.getSelectedNodeID());
     let target=chosen?.geometry.coordinates, closest=Infinity;
@@ -137,7 +137,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     load(target?[target[0]!,target[1]!]:saved.center);chrome();
   }
   function stop(removing=false) {
-    if(!active)return;active=false;loading=false;clearInput();clearTimeout(loadingTimer);loadingTimer=0;
+    if(!active)return;active=false;loading=false;ignoreClick=false;restoreCamera=false;clearInput();clearTimeout(loadingTimer);loadingTimer=0;
     animator.projection.setCameraClip();button.setAttribute('aria-pressed','false');hud.hidden=true;
     for(const {element,disabled,pressed} of controlled){element.disabled=disabled;if(pressed!==null)element.setAttribute('aria-pressed',pressed);}controlled=[];
     if(!removing&&saved){
@@ -182,7 +182,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   const move=(event:PointerEvent)=>{if(!active||dragging?.id!==event.pointerId)return;const x=event.clientX-dragging.x,y=event.clientY-dragging.y;dragging.distance+=Math.hypot(x,y);dragging.x=event.clientX;dragging.y=event.clientY;pendingLook[0]!+=x;pendingLook[1]!+=y;event.preventDefault();request();};
   const up=(event:PointerEvent)=>{if(dragging?.id===event.pointerId){ignoreClick=dragging.distance>4;dragging=undefined;}};
   const click=(event:MouseEvent)=>{if(active&&ignoreClick){event.preventDefault();event.stopImmediatePropagation();ignoreClick=false;}};
-  const wheel=(event:WheelEvent)=>{if(!active||blocked())return;event.preventDefault();speed=Math.max(10,Math.min(300,Math.round(speed*(event.deltaY<0?1.2:.8)/10)*10));speedInput.value=String(speed);speedOutput.value=`${speed} m/s`;};
+  const wheel=(event:WheelEvent)=>{if(!active||blocked()||event.ctrlKey||event.metaKey)return;event.preventDefault();speed=Math.max(10,Math.min(300,Math.round(speed*(event.deltaY<0?1.2:.8)/10)*10));speedInput.value=String(speed);speedOutput.value=`${speed} m/s`;};
   const speedChanged=()=>{speed=Number(speedInput.value);speedOutput.value=`${speed} m/s`;};speedInput.addEventListener('input',speedChanged);
   const focusChanged=(event:FocusEvent)=>{if(active&&!eligible(event.target))clearInput();};
   const visibility=()=>{clearInput();if(!document.hidden&&active){if(loading)ready(terrainWaitExpired);else request();}};

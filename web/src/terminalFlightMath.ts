@@ -4,7 +4,6 @@ export interface FlightPose { lng: number; lat: number; altitude: number; bearin
 export interface FlightInput { forward: number; right: number; up: number }
 const RAD = Math.PI / 180;
 const METRES = 6378137 * RAD;
-export const FLIGHT_NEAR = 4;
 export const FLIGHT_CLEARANCE = 12;
 
 export function offsetPosition(lng: number, lat: number, east: number, north: number): [number, number] {

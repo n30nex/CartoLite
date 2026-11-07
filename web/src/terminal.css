@@ -109,10 +109,10 @@ html:root[data-terminal] .terminal-flight-toggle:disabled { box-shadow:none;text
 .terminal-flight-hud {
   position:absolute;top:64px;left:12px;z-index:7;width:min(352px,calc(100% - 24px));
   box-sizing:border-box;padding:10px;max-height:calc(100% - 136px);overflow:auto;
-  color:var(--ink);background:var(--panel-solid);border:1px solid var(--panel-border);font:calc(12px * var(--terminal-scale,1))/1.5 var(--terminal-font,ui-monospace,monospace);
+  color:var(--ink);background:var(--panel-solid);border:1px solid var(--panel-border);font:calc(12px * var(--terminal-scale,1) * var(--terminal-text-factor,1))/1.5 var(--terminal-font,ui-monospace,monospace);
 }
 .terminal-flight-hud[hidden] { display:none; }
-.terminal-flight-hud header { display:flex;align-items:center;justify-content:space-between;gap:8px; }
+.terminal-flight-hud header { display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px; }
 .terminal-flight-hud strong { color:var(--terminal-accent);letter-spacing:.15em; }
 .terminal-flight-hud button { color:var(--ink-strong);background:var(--field-bg);border:1px solid var(--panel-border);border-radius:2px;min-height:36px;cursor:pointer; }
 .terminal-flight-hud button:active { background:var(--selected); }
