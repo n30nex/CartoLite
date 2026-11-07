@@ -190,6 +190,9 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   const terrainError=(event:unknown)=>{const e=event as {sourceId?:string;error?:{message?:string;url?:string}};if((typeof e.sourceId==='string'&&e.sourceId===map.getTerrain()?.source)||/mapterhorn/i.test(`${e.error?.message??''} ${e.error?.url??''}`)){terrainFailed=true;if(active&&!loading&&!flat){clearInput();stateText.textContent='Terrain unavailable here. Retry terrain or exit flight.';hud.querySelector<HTMLButtonElement>('[data-retry]')!.hidden=false;}}};
   const render=()=>{if(disposed)return;button.disabled=!root.hasAttribute('data-terminal')||!map.getLayer('nodes');if(!active)return;refreshTerrain();if(recovering&&map.getContainer().dataset.graphicsRecovering==='false'){recovering=false;nodeRevision=-1;selected=null;restoreCamera=true;request();}if(loading&&!readyPending){readyPending=true;queueMicrotask(()=>{readyPending=false;ready(terrainWaitExpired);});}nodeLayer();};
   const idle=()=>{render();if(active&&loading)ready();};
+  // MapLibre's camera distance depends on viewport height. Recalculate from
+  // the owned eye pose so rotation/keyboard insets do not move the flyer.
+  const resize=()=>{if(active&&!loading&&!recovering){clearInput();camera();request();}};
   const appearance=()=>{queueMicrotask(chrome);};
   const leaveForCamera=()=>{if(active)stop();};
   const close=()=>stop();hud.querySelector('[data-exit]')!.addEventListener('click',close);
@@ -202,12 +205,12 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerup',up);canvas.addEventListener('lostpointercapture',up);canvas.addEventListener('pointercancel',up);canvas.addEventListener('click',click,true);canvas.addEventListener('wheel',wheel,{passive:false});
   document.addEventListener('keydown',keydown,true);document.addEventListener('keyup',keyup,true);document.addEventListener('focusin',focusChanged);document.addEventListener('visibilitychange',visibility);window.addEventListener('blur',clearInput);window.addEventListener(DISPLAY_EVENT,appearance);
   for(const id of ['reset-button','follow-button'])document.getElementById(id)?.addEventListener('click',leaveForCamera,true);
-  map.on('render',render);map.on('idle',idle);map.on('webglcontextlost',lost);map.on('error',terrainError);
+  map.on('render',render);map.on('idle',idle);map.on('resize',resize);map.on('webglcontextlost',lost);map.on('error',terrainError);
   const observer=new MutationObserver(chrome);observer.observe(document.getElementById('app')!,{subtree:true,attributes:true,attributeFilter:['hidden','open']});
   render();
   return { get active(){return active;}, stop:()=>stop(), refresh:render, destroy(){
     if(disposed)return;stop(true);disposed=true;clearInput();clearTimeout(loadingTimer);observer.disconnect();
-    map.off('render',render);map.off('idle',idle);map.off('webglcontextlost',lost);map.off('error',terrainError);
+    map.off('render',render);map.off('idle',idle);map.off('resize',resize);map.off('webglcontextlost',lost);map.off('error',terrainError);
     document.removeEventListener('keydown',keydown,true);document.removeEventListener('keyup',keyup,true);document.removeEventListener('focusin',focusChanged);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('blur',clearInput);window.removeEventListener(DISPLAY_EVENT,appearance);
     for(const id of ['reset-button','follow-button'])document.getElementById(id)?.removeEventListener('click',leaveForCamera,true);
     canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',move);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('lostpointercapture',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('click',click,true);canvas.removeEventListener('wheel',wheel);

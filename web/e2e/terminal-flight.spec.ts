@@ -114,8 +114,11 @@ test('@terminal-flight Terminal touch flight fits 320px and releases held contro
   await expect(hud.getByLabel('Flight speed')).toHaveValue('70');await hud.locator('summary').click();
   await page.screenshot({path:info.outputPath('terminal-flight-phone.png')});
   const pose=await page.locator('#map').getAttribute('data-flight-lng');
+  const portraitZoom=await page.evaluate(()=>(window as any).flightView.map.getZoom());
   await page.setViewportSize({width:720,height:320});await page.waitForTimeout(400);
   expect(await page.locator('#map').getAttribute('data-flight-lng')).toBe(pose);
+  const landscapeZoom=await page.evaluate(()=>(window as any).flightView.map.getZoom());
+  expect(landscapeZoom-portraitZoom).toBeCloseTo(Math.log2(320/720),1);
   const rotated=await hud.boundingBox();expect(rotated!.y+rotated!.height).toBeLessThan(250);
   expect(rotated!.x+rotated!.width).toBeLessThan(320); // Keep the scene's centre open.
   await page.screenshot({path:info.outputPath('terminal-flight-landscape.png')});
