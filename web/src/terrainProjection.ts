@@ -177,8 +177,8 @@ function interpolatePoint(from: SurfacePoint, to: SurfacePoint, t: number): Surf
 
 export function surfacePathPoint(points: readonly SurfacePoint[], progress: number): SurfacePoint {
   if (points.length === 0) return outsideCamera;
-  if (points.length === 1) return points[0]!;
   progress = Math.max(0, Math.min(1, progress));
+  if (points.length === 1) return points[0]!.progress === undefined || Math.abs(progress - points[0]!.progress!) < 1e-6 ? points[0]! : outsideCamera;
   if (progress < fraction(points, 0) || progress > fraction(points, points.length - 1)) return outsideCamera;
   let index = 0;
   while (index < points.length - 2 && fraction(points, index + 1) <= progress) index += 1;
@@ -192,6 +192,7 @@ export function surfacePathPoint(points: readonly SurfacePoint[], progress: numb
 export function surfaceTrail(points: readonly SurfacePoint[], progress: number, maxLength: number): SurfacePoint[] {
   progress = Math.max(0, Math.min(1, progress));
   const head = surfacePathPoint(points, progress);
+  if(head.visible===false)return [];
   const trail = [head];
   let remaining = maxLength;
   let start = points.length - 1;

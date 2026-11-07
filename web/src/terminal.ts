@@ -172,7 +172,8 @@ export function mountTerminal(view: LiveMap, animator: PacketAnimator, callbacks
       const text = cluster ? `[${p.point_count_abbreviated ?? p.point_count}]` : node ? (p.id === selected ? '@' : (ROLES[String(p.role)] ?? '?')) : String(p.label ?? p.name_en ?? p['name:en'] ?? p.name ?? '');
       if (!text) continue;
       const coordinate = feature.geometry.coordinates;
-      const point = map.project([coordinate[0]!, coordinate[1]!]);
+      const point = animator.projection.project([coordinate[0]!, coordinate[1]!]);
+      if(point.visible===false)continue;
       // Keep markers on the true hit target. Labels use measured Unicode widths,
       // independent of geographic grid size, so emoji and large screens fit.
       const w = context.measureText(text).width;

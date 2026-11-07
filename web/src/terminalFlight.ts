@@ -29,7 +29,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   const keys = new Set<string>(), touches = new Map<number,string>();
   let active = false, loading = false, flat = false, recovering = false, disposed = false;
   let terrainWaitExpired = false, readyPending = false, restoreCamera = false;
-  let terrainFailed = false;
+  let terrainFailed = false, terrainReady = false;
   let pose: FlightPose = { lng: -80, lat: 43, altitude: 300, bearing: 0, pitch: 65 };
   let frame = 0, last = 0, loadingTimer = 0, uiAt = 0, nodeAt = 0, nodeRevision = -1, selected: string | null = null;
   let anchor: [number, number] = [-80,43], speed = 60, pendingLook: [number,number] = [0,0], dragging: {id:number;x:number;y:number;distance:number}|undefined, ignoreClick = false;
@@ -42,12 +42,15 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   const eligible = (target: EventTarget|null) => target === canvas || (target instanceof Element && Boolean(target.closest('.flight-pad')));
   function clearInput() { keys.clear(); touches.clear(); pendingLook=[0,0]; dragging=undefined; last=0; if(frame)cancelAnimationFrame(frame);frame=0; }
   function request() { if(active&&!disposed&&!frame&&!document.hidden&&!recovering)frame=requestAnimationFrame(tick); }
+  function refreshTerrain() {
+    const terrain=map.getTerrain();
+    terrainReady=Boolean(terrain&&!terrainFailed&&map.getSource(terrain.source)&&map.isSourceLoaded(terrain.source));
+  }
   function ground(at: [number,number]): number | undefined {
     if(flat)return 0;
-    const terrain=map.getTerrain();
     // MapLibre reports 0 for an unpopulated DEM. Require the public source
-    // readiness/error signals as well, so missing tiles aren't a measured 0 m.
-    if(!terrain||terrainFailed||!map.getSource(terrain.source)||!map.isSourceLoaded(terrain.source))return;
+    // readiness/error signals as well. Check them per frame, not per vertex.
+    if(!terrainReady||terrainFailed)return;
     const height=map.queryTerrainElevation(at);
     return typeof height==='number'&&Number.isFinite(height)?height:undefined;
   }
@@ -92,6 +95,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   }
   function ready(useFlat=false) {
     if(!active||!loading||recovering||document.hidden)return;
+    refreshTerrain();
     const elevation=useFlat?0:ground(anchor);if(elevation===undefined)return;
     flat=useFlat;loading=false;clearTimeout(loadingTimer);loadingTimer=0;
     view.setTerminalFlight(flat?'flat':'terrain',focusNode);
@@ -109,7 +113,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     map.getContainer().dataset.flightState='flying';
   }
   function load(at: [number,number]) {
-    clearInput();loading=true;flat=false;terrainFailed=false;terrainWaitExpired=false;anchor=at;
+    clearInput();loading=true;flat=false;terrainFailed=false;terrainReady=false;terrainWaitExpired=false;anchor=at;
     map.getContainer().dataset.flightState='loading';
     stateText.textContent='Loading terrain…';hud.querySelector<HTMLButtonElement>('[data-retry]')!.hidden=true;
     hud.querySelectorAll<HTMLButtonElement>('[data-move]').forEach(b=>b.disabled=true);
@@ -150,6 +154,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     frame=0;if(!active||disposed||document.hidden||recovering)return;
     if(loading){ready();return;}
     if(blocked()){clearInput();return;}
+    refreshTerrain();
     const delta=last?(now-last)/1000:1/60;last=now;
     pose.bearing=((pose.bearing+pendingLook[0]*.18)%360+360)%360;pose.pitch=Math.max(2,Math.min(175,pose.pitch+pendingLook[1]*.18));
     const looked=Boolean(pendingLook[0]||pendingLook[1]);pendingLook=[0,0];
@@ -182,8 +187,8 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   const focusChanged=(event:FocusEvent)=>{if(active&&!eligible(event.target))clearInput();};
   const visibility=()=>{clearInput();if(!document.hidden&&active){if(loading)ready(terrainWaitExpired);else request();}};
   const lost=()=>{recovering=true;clearInput();if(active)stateText.textContent='Graphics paused. Waiting for recovery…';};
-  const terrainError=(event:unknown)=>{const e=event as {sourceId?:string;error?:{message?:string;url?:string}};if((typeof e.sourceId==='string'&&e.sourceId===map.getTerrain()?.source)||/mapterhorn/i.test(`${e.error?.message??''} ${e.error?.url??''}`)){terrainFailed=true;if(active&&!loading){clearInput();stateText.textContent='Terrain unavailable here. Retry terrain or exit flight.';hud.querySelector<HTMLButtonElement>('[data-retry]')!.hidden=false;}}};
-  const render=()=>{if(disposed)return;button.disabled=!root.hasAttribute('data-terminal')||!map.getLayer('nodes');if(!active)return;if(recovering&&map.getContainer().dataset.graphicsRecovering==='false'){recovering=false;nodeRevision=-1;restoreCamera=true;request();}if(loading&&!readyPending){readyPending=true;queueMicrotask(()=>{readyPending=false;ready(terrainWaitExpired);});}nodeLayer();};
+  const terrainError=(event:unknown)=>{const e=event as {sourceId?:string;error?:{message?:string;url?:string}};if((typeof e.sourceId==='string'&&e.sourceId===map.getTerrain()?.source)||/mapterhorn/i.test(`${e.error?.message??''} ${e.error?.url??''}`)){terrainFailed=true;if(active&&!loading&&!flat){clearInput();stateText.textContent='Terrain unavailable here. Retry terrain or exit flight.';hud.querySelector<HTMLButtonElement>('[data-retry]')!.hidden=false;}}};
+  const render=()=>{if(disposed)return;button.disabled=!root.hasAttribute('data-terminal')||!map.getLayer('nodes');if(!active)return;refreshTerrain();if(recovering&&map.getContainer().dataset.graphicsRecovering==='false'){recovering=false;nodeRevision=-1;restoreCamera=true;request();}if(loading&&!readyPending){readyPending=true;queueMicrotask(()=>{readyPending=false;ready(terrainWaitExpired);});}nodeLayer();};
   const idle=()=>{render();if(active&&loading)ready();};
   const appearance=()=>{queueMicrotask(chrome);};
   const leaveForCamera=()=>{if(active)stop();};

@@ -25,6 +25,7 @@ async function enter(page: Page) {
 
 test('@terminal-flight Terminal flies through ASCII buildings and polygon nodes, then restores the map',async({page},info)=>{
   test.skip(info.project.name!=='desktop');
+  test.slow(); // Two terrain loads and inspection, using Actions software graphics.
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await fixture(page);
   const saved=await page.evaluate(()=>{const map=(window as any).flightView.map;return {center:map.getCenter().toArray(),zoom:map.getZoom(),pitch:map.getPitch(),layers:localStorage.getItem('cartolite:terminal-ui:v1'),profile:localStorage.getItem('cartolite:terminal-display:v1'),camera:localStorage.getItem('cartolite:view:v3:desktop')};});
@@ -55,6 +56,7 @@ test('@terminal-flight Terminal flies through ASCII buildings and polygon nodes,
 
 test('@terminal-flight Terminal looks above the horizon without mirrored packet ghosts and stops hidden input',async({page},info)=>{
   test.skip(info.project.name!=='desktop');
+  test.slow(); // Exercise native terrain across the horizon, not a timing benchmark.
   await fixture(page);await enter(page);
   await page.mouse.move(1000,300);await page.mouse.down();await page.mouse.move(1000,760,{steps:8});await page.mouse.up();
   await expect.poll(()=>page.locator('#map').getAttribute('data-flight-pitch').then(Number)).toBeGreaterThan(110);

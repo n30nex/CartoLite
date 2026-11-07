@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { flightBeacons, flightDepth, flightDirection, moveFlight } from './terminalFlightMath';
-import { clipSurfacePath, surfacePathPoint } from './terrainProjection';
+import { clipSurfacePath, surfacePathPoint, surfaceTrail } from './terrainProjection';
 
 it('flies in camera direction, normalizes diagonals and bounds resumed time and geography', () => {
   const start = { lng: -80, lat: 43, altitude: 300, bearing: 0, pitch: 90 };
@@ -41,6 +41,7 @@ it('clips near-camera paths without retiming packets or bridging hidden sections
   const split = clipSurfacePath(points, t => Math.abs(t - .5) * 100 - 10, project);
   expect(split.some(p => p.breakBefore && p.progress! > .6)).toBe(true);
   expect(surfacePathPoint(split, .5).visible).toBe(false);
+  expect(surfaceTrail(split,.5,Infinity)).toEqual([]);
   expect(surfacePathPoint(split, .8).x).toBeCloseTo(80);
   expect(surfacePathPoint(points, -1).x).toBe(0);
 });

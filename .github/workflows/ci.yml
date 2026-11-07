@@ -256,12 +256,26 @@ jobs:
           bash scripts/integration-smoke.sh http://127.0.0.1:39476 artifacts/integration cartolite-mqtt
       - name: Bounded load smoke
         run: bash scripts/performance-smoke.sh http://127.0.0.1:39476 cartolite-mqtt
+      - name: Terminal free flight and graphics recovery
+        working-directory: web
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: flight-playwright-report
+        run: bash ../scripts/browser-ci.sh terminal-flight.spec.ts --output flight-test-results
+      - name: Preserve Terminal flight review
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cartolite-terminal-flight-review
+          retention-days: 30
+          path: |
+            web/flight-test-results/
+            web/flight-playwright-report/
       - name: UI audit and recovery regressions
         working-directory: web
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: ux-audit-playwright-report
         # Select tagged region cases across files, including touch/compositing.
-        run: bash ../scripts/browser-ci.sh --grep 'UI audit|@animation-perf|@regions|@netgraph-scale|@scopes|@terminal-flight' --output ux-audit-test-results
+        run: bash ../scripts/browser-ci.sh --grep 'UI audit|@animation-perf|@regions|@netgraph-scale|@scopes' --output ux-audit-test-results
       - name: Preserve UI audit screenshots for early review
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

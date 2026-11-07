@@ -811,7 +811,7 @@ export class LiveMap {
     this.#historicalRouteLayer.refreshAppearance();
     this.container.dataset.routePreset = displayPreferences().preset;
     if (this.#terrainActive() && previous.terrainExaggeration !== preferences.terrainExaggeration) {
-      this.map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: preferences.terrainExaggeration });
+      this.map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: this.#terminalFlight ? 1 : preferences.terrainExaggeration });
     }
     this.#updateBuildingLayer();
     if (this.map.getLayer(HILLSHADE_LAYER_ID)) {
@@ -1043,7 +1043,7 @@ export class LiveMap {
     this.container.dataset.terrain3d = String(enabled || Boolean(this.#terminalFlight));
     if (!this.#layersReady) return;
     if (terrain) this.#ensureTerrainLayers();
-    this.map.setTerrain(terrain ? { source: TERRAIN_SOURCE_ID, exaggeration: this.#appearance.terrainExaggeration } : null);
+    this.map.setTerrain(terrain ? { source: TERRAIN_SOURCE_ID, exaggeration: this.#terminalFlight ? 1 : this.#appearance.terrainExaggeration } : null);
     this.#updateSky();
     this.map.setLight({ anchor: 'map', color: '#ffffff', intensity: 0.3, position: [1.5, 195, 50] });
     this.#updateBuildingLayer();
@@ -2294,7 +2294,7 @@ export class LiveMap {
       this.setAppearance(this.#appearance,true);
       if (this.#terrainActive()) {
         this.#ensureTerrainLayers();
-        this.map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: this.#appearance.terrainExaggeration });
+        this.map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: this.#terminalFlight ? 1 : this.#appearance.terrainExaggeration });
       }
       this.render(this.#lastState,{reset:true},true);
       this.showFollowPacket(this.#followedPacket);
