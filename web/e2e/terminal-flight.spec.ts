@@ -110,11 +110,14 @@ test('@terminal-flight Terminal touch flight fits 320px and releases held contro
   await expect.poll(()=>page.locator('#map').getAttribute('data-flight-altitude').then(Number)).toBeGreaterThan(altitude);
   await page.waitForTimeout(150);const settled=await page.locator('#map').getAttribute('data-flight-altitude');await page.waitForTimeout(400);
   expect(await page.locator('#map').getAttribute('data-flight-altitude')).toBe(settled);
+  await hud.locator('summary').click();await hud.getByLabel('Flight speed').focus();await page.keyboard.press('ArrowRight');
+  await expect(hud.getByLabel('Flight speed')).toHaveValue('70');await hud.locator('summary').click();
   await page.screenshot({path:info.outputPath('terminal-flight-phone.png')});
   const pose=await page.locator('#map').getAttribute('data-flight-lng');
   await page.setViewportSize({width:720,height:320});await page.waitForTimeout(400);
   expect(await page.locator('#map').getAttribute('data-flight-lng')).toBe(pose);
-  const rotated=await hud.boundingBox();expect(rotated!.y+rotated!.height).toBeLessThan(280);
+  const rotated=await hud.boundingBox();expect(rotated!.y+rotated!.height).toBeLessThan(250);
+  expect(rotated!.x+rotated!.width).toBeLessThan(320); // Keep the scene's centre open.
   await page.screenshot({path:info.outputPath('terminal-flight-landscape.png')});
   await page.locator('#terminal-flight-hud [data-exit]').click();
 });

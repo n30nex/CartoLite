@@ -17,11 +17,11 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   document.querySelector('#terrain-shortcut')!.before(button);
   const hud = document.createElement('section'); hud.id = 'terminal-flight-hud'; hud.className = 'terminal-flight-hud glass'; hud.hidden = true; hud.setAttribute('aria-label','Terminal flight controls');
   hud.innerHTML = '<header><strong>FLY 3D</strong><button type="button" data-look aria-label="Look toward the ground">Look down</button><button type="button" data-exit aria-label="Exit Terminal flight">Exit ×</button></header>'
-    + '<p class="flight-state" role="status">Loading terrain…</p><output class="flight-position" aria-live="off"></output>'
-    + '<label class="flight-speed">Speed <output>60 m/s</output><input type="range" min="10" max="300" step="10" value="60" aria-label="Flight speed"></label>'
+    + '<p class="flight-state" role="status">Loading terrain…</p>'
     + '<div class="flight-pad">'+[['KeyA','←','Strafe left'],['KeyW','↑','Fly forward'],['KeyS','↓','Fly backward'],['KeyD','→','Strafe right'],['KeyQ','−','Fly down'],['KeyE','+','Fly up']].map(([key,icon,label])=>`<button type="button" data-move="${key}" aria-label="${label}" title="${label}">${icon}</button>`).join('')+'</div>'
+    + '<details class="flight-settings"><summary>Speed &amp; controls</summary><output class="flight-position" aria-live="off"></output><label class="flight-speed">Speed <output>60 m/s</output><input type="range" min="10" max="300" step="10" value="60" aria-label="Flight speed"></label>'
     + '<p class="flight-help">Drag to look · WASD / arrows move · Q/E down/up · Shift boosts · Esc exits.</p>'
-    + '<p class="flight-note">Terrain and buildings are enabled for flight. Node beacons mark locations, not antenna heights. Exit restores your map settings.</p>'
+    + '<p class="flight-note">Terrain and buildings are enabled for flight. Node beacons mark locations, not antenna heights. Exit restores your map settings.</p></details>'
     + '<button type="button" data-retry hidden>Retry terrain</button>';
   map.getContainer().after(hud);
   const stateText = hud.querySelector<HTMLElement>('.flight-state')!, position = hud.querySelector<HTMLOutputElement>('.flight-position')!;

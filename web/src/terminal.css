@@ -121,17 +121,25 @@ html:root[data-terminal] .terminal-flight-toggle:disabled { box-shadow:none;text
 .flight-position { display:block;font-size:.85em;color:var(--muted);overflow-wrap:anywhere; }
 .flight-speed { display:grid;grid-template-columns:1fr auto;gap:4px;margin:8px 0; }
 .flight-speed input { width:100%;grid-column:1/-1;min-width:0;accent-color:var(--terminal-accent); }
-.flight-pad { display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:2px; }
+.flight-pad { display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:2px;margin-top:8px; }
 .flight-pad button { min-height:44px;min-width:0;touch-action:none;font-size:20px; }
+.flight-settings { margin-top:6px; }
+.flight-settings summary { min-height:32px;display:flex;align-items:center;cursor:pointer;color:var(--muted); }
+.flight-settings summary::before { content:'▸';margin-right:6px; }
+.flight-settings[open] summary::before { content:'▾'; }
 .flight-help,.flight-note { margin:8px 0 0;font-size:.85em;color:var(--muted); }
 .terminal-flight-hud [data-retry] { margin-top:8px; }
 [data-terminal-flight] .maplibregl-canvas { cursor:crosshair;touch-action:none; }
 @media(max-width:900px),(pointer:coarse) {
   .terminal-flight-hud { top:max(58px,calc(env(safe-area-inset-top) + 52px)); }
   .terminal-flight-hud button { min-height:44px; }
+  .flight-settings summary { min-height:44px; }
   .flight-help { display:none; }
 }
 @media(max-height:480px) and (min-width:560px) {
-  .terminal-flight-hud { top:8px;left:205px;width:min(400px,calc(100% - 220px));max-height:calc(100% - 76px); }
+  .terminal-flight-hud { top:60px;left:12px;width:280px;padding:8px;max-height:calc(100% - 132px); }
+  .terminal-flight-hud .flight-state { margin:3px 0; }
+  .flight-pad { margin-top:4px; }
+  .flight-settings { margin-top:4px; }
   .flight-help,.flight-note { display:none; }
 }
