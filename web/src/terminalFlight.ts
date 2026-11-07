@@ -193,7 +193,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   const appearance=()=>{queueMicrotask(chrome);};
   const leaveForCamera=()=>{if(active)stop();};
   const close=()=>stop();hud.querySelector('[data-exit]')!.addEventListener('click',close);
-  hud.querySelector('[data-look]')!.addEventListener('click',()=>{if(active&&!loading&&!recovering){clearInput();pose.pitch=60;restoreCamera=true;request();canvas.focus({preventScroll:true});}});
+  hud.querySelector('[data-look]')!.addEventListener('click',()=>{if(active&&!loading&&!recovering){clearInput();pose.pitch=60;restoreCamera=false;camera();request();canvas.focus({preventScroll:true});}});
   const retry=()=>load([pose.lng,pose.lat]);hud.querySelector('[data-retry]')!.addEventListener('click',retry);
   const pads=[...hud.querySelectorAll<HTMLButtonElement>('[data-move]')];
   const padDown=(event:PointerEvent)=>{if(!active||loading||recovering||blocked())return;const target=event.currentTarget as HTMLButtonElement;event.preventDefault();target.setPointerCapture(event.pointerId);touches.set(event.pointerId,target.dataset.move!);request();};
