@@ -5,13 +5,11 @@ void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);gl_Position=vec4(p*2.-
 // One pixel per character in the first pass; screen pixels only sample the font.
 const INK = `int ink(vec3 c){
  if(max(c.r,max(c.g,c.b))<26./255.)return 0;
- if(depth){
  if(c.g>c.r*6.&&c.b>c.g*.25&&c.b<c.g*.7)return 12;
  if(c.b>c.r*6.&&c.g>c.b*.35&&c.g<c.b*.75)return 13;
  if(c.r>c.g*6.&&c.b>c.r*.85)return 14;
  if(c.r>c.g*6.&&c.b<c.r*.08)return 15;
  if(c.r>c.g*6.&&c.b>c.r*.2&&c.b<c.r*.55)return 16;
- }
  if(c.b>c.r*1.8&&c.b>c.g*1.6)return 1;
  if(max(c.r,max(c.g,c.b))<100./255.&&c.g>c.r*1.5&&c.g>c.b*1.2)return 9;
  if(max(c.r,max(c.g,c.b))<65./255.&&max(c.r,max(c.g,c.b))-min(c.r,min(c.g,c.b))<5./255.)return 10;
@@ -41,7 +39,6 @@ void main(){
   vec3 c=texture(terminal_scene,clamp(p,vec2(0),vec2(1))).rgb;
   int k=ink(c);float light=max(c.r,max(c.g,c.b));
   for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
-   if(i==0&&j==0)continue; // the centre sample is already classified above
    vec3 sampled=texture(terminal_scene,clamp(p+vec2(i,j)*stepSize/3.,vec2(0),vec2(1))).rgb;
    int sampleInk=ink(sampled);
    if(rank(sampleInk)>rank(k)){k=sampleInk;light=max(sampled.r,max(sampled.g,sampled.b));}

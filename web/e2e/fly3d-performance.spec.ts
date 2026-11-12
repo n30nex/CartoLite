@@ -6,6 +6,7 @@ test('Fly 3D bounded synthetic camera profile', async ({ page }, info) => {
   test.skip(process.env.CARTOLITE_FLIGHT_PROFILE !== '1' || info.project.name !== 'desktop');
   test.setTimeout(240_000);
   const state = await visualFixture(page, 15.5, true), now = Date.now();
+  if (process.env.CARTOLITE_FLIGHT_DETAIL) await page.addInitScript(detail => localStorage.setItem('cartolite:flight-detail:v1', detail), process.env.CARTOLITE_FLIGHT_DETAIL);
   state.nodes = Array.from({ length: 1024 }, (_, i) => ({
     id: `profile-${i}`, label: `Radio ${i}`, role: 'repeater' as const, observer: false, lastSeen: now,
     lng: -80.35 + (i % 32 - 16) * .00015, lat: 43.45 + (Math.floor(i / 32) - 16) * .00015,
