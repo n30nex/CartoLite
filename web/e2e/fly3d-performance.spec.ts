@@ -46,7 +46,7 @@ test('Fly 3D bounded synthetic camera profile', async ({ page }, info) => {
   });
   await page.goto(process.env.CARTOLITE_PROFILE_PAGE || '/terminal/');
   await expect(page.locator('#map')).toHaveAttribute('data-rendered-route-segments', '7000', { timeout: 90_000 });
-  await page.locator('#terminal-flight-button').click();
+  if (await page.locator('#terminal-flight-button').getAttribute('aria-pressed') !== 'true') await page.locator('#terminal-flight-button').click();
   await expect(page.locator('#map')).toHaveAttribute('data-flight-state', 'flying', { timeout: 60_000 });
   await page.waitForTimeout(1500);
   const cdp = await page.context().newCDPSession(page);
@@ -59,7 +59,7 @@ test('Fly 3D bounded synthetic camera profile', async ({ page }, info) => {
     const profile = await cdp.send('Profiler.stop');
     const stats = await page.evaluate(() => {
       const p = (window as any).flightProfile; p.active = false;
-      return { counts: p.counts, gaps: p.gaps, metrics: { ...document.querySelector<HTMLElement>('#map')!.dataset } };
+      return { counts: p.counts, gaps: p.gaps, pixelRatio: (window as any).profileMap.getPixelRatio(), metrics: { ...document.querySelector<HTMLElement>('#map')!.dataset } };
     });
     await info.attach(`flight-${phase}`, { body: JSON.stringify(stats), contentType: 'application/json' });
     await info.attach(`flight-${phase}.cpuprofile`, { body: JSON.stringify(profile.profile), contentType: 'application/json' });
