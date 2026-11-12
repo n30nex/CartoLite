@@ -65,12 +65,15 @@ export function mapFlight(view: LiveMap, animator: PacketAnimator, callbacks: { 
     if(!active||document.hidden)return;
     detailTimer=window.setTimeout(()=>{
       detailTimer=0;
-      if(active&&saved&&!document.hidden&&!recovering&&!dragging&&!touches.size&&![...keys].some(k=>!k.startsWith('Shift')))pixelRatio(saved.pixelRatio);
+      if(active&&saved&&!loading&&!document.hidden&&!recovering&&!dragging&&!touches.size&&![...keys].some(k=>!k.startsWith('Shift')))pixelRatio(saved.pixelRatio);
     },500);
   }
   function adaptDetail(elapsedMS:number) {
     clearTimeout(detailTimer);detailTimer=0;
     if(fullDetail||!saved)return;
+    // High-density screens need not rasterize nine pixels per CSS pixel while
+    // moving. Apply the motion budget before the first expensive camera frame.
+    pixelRatio(Math.min(map.getPixelRatio(),saved.pixelRatio,1.5));
     motionMS+=Math.min(2000,elapsedMS);motionFrames++;
     if(motionMS<1200)return;
     if(motionMS/motionFrames>40)pixelRatio(Math.max(Math.min(.6,saved.pixelRatio),map.getPixelRatio()*.8));
@@ -149,6 +152,7 @@ export function mapFlight(view: LiveMap, animator: PacketAnimator, callbacks: { 
   }
   function load(at: [number,number]) {
     clearInput();loading=true;flat=false;terrainFailed=false;terrainReady=false;terrainWaitExpired=false;anchor=at;
+    if(!fullDetail&&saved)pixelRatio(Math.min(saved.pixelRatio,1.5));
     map.getContainer().dataset.flightState='loading';
     stateText.textContent='Loading terrain…';hud.querySelector<HTMLButtonElement>('[data-retry]')!.hidden=true;
     hud.querySelectorAll<HTMLButtonElement>('[data-move],[data-look]').forEach(b=>b.disabled=true);

@@ -14,8 +14,10 @@ The patch targets unchanged route-window work triggered by tiny camera zoom
 changes and excessive raster work during slow flight. Keep the existing ASCII
 shader: a proposed sampling shortcut regressed the first V3D comparison and was
 removed before release.
-Auto flight detail reduces map raster resolution only while moving; labels and
-packet timing retain their own presentation/clock. Full sharpness returns at rest
+Auto flight detail caps raster density at 1.5 during terrain startup and the first
+motion frame, then adapts further when rendering is slow. This avoids paying for
+a full high-density frame before adaptation can react. Packet timing stays on
+its existing clock. Full sharpness returns at rest
 or on exit. A saved Full detail choice disables adaptation. No route or node is
 discarded to improve a measurement.
 
