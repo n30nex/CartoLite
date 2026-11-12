@@ -33,6 +33,9 @@ test('Fly 3D bounded synthetic camera profile', async ({ page }, info) => {
     window.addEventListener('cartolite-map-ready', event => {
       const { view } = (event as CustomEvent).detail, map = view.map;
       (window as any).profileMap = map; (window as any).profileView = view;
+      new MutationObserver(records => {
+        if (stats.active) { const row=stats.counts['route-window refresh'] ??= {calls:0,ms:0};row.calls+=records.length; }
+      }).observe(map.getContainer(),{attributes:true,attributeFilter:['data-eligible-routes']});
       for (const name of ['jumpTo', 'project', 'queryRenderedFeatures', 'queryTerrainElevation', 'isSourceLoaded', 'getPaintProperty', 'setPaintProperty', 'setLayoutProperty', 'setFilter', 'setFeatureState']) wrap(map, name);
       const add = map.addLayer.bind(map);
       map.addLayer = (layer: any, ...args: any[]) => {
@@ -57,7 +60,8 @@ test('Fly 3D bounded synthetic camera profile', async ({ page }, info) => {
     await page.evaluate(phase => { const p = (window as any).flightProfile; p.skipAscii = phase !== 'full'; (window as any).profileView.setRoutesVisible(phase !== 'without-history'); p.counts = {}; p.gaps = []; p.last = 0; p.active = true; }, phase);
     await cdp.send('Profiler.start');
     await page.locator('.maplibregl-canvas').focus();
-    await page.keyboard.down('KeyD'); await page.waitForTimeout(8000); await page.keyboard.up('KeyD');
+    const key=process.env.CARTOLITE_PROFILE_KEY || 'KeyD';
+    await page.keyboard.down(key); await page.waitForTimeout(8000); await page.keyboard.up(key);
     const profile = await cdp.send('Profiler.stop');
     const stats = await page.evaluate(() => {
       const p = (window as any).flightProfile; p.active = false;

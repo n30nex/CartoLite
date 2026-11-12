@@ -7,9 +7,9 @@ export function rememberNode(id: string | null): void {
   const url = new URL(location.href);
   if (id) url.searchParams.set('node', id); else url.searchParams.delete('node');
   history.replaceState(history.state, '', url);
-  for (const link of document.querySelectorAll<HTMLAnchorElement>('.dock-views a')) {
+  for (const link of document.querySelectorAll<HTMLAnchorElement>('.dock-views a, #fly-map-link')) {
     const target = new URL(link.href);
-    if (target.pathname !== '/' && !target.pathname.startsWith('/netgraph') && !target.pathname.startsWith('/terminal') && !target.pathname.startsWith('/chronoscope') && !target.pathname.startsWith('/firehose') && !target.pathname.startsWith('/pachinko')) continue;
+    if (target.pathname !== '/' && !target.pathname.startsWith('/netgraph') && !target.pathname.startsWith('/terminal') && !target.pathname.startsWith('/fly-3d') && !target.pathname.startsWith('/chronoscope') && !target.pathname.startsWith('/firehose') && !target.pathname.startsWith('/pachinko')) continue;
     if (id) target.searchParams.set('node', id); else target.searchParams.delete('node');
     link.href = target.pathname + target.search;
   }

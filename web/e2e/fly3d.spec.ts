@@ -24,9 +24,10 @@ test('Fly 3D opens the regular map with one feed and preserves camera, styles an
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await visualFixture(page,15.5,true);
   await page.addInitScript(()=>window.addEventListener('cartolite-map-ready',e=>Object.assign(window,{flyView:(e as CustomEvent).detail.view}),{once:true}));
-  await page.goto('/fly-3d/');
+  await page.goto('/fly-3d/?node=visual-a');
   const map=page.locator('#map');
   await expect(map).toHaveAttribute('data-flight-state','flying',{timeout:30000});
+  await expect(map).toHaveAttribute('data-selected-node-id','visual-a');
   await expect(page.locator('html')).not.toHaveAttribute('data-terminal');
   await expect(page.locator('#terminal-map')).toHaveCount(0);
   await expect(page.locator('html')).toHaveAttribute('data-fixture-streams-active','1');

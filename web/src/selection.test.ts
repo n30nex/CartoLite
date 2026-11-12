@@ -1,7 +1,17 @@
 import { afterEach, expect, it } from 'vitest';
-import { replaceInspector } from './selection';
+import { rememberNode, replaceInspector } from './selection';
 
-afterEach(() => document.body.replaceChildren());
+afterEach(() => {document.body.replaceChildren();history.replaceState(null,'','/');});
+
+it('carries the selected public node through both Fly 3D entry links', () => {
+  document.body.innerHTML='<nav class="dock-views"><a href="/fly-3d/">Fly</a><a href="/netgraph/">Graph</a><a href="/labs/">Labs</a></nav><a id="fly-map-link" href="/fly-3d/?scope=YYZ">Fly from terrain</a>';
+  rememberNode('public-node');
+  expect(document.querySelector('.dock-views a')!.getAttribute('href')).toBe('/fly-3d/?node=public-node');
+  expect(document.querySelector('#fly-map-link')!.getAttribute('href')).toBe('/fly-3d/?scope=YYZ&node=public-node');
+  expect(document.querySelector('a[href="/labs/"]')).not.toBeNull();
+  rememberNode(null);
+  expect(document.querySelector('#fly-map-link')!.getAttribute('href')).toBe('/fly-3d/?scope=YYZ');
+});
 
 it('retains a focused connection when live updates reorder the chooser', () => {
   const host = document.createElement('aside'); document.body.append(host);
