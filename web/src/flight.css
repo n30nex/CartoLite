@@ -14,6 +14,7 @@ html:root:is([data-terminal],[data-fly3d]) .terminal-flight-toggle:disabled { bo
   color:var(--ink);background:var(--panel-solid);border:1px solid var(--panel-border);font:calc(12px * var(--terminal-scale,1) * var(--terminal-text-factor,1))/1.5 var(--terminal-font,system-ui);
 }
 .terminal-flight-hud[hidden] { display:none; }
+:root[data-text-size="large"] .terminal-flight-hud { --terminal-text-factor:1.25; }
 .terminal-flight-hud header { display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px; }
 .terminal-flight-hud strong { color:var(--terminal-accent,var(--focus-ring));letter-spacing:.15em; }
 .terminal-flight-hud button { color:var(--ink-strong);background:var(--field-bg);border:1px solid var(--panel-border);border-radius:2px;min-height:36px;cursor:pointer; }

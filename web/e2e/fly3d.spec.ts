@@ -51,6 +51,7 @@ test('Fly 3D opens the regular map with one feed and preserves camera, styles an
 
 test('Fly 3D touch controls stay inside a 320px phone and retain the full-detail choice',async({page},info)=>{
   test.skip(!['mobile','mobile-webkit'].includes(info.project.name));test.slow();
+  await page.addInitScript(()=>localStorage.setItem('cartolite:display:v1',JSON.stringify({textSize:'large'})));
   await page.setViewportSize({width:320,height:720});await visualFixture(page,15.5,true);await page.goto('/fly-3d/');
   await expect(page.locator('#map')).toHaveAttribute('data-flight-state','flying',{timeout:30000});
   const hud=page.locator('#terminal-flight-hud');const box=await hud.boundingBox();expect(box!.x+box!.width).toBeLessThanOrEqual(320);
