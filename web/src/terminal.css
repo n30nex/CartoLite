@@ -14,6 +14,8 @@
 :root[data-terminal][data-text-size="large"] { --terminal-text-factor:1.15; }
 [data-terminal] .route-preview { background:var(--terminal-background,#000); color:var(--terminal-advert,var(--terminal-accent)); }
 [data-terminal] body, [data-terminal] #map { background:var(--terminal-background,#000); }
+[data-terminal] #map[data-terminal-renderer="preparing"] .maplibregl-canvas { opacity:0; }
+[data-terminal]:has(#map[data-terminal-renderer="preparing"]) #terminal-status::after { content:' · Loading Terminal…';color:var(--terminal-accent); }
 html:root[data-terminal] :is(.glass,dialog,.maplibregl-popup-content,.maplibregl-ctrl-attrib) { border-radius:2px; background:var(--panel-solid); border-color:var(--panel-border); box-shadow:none; backdrop-filter:none; color:var(--ink); font-family:inherit; }
 [data-terminal] button, [data-terminal] select, [data-terminal] input { font-family: inherit; }
 [data-terminal] :is(.control-button,.dock-views a,.node-inspector,.sound-panel,.map-appearance,.layer-toggles,.follow-card) { font-size:calc(11px * var(--terminal-scale,1) * var(--terminal-text-factor,1)); }

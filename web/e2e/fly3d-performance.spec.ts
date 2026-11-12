@@ -56,12 +56,24 @@ test('Fly 3D bounded synthetic camera profile', async ({ page }, info) => {
   const nativePixelRatio = await page.evaluate(() => (window as any).profileMap.getPixelRatio());
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Profiler.enable');
-  for (const phase of ['full', 'without-ascii-pass', 'without-history']) {
+  for (const phase of process.env.CARTOLITE_PROFILE_FRAMES ? ['full'] : ['full', 'without-ascii-pass', 'without-history']) {
     await page.evaluate(phase => { const p = (window as any).flightProfile; p.skipAscii = phase !== 'full'; (window as any).profileView.setRoutesVisible(phase !== 'without-history'); p.counts = {}; p.gaps = []; p.last = 0; p.active = true; }, phase);
     await cdp.send('Profiler.start');
     await page.locator('.maplibregl-canvas').focus();
-    const key=process.env.CARTOLITE_PROFILE_KEY || 'KeyD';
-    await page.keyboard.down(key); await page.waitForTimeout(8000); await page.keyboard.up(key);
+    if (process.env.CARTOLITE_PROFILE_FRAMES) {
+      // Same camera positions and rendered frames in both revisions. An eight-
+      // second key hold otherwise travels less far when its frame rate is lower.
+      await page.evaluate(async()=>{
+        const map=(window as any).profileMap, zoom=map.getZoom();
+        await new Promise<void>(resolve=>{let step=0;const move=()=>{
+          map.jumpTo({zoom:zoom-(++step)*.002},{terminalFlight:true});
+          if(step<180)requestAnimationFrame(move);else requestAnimationFrame(()=>resolve());
+        };requestAnimationFrame(move);});
+      });
+    } else {
+      const key=process.env.CARTOLITE_PROFILE_KEY || 'KeyD';
+      await page.keyboard.down(key); await page.waitForTimeout(8000); await page.keyboard.up(key);
+    }
     const profile = await cdp.send('Profiler.stop');
     const stats = await page.evaluate(() => {
       const p = (window as any).flightProfile; p.active = false;

@@ -6,6 +6,15 @@ The default release path is GitHub Actions. Use this procedure only after the re
 2. Verify the saved `neopi5` ED25519 host fingerprint out of band. Never weaken SSH host-key checking.
 3. Transfer the exact candidate source to an isolated Pi directory. Run frontend unit tests, typecheck/build, bundle and MeshCore Canada region contracts, Go module verification, unit tests, vet, race tests on a supported amd64 execution environment, and operations transition tests. The owner authorized the 12 November 2026 Pi build; retain the normal source and runtime gates. The Pi kernel's address layout is unsupported by Go's ARM64 race checker, so an ARM64 checker startup failure is not a passing race test. For browsers, expose only `/dev/dri` to the isolated test container and set `CARTOLITE_PI_GPU=1`; verify V3D is the actual renderer. Actions retains software rendering. Compare before/after on the same renderer and keep existing test thresholds.
 4. Require Buildx to advertise or successfully build `linux/amd64`, then execute the candidate amd64 container on the Pi. Stop if architecture build or execution cannot be proved.
+
+   The November Pi runner's QEMU exhibited Go runtime faults during longer runs,
+   while the same binaries passed on native AMD64. Do not use an emulated server
+   for browser qualification or treat those faults as an application pass. Build
+   a native ARM64 preview from the exact same source for Pi browser checks, verify
+   matching frontend assets, and execute the published AMD64 candidate on an
+   isolated native x86 host. The Canada release remains AMD64. Race binaries can
+   also be cross-compiled on the Pi and run in native, read-only containers with
+   no network or production mounts. Retain all assertions and resource gates.
 5. Confirm no unrelated repository run is active. Temporarily disable `ci.yml` and `release.yml`, record their prior states, then push the branch, open and review the pull request, and merge using the explicit manual-check exception.
 6. Fetch the exact merged `main` SHA on the Pi and rerun the source gates. Build `ghcr.io/n30nex/cartolite:sha-<full-sha>` for `linux/amd64` using `TARGETOS` and `TARGETARCH`. Supply the browser-visible CARTO key through a temporary root-only BuildKit secret.
 7. Keep registry credentials and the CARTO key in root-only temporary files, authenticate through standard input, verify TileJSON/vector PBF/glyph authorization without printing the key, and remove the files after publishing.
