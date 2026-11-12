@@ -44,6 +44,10 @@ for (const viewPath of ['/', '/terminal/', '/?repeater_scopes=on']) test('keeps 
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-power-mode', testInfo.project.name.startsWith('mobile') ? 'low' : 'full');
   await expect(page.locator('#packet-canvas')).toHaveAttribute('data-quality-mode', viewPath === '/terminal/' ? 'full' : testInfo.project.name.startsWith('mobile') ? 'low' : 'full');
   await expect(page.locator('#map')).toHaveAttribute('data-render-state', 'idle', { timeout: 10_000 });
+  if(viewPath === '/terminal/') {
+    await expect(page.locator('#map')).toHaveAttribute('data-terminal-renderer','webgl2',{timeout:10_000});
+    expect(await page.locator('#map .maplibregl-canvas').evaluate(element=>getComputedStyle(element).opacity)).toBe('1');
+  }
   expect(Date.now() - started, 'large topology should hydrate inside the first-view budget').toBeLessThan(10_000);
   const map = page.locator('#map');
   await expect(page.locator('#route-canvas')).toHaveCount(0);

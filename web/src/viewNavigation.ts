@@ -1,10 +1,11 @@
 import './viewNavigation.css';
 
-export type CartoView = 'Map' | 'Netgraph' | 'Terminal' | 'Chronoscope' | 'Firehose' | 'Pachinko' | 'Labs';
+export type CartoView = 'Map' | 'Netgraph' | 'Terminal' | 'Fly 3D' | 'Chronoscope' | 'Firehose' | 'Pachinko' | 'Labs';
 const ICONS: Record<string, string> = {
   Map: 'M3 5 9 3l6 2 6-2v16l-6 2-6-2-6 2V5Zm6-2v16m6-14v16',
   Netgraph: 'M5 5h4v4H5zm10 10h4v4h-4zM15 3h4v4h-4zM3 15h4v4H3zm6-8 6-2M7 9l-2 6m4-6 6 6m-8 2h8',
   Terminal: 'm4 6 5 6-5 6m8 0h8',
+  'Fly 3D': 'm3 11 18-8-8 18-2-8-8-2Zm8 2L21 3',
   Experimental: 'M9 3h6m-5 0v6l-6 10a1 1 0 0 0 1 2h14a1 1 0 0 0 1-2L14 9V3M7 15h10',
   Chronoscope: 'm12 2 9 5-9 5-9-5 9-5Zm-9 10 9 5 9-5M3 17l9 5 9-5',
   Firehose: 'M3 3h9v5H8v4m0 3v1m-3 2v1m6-1v1m4-7 6-3v12H3v-9',
@@ -51,10 +52,10 @@ export function createViewNavigation(view: CartoView, extras: ReadonlySet<string
     });
     return list;
   };
-  const experiments = ['Chronoscope', 'Firehose', 'Pachinko'].filter(name => extras.has(name.toLowerCase()));
+  const experiments = ['Fly 3D', 'Chronoscope', 'Firehose', 'Pachinko'].filter(name => extras.has(name === 'Fly 3D' ? 'fly-3d' : name.toLowerCase()));
   if (experiments.length) {
     const list = group('Experimental', 'experimental', experiments.includes(view));
-    for (const name of experiments) list.append(link(name, `/${name.toLowerCase()}/`));
+    for (const name of experiments) list.append(link(name, `/${name === 'Fly 3D' ? 'fly-3d' : name.toLowerCase()}/`));
   }
   document.getElementById('labs-link')?.remove();
   if (labs) {

@@ -18,10 +18,12 @@ export default defineConfig({
         // Keep shared controls, projections and effects together. Entry points
         // and MapLibre stay separate, so Netgraph never loads the basemap.
         codeSplitting: { groups: [
+          { name: 'maplibre', test: /[\\/]node_modules[\\/]maplibre-gl[\\/]/, priority: 30, includeDependenciesRecursively: false },
           { name: 'three', test: /[\\/]node_modules[\\/]three[\\/]/, priority: 30, includeDependenciesRecursively: false },
           { name: 'arcade', test: /[\\/]src[\\/](?:firehose|pachinko)[\\/]/, priority: 20, includeDependenciesRecursively: false },
           { name: 'scene3d', test: /[\\/]src[\\/](?:sceneMaterials|sceneFraming)\.ts$/, priority: 25, includeDependenciesRecursively: false },
           { name: 'terminal', test: /[\\/]src[\\/]terminal(?:Grid|Graphics)?\.ts$/, priority: 20, includeDependenciesRecursively: false },
+          { name: 'flight', test: /[\\/]src[\\/](?:(?:mapFlight|terminalFlightMath)\.ts|flight\.css)$/, priority: 25, includeDependenciesRecursively: false },
           { name: 'chronoscope', test: /[\\/]src[\\/]chronoscope[\\/]/, priority: 20, includeDependenciesRecursively: false },
           { name: 'shared', test: /[\\/]src[\\/]/, minShareCount: 2, priority: 10 },
         ] },
@@ -29,6 +31,7 @@ export default defineConfig({
       input: {
         main: inputPath('index.html'),
         terminal: inputPath('src/terminal.ts'),
+        fly3d: inputPath('src/fly3d.ts'),
         labs: inputPath('labs/index.html'),
         netgraph: inputPath('netgraph/index.html'),
         chronoscope: inputPath('chronoscope/index.html'),

@@ -99,7 +99,7 @@ test('@terminal-flight Terminal has an explicit flat fallback and keeps the exis
 });
 
 test('@terminal-flight Terminal touch flight fits 320px and releases held controls',async({page},info)=>{
-  test.skip(info.project.name!=='mobile-webkit');
+  test.skip(!['mobile','mobile-webkit'].includes(info.project.name));
   await page.setViewportSize({width:320,height:720});await fixture(page);await enter(page);
   const hud=page.locator('#terminal-flight-hud'),button=page.locator('[data-move="KeyE"]');
   const bounds=await hud.boundingBox();expect(bounds!.x).toBeGreaterThanOrEqual(0);expect(bounds!.x+bounds!.width).toBeLessThanOrEqual(320);
@@ -113,10 +113,21 @@ test('@terminal-flight Terminal touch flight fits 320px and releases held contro
   await hud.locator('summary').click();await hud.getByLabel('Flight speed').focus();await page.keyboard.press('ArrowRight');
   await expect(hud.getByLabel('Flight speed')).toHaveValue('70');await hud.locator('summary').click();
   await page.screenshot({path:info.outputPath('terminal-flight-phone.png')});
+  await page.locator('#terminal-flight-hud [data-exit]').click();
+});
+
+// Keep independent touch and rotation journeys within the normal test budget.
+// The existing startup, input-release and 400ms rotation checks stay unchanged.
+test('@terminal-flight Terminal rotation preserves its camera and fits short landscape',async({page},info)=>{
+  test.skip(!['mobile','mobile-webkit'].includes(info.project.name));
+  await page.setViewportSize({width:320,height:720});await fixture(page);await enter(page);
+  const hud=page.locator('#terminal-flight-hud');
   const pose=await page.locator('#map').getAttribute('data-flight-lng');
+  const altitude=await page.locator('#map').getAttribute('data-flight-altitude');
   const portraitZoom=await page.evaluate(()=>(window as any).flightView.map.getZoom());
   await page.setViewportSize({width:720,height:320});await page.waitForTimeout(400);
   expect(await page.locator('#map').getAttribute('data-flight-lng')).toBe(pose);
+  expect(await page.locator('#map').getAttribute('data-flight-altitude')).toBe(altitude);
   const landscapeZoom=await page.evaluate(()=>(window as any).flightView.map.getZoom());
   expect(landscapeZoom-portraitZoom).toBeCloseTo(Math.log2(320/720),1);
   const rotated=await hud.boundingBox();expect(rotated!.y+rotated!.height).toBeLessThan(250);

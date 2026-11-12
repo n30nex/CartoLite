@@ -6,7 +6,7 @@ import { terminalGraphics } from './terminalGraphics';
 import { characterCells } from './terminalGrid';
 import { loadTerminal, TERMINAL_FONTS, TERMINAL_KEY, TERMINAL_LEGACY_KEY, shade, terminalNeedsRecovery } from './terminalProfile';
 import { terminalControls } from './terminalControls';
-import { terminalFlight } from './terminalFlight';
+import { mapFlight } from './mapFlight';
 import './terminal.css';
 
 const ROLES: Record<string, string> = { repeater: 'R', companion: 'C', room_server: 'H', sensor: 'S' };
@@ -31,7 +31,7 @@ export function mountTerminal(view: LiveMap, animator: PacketAnimator, callbacks
   const originalPaint = new Map<string, { layer: string; property: string; value: Parameters<typeof map.setPaintProperty>[2] }>();
   let labelLayers: string[] = [];
   let disposed = false, failed = false, lastPacket = 0;
-  let flight: ReturnType<typeof terminalFlight> | undefined;
+  let flight: ReturnType<typeof mapFlight> | undefined;
   const canvas = document.createElement('canvas'), effects = document.createElement('canvas');
   canvas.id = 'terminal-map'; effects.id = 'terminal-packets';
   for (const element of [canvas, effects]) { element.className = 'terminal-canvas'; element.setAttribute('aria-hidden', 'true'); host.after(element); }
@@ -324,7 +324,7 @@ export function mountTerminal(view: LiveMap, animator: PacketAnimator, callbacks
       lastPacket = now;
     } catch { fail(); }
   });
-  flight = terminalFlight(view, animator, { ...callbacks, changed: () => { style(); schedule(); } });
+  flight = mapFlight(view, animator, { ...callbacks, changed: () => { style(); schedule(); } });
   sync(); style();
   const destroy = () => {
     if (disposed) return;

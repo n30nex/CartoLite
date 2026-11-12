@@ -82,6 +82,7 @@ export function terminalGraphics(map: LibreMap, config: () => { columns: number;
   let locations: Record<string, WebGLUniformLocation | null>[] = [], width = 0, height = 0, columns = 0, rows = 0, disposed = false, lastLabels = 0;
   const metrics = map.getContainer().dataset;
   let atlasFont = '';
+  let parallel: KHR_parallel_shader_compile | null = null, compileStarted = 0;
   function release() {
     if (gl) {
       for (const p of programs) gl.deleteProgram(p);
@@ -91,17 +92,32 @@ export function terminalGraphics(map: LibreMap, config: () => { columns: number;
     }
     programs = []; textures = []; shaders = []; locations = []; framebuffer = vao = null;
     width = height = columns = rows = 0; atlasFont='';
+    parallel=null;compileStarted=0;metrics.terminalRenderer='preparing';
   }
   function initialize(g: WebGL2RenderingContext) {
+    parallel=g.getExtension('KHR_parallel_shader_compile');compileStarted=performance.now();
+    metrics.terminalRenderer='preparing';
     for (const fragment of [CELLS, GLYPHS]) {
       const p = g.createProgram(); if (!p) throw new Error('Terminal program unavailable'); programs.push(p);
       for (const [type, source] of [[g.VERTEX_SHADER, VERTEX], [g.FRAGMENT_SHADER, fragment]] as const) {
         const s = g.createShader(type); if (!s) throw new Error('Terminal shader unavailable'); shaders.push(s);
         g.shaderSource(s, source); g.compileShader(s);
-        if (!g.getShaderParameter(s, g.COMPILE_STATUS)) throw new Error('Terminal shader unavailable');
         g.attachShader(p, s);
       }
-      g.linkProgram(p); if (!g.getProgramParameter(p, g.LINK_STATUS)) throw new Error('Terminal program unavailable');
+      g.linkProgram(p);
+    }
+  }
+  function ready(g: WebGL2RenderingContext): boolean {
+    if(locations.length)return true;
+    if(parallel&&programs.some(p=>!g.getProgramParameter(p,parallel!.COMPLETION_STATUS_KHR))){
+      if(performance.now()-compileStarted>15_000)throw new Error('Terminal preparation timed out');
+      map.triggerRepaint();return false;
+    }
+    // Validate only once compilation is complete; querying these statuses
+    // immediately after compile/link can stall the page for several seconds.
+    for(const s of shaders)if(!g.getShaderParameter(s,g.COMPILE_STATUS))throw new Error('Terminal shader unavailable');
+    for(const p of programs){
+      if(!g.getProgramParameter(p,g.LINK_STATUS))throw new Error('Terminal program unavailable');
       locations.push(Object.fromEntries(['terminal_scene','grid','ascii','cells','glyphs','viewport','colors[0]','mode','brightness','depth'].map(name => [name,g.getUniformLocation(p,name)])));
     }
     for (const s of shaders) g.deleteShader(s); shaders = [];
@@ -113,6 +129,7 @@ export function terminalGraphics(map: LibreMap, config: () => { columns: number;
       g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.NEAREST); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.NEAREST);
       g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
     }
+    return true;
   }
   function updateFont(g: WebGL2RenderingContext, font: string) {
     if(atlasFont===font)return;
@@ -129,7 +146,7 @@ export function terminalGraphics(map: LibreMap, config: () => { columns: number;
   }
   const layer: CustomLayerInterface = {
     id: 'terminal-graphics', type: 'custom', renderingMode: '2d',
-    onAdd(_map, context) { gl = context as WebGL2RenderingContext; }, onRemove: release,
+    onAdd(_map, context) { gl = context as WebGL2RenderingContext; metrics.terminalRenderer='preparing'; }, onRemove: release,
     render(context) {
       const g = gl = context as WebGL2RenderingContext;
       if (disposed || !enabled() || g.isContextLost()) return;
@@ -141,6 +158,7 @@ export function terminalGraphics(map: LibreMap, config: () => { columns: number;
         g.bindBuffer(g.PIXEL_UNPACK_BUFFER,null); g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL,false);
         g.activeTexture(g.TEXTURE0);
         if (!programs.length) initialize(g);
+        if (!ready(g)) return;
         const options = config(), w = g.drawingBufferWidth, h = g.drawingBufferHeight;
         updateFont(g,options.font);g.activeTexture(g.TEXTURE0);
         g.bindTexture(g.TEXTURE_2D,textures[0]!);
@@ -165,7 +183,8 @@ export function terminalGraphics(map: LibreMap, config: () => { columns: number;
         g.uniform1i(b.terminal_scene!,0);g.uniform1i(b.mode!,options.mode);g.uniform1f(b.brightness!,options.brightness);g.uniform1i(b.depth!,Number(Boolean(options.depth)));
         g.uniform3fv(b['colors[0]']!, options.colors.flatMap(color => { const n=parseInt(color.slice(1),16); return [(n>>16&255)/255,(n>>8&255)/255,(n&255)/255]; }));
         g.drawArrays(g.TRIANGLES,0,3);
-        metrics.terminalRenderer='webgl2'; metrics.terminalGridCells=String(columns*rows);
+        if(metrics.terminalRenderer!=='webgl2')metrics.terminalRenderer='webgl2';
+        metrics.terminalGridCells=String(columns*rows);
         metrics.terminalDrawing=String(options.mode);metrics.terminalBrightness=String(options.brightness);
         metrics.terminalSamples=String(Number(metrics.terminalSamples??0)+1);
         if (performance.now()-lastLabels>100) { frame(); lastLabels=performance.now(); }

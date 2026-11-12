@@ -205,6 +205,8 @@ export class LiveMap {
   #lastRouteHydrationAt = 0;
   #routeSourceRevision = 0;
   #routeClock = 0;
+  #appliedRouteWindowMS = -1;
+  #announcedAutoWindow = '';
   #routeDetailFeatures = new Map<string, Feature<LineString>>();
   #dirtyRouteIDs = new Set<string>();
   #rebuildAllRoutes = true;
@@ -334,6 +336,10 @@ export class LiveMap {
     this.map.on('load', installInitialLayers);
     this.map.on('movestart', () => { this.container.dataset.cameraMoving = 'true'; });
     this.map.on('sourcedata', (event) => {
+      if (event.sourceId === REGION_ATTRIBUTION_SOURCE_ID && event.isSourceLoaded) {
+        // The region legend need not wait for unrelated basemap tiles to idle.
+        this.map.once('render', this.#updateRegionLegend);
+      }
       if (this.#buildingSourceID && event.sourceId === this.#buildingSourceID) {
         this.container.dataset.buildingsLoaded = String(this.map.isSourceLoaded(this.#buildingSourceID));
       }
@@ -1086,12 +1092,12 @@ export class LiveMap {
   }
 
   #updateSky(): void {
-    if (this.#terminalFlight) {
+    if (this.#terminalFlight && document.documentElement.hasAttribute('data-terminal')) {
       this.map.setSky({ 'sky-color': '#030609', 'horizon-color': '#030609', 'fog-color': '#030609', 'horizon-fog-blend': 0 });
       return;
     }
     const light = this.#lightScene();
-    this.map.setSky(this.#terrain3D ? { 'sky-color': light ? '#cfe1e8' : '#14242e', 'horizon-color': light ? '#eef1ee' : '#29424a', 'fog-color': light ? '#dce7e5' : '#14242e', 'horizon-fog-blend': 0.15 } : {});
+    this.map.setSky(this.#terrain3D || this.#terminalFlight ? { 'sky-color': light ? '#cfe1e8' : '#14242e', 'horizon-color': light ? '#eef1ee' : '#29424a', 'fog-color': light ? '#dce7e5' : '#14242e', 'horizon-fog-blend': 0.15 } : {});
   }
 
   #updateRegionLegend = (): void => {
@@ -1274,6 +1280,12 @@ export class LiveMap {
       this.#emitRouteWindowChange();
       return;
     }
+    // Flight updates the camera continuously. Route age windows change only at
+    // zoom thresholds; data/clock/selection updates have their own refresh path.
+    if (this.#appliedRouteWindowMS === this.#effectiveRouteAgeMS()) {
+      this.#emitRouteWindowChange();
+      return;
+    }
     const visibilityApplied = applyRouteVisibilityForZoom(
       this.map,
       this.routesVisible && this.#selectedNodeID !== null,
@@ -1327,6 +1339,8 @@ export class LiveMap {
 
   #applyRouteTimeState(now = trafficNow(), refreshClock = false): void {
     const maxAge = this.#effectiveRouteAgeMS();
+    this.#appliedRouteWindowMS = maxAge;
+    this.container.dataset.routeWindowRefreshes = String(Number(this.container.dataset.routeWindowRefreshes ?? 0) + 1);
     if (refreshClock || this.#routeClock === 0) this.#routeClock = now;
     this.#historicalRouteLayer.setMaximumBand(routeWindowBand(maxAge));
     this.container.dataset.eligibleRoutes = String(countEligibleRoutes(this.#routesByID.values(), this.#nodesByID, this.#routeClock, maxAge));
@@ -1336,7 +1350,10 @@ export class LiveMap {
   }
 
   #emitRouteWindowChange(): void {
-    this.#options.onRouteWindowChange?.(routeWindowLabel('auto', this.map.getZoom()));
+    const label = routeWindowLabel('auto', this.map.getZoom());
+    if (label === this.#announcedAutoWindow) return;
+    this.#announcedAutoWindow = label;
+    this.#options.onRouteWindowChange?.(label);
   }
 
   #effectiveRouteAgeMS(): number {
