@@ -336,6 +336,10 @@ export class LiveMap {
     this.map.on('load', installInitialLayers);
     this.map.on('movestart', () => { this.container.dataset.cameraMoving = 'true'; });
     this.map.on('sourcedata', (event) => {
+      if (event.sourceId === REGION_ATTRIBUTION_SOURCE_ID && event.isSourceLoaded) {
+        // The region legend need not wait for unrelated basemap tiles to idle.
+        this.map.once('render', this.#updateRegionLegend);
+      }
       if (this.#buildingSourceID && event.sourceId === this.#buildingSourceID) {
         this.container.dataset.buildingsLoaded = String(this.map.isSourceLoaded(this.#buildingSourceID));
       }
