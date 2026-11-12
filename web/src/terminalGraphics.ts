@@ -183,7 +183,8 @@ export function terminalGraphics(map: LibreMap, config: () => { columns: number;
         g.uniform1i(b.terminal_scene!,0);g.uniform1i(b.mode!,options.mode);g.uniform1f(b.brightness!,options.brightness);g.uniform1i(b.depth!,Number(Boolean(options.depth)));
         g.uniform3fv(b['colors[0]']!, options.colors.flatMap(color => { const n=parseInt(color.slice(1),16); return [(n>>16&255)/255,(n>>8&255)/255,(n&255)/255]; }));
         g.drawArrays(g.TRIANGLES,0,3);
-        metrics.terminalRenderer='webgl2'; metrics.terminalGridCells=String(columns*rows);
+        if(metrics.terminalRenderer!=='webgl2')metrics.terminalRenderer='webgl2';
+        metrics.terminalGridCells=String(columns*rows);
         metrics.terminalDrawing=String(options.mode);metrics.terminalBrightness=String(options.brightness);
         metrics.terminalSamples=String(Number(metrics.terminalSamples??0)+1);
         if (performance.now()-lastLabels>100) { frame(); lastLabels=performance.now(); }
