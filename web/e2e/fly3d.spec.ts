@@ -5,6 +5,20 @@ import { openMapOptions } from './mapControls';
 test.describe.configure({ retries: 0 });
 test.use({ trace: 'off' });
 
+test('manual route windows retain routes while the Auto suggestion follows zoom', async ({page},info) => {
+  test.skip(info.project.name !== 'desktop');
+  const state=await visualFixture(page,11);state.routes[0]!.lastHeard=state.serverTime-30*60_000;
+  await page.addInitScript(()=>window.addEventListener('cartolite-map-ready',e=>Object.assign(window,{flyView:(e as CustomEvent).detail.view}),{once:true}));
+  await page.goto('/');await expect(page.locator('#map')).toHaveAttribute('data-eligible-routes','1');
+  const refreshes=await page.locator('#map').getAttribute('data-route-window-refreshes');
+  await page.evaluate(()=>(window as any).flyView.map.jumpTo({zoom:4}));
+  await expect(page.locator('#route-window option[value="auto"]')).toHaveText('Auto · 15m');
+  expect(await page.locator('#map').getAttribute('data-route-window-refreshes')).toBe(refreshes);
+  await expect(page.locator('#map')).toHaveAttribute('data-eligible-routes','1');
+  await openMapOptions(page);await page.locator('#route-window').selectOption('auto');
+  await expect(page.locator('#map')).toHaveAttribute('data-eligible-routes','0');
+});
+
 test('Fly 3D opens the regular map with one feed and preserves camera, styles and route windows', async ({page},info) => {
   test.skip(info.project.name !== 'desktop'); test.slow();
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));

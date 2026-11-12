@@ -50,6 +50,7 @@ test('Fly 3D bounded synthetic camera profile', async ({ page }, info) => {
   if (await page.locator('#terminal-flight-button').getAttribute('aria-pressed') !== 'true') await page.locator('#terminal-flight-button').click();
   await expect(page.locator('#map')).toHaveAttribute('data-flight-state', 'flying', { timeout: 60_000 });
   await page.waitForTimeout(1500);
+  const nativePixelRatio = await page.evaluate(() => (window as any).profileMap.getPixelRatio());
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Profiler.enable');
   for (const phase of ['full', 'without-ascii-pass', 'without-history']) {
@@ -64,6 +65,7 @@ test('Fly 3D bounded synthetic camera profile', async ({ page }, info) => {
     });
     await info.attach(`flight-${phase}`, { body: JSON.stringify(stats), contentType: 'application/json' });
     await info.attach(`flight-${phase}.cpuprofile`, { body: JSON.stringify(profile.profile), contentType: 'application/json' });
+    await expect.poll(() => page.evaluate(() => (window as any).profileMap.getPixelRatio())).toBe(nativePixelRatio);
   }
   await page.evaluate(() => { (window as any).flightProfile.skipAscii = false; (window as any).profileView.setRoutesVisible(true); });
   await page.screenshot({ path: info.outputPath('flight-profile.png') });

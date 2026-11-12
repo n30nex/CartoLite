@@ -206,6 +206,7 @@ export class LiveMap {
   #routeSourceRevision = 0;
   #routeClock = 0;
   #appliedRouteWindowMS = -1;
+  #announcedAutoWindow = '';
   #routeDetailFeatures = new Map<string, Feature<LineString>>();
   #dirtyRouteIDs = new Set<string>();
   #rebuildAllRoutes = true;
@@ -1277,7 +1278,10 @@ export class LiveMap {
     }
     // Flight updates the camera continuously. Route age windows change only at
     // zoom thresholds; data/clock/selection updates have their own refresh path.
-    if (this.#appliedRouteWindowMS === this.#effectiveRouteAgeMS()) return;
+    if (this.#appliedRouteWindowMS === this.#effectiveRouteAgeMS()) {
+      this.#emitRouteWindowChange();
+      return;
+    }
     const visibilityApplied = applyRouteVisibilityForZoom(
       this.map,
       this.routesVisible && this.#selectedNodeID !== null,
@@ -1342,7 +1346,10 @@ export class LiveMap {
   }
 
   #emitRouteWindowChange(): void {
-    this.#options.onRouteWindowChange?.(routeWindowLabel('auto', this.map.getZoom()));
+    const label = routeWindowLabel('auto', this.map.getZoom());
+    if (label === this.#announcedAutoWindow) return;
+    this.#announcedAutoWindow = label;
+    this.#options.onRouteWindowChange?.(label);
   }
 
   #effectiveRouteAgeMS(): number {
