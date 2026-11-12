@@ -22,7 +22,7 @@ test('Fly 3D opens the regular map with one feed and preserves camera, styles an
   expect(await map.getAttribute('data-route-window-refreshes')).toBe(refreshes);
   await visualPacket(page,1,'Text');
   for(const style of ['dark','light','streets']) {
-    await openMapOptions(page);await page.getByLabel('Map style',{exact:true}).selectOption(style);await page.keyboard.press('Escape');
+    await openMapOptions(page);await page.locator('#basemap-style').selectOption(style);await page.keyboard.press('Escape');
     await expect(map).toHaveAttribute('data-basemap-style',style);
     await expect(map).toHaveAttribute('data-flight-state','flying');
     await page.screenshot({path:info.outputPath(`fly3d-${style}.png`)});

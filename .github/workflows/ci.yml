@@ -256,11 +256,11 @@ jobs:
           bash scripts/integration-smoke.sh http://127.0.0.1:39476 artifacts/integration cartolite-mqtt
       - name: Bounded load smoke
         run: bash scripts/performance-smoke.sh http://127.0.0.1:39476 cartolite-mqtt
-      - name: Terminal free flight and graphics recovery
+      - name: Map and Terminal free flight and graphics recovery
         working-directory: web
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: flight-playwright-report
-        run: bash ../scripts/browser-ci.sh terminal-flight.spec.ts --output flight-test-results
+        run: bash ../scripts/browser-ci.sh terminal-flight.spec.ts fly3d.spec.ts --output flight-test-results
       - name: Preserve Terminal flight review
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

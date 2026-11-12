@@ -14,7 +14,11 @@ export default defineConfig({
     baseURL: process.env.CARTOLITE_BASE_URL ?? 'http://127.0.0.1:39476',
     screenshot: 'only-on-failure',
     trace: 'on-first-retry',
-    launchOptions: { args: ['--enable-unsafe-swiftshader'] }
+    // The authorized Pi runner exposes its V3D render device. Hosted Actions
+    // keep the existing software renderer and every test/runtime threshold.
+    launchOptions: { args: process.env.CARTOLITE_PI_GPU === '1'
+      ? ['--use-gl=angle','--use-angle=gl-egl','--disable-gpu-sandbox','--ignore-gpu-blocklist']
+      : ['--enable-unsafe-swiftshader'] }
   },
   projects: [
     {

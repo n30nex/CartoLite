@@ -6,14 +6,15 @@ const html = await readFile('dist/index.html', 'utf8');
 const manifest = JSON.parse(await readFile('dist/.vite/manifest.json','utf8'));
 for (const [entryKey, flag, title, directory] of [['src/terminal.ts','terminal','Terminal','terminal'],['src/fly3d.ts','fly3d','Fly 3D','fly-3d']]) {
 const entry = manifest[entryKey];
-if(!entry?.isEntry || !/^assets\/[\w.-]+\.js$/.test(entry.file))throw new Error('Terminal entry missing from build manifest');
+if(!entry?.isEntry || !/^assets\/[\w.-]+\.js$/.test(entry.file))throw new Error(`${title} entry missing from build manifest`);
 const visited=new Set(), css=new Set();
+let hasStyle=false;
 function collect(chunk) {
-  for(const id of chunk.imports??[]) { if(visited.has(id))continue;visited.add(id);if(!manifest[id])throw new Error('Missing Terminal import');collect(manifest[id]); }
-  for(const path of chunk.css??[]) {if(!/^assets\/[\w.-]+\.css$/.test(path))throw new Error('Invalid Terminal CSS');if(!html.includes(`href="/${path}"`))css.add(path);}
+  for(const id of chunk.imports??[]) { if(visited.has(id))continue;visited.add(id);if(!manifest[id])throw new Error(`Missing ${title} import`);collect(manifest[id]); }
+  for(const path of chunk.css??[]) {if(!/^assets\/[\w.-]+\.css$/.test(path))throw new Error(`Invalid ${title} CSS`);hasStyle=true;if(!html.includes(`href="/${path}"`))css.add(path);}
 }
 collect(entry);
-if(!css.size)throw new Error('Terminal stylesheet missing');
+if(!hasStyle)throw new Error(`${title} stylesheet missing`);
 const script = `<script type="module" src="/${entry.file}"></script>`;
 const style = [...css].map(path=>`<link rel="stylesheet" href="/${path}">`).join('\n');
 const terminal = html.replace('<html lang="en">', `<html lang="en" data-${flag}="true">`)
