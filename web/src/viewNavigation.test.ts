@@ -4,6 +4,12 @@ import { createViewNavigation } from './viewNavigation';
 beforeEach(()=>{document.body.innerHTML='<div class="controls"><a id="netgraph-link" href="/netgraph/">Netgraph</a><a id="labs-link" href="/labs/">Labs</a></div>';});
 afterEach(()=>window.dispatchEvent(new Event('pagehide')));
 describe('grouped view navigation',()=>{
+  it('opens regular-map flight without changing the core tab order',()=>{
+    const nav=createViewNavigation('Fly 3D',new Set(['terminal','fly-3d','chronoscope']),true);
+    expect([...nav.querySelectorAll(':scope > a')].map(a=>a.textContent)).toEqual(['Map','Netgraph','Terminal']);
+    expect(nav.querySelector('[aria-current="page"]')?.getAttribute('href')).toBe('/fly-3d/');
+    expect(nav.querySelector('.nav-group')?.getAttribute('data-active')).toBe('true');
+  });
   it('keeps core views direct and groups the available experiments and Labs',()=>{
     const nav=createViewNavigation('Pachinko',new Set(['terminal','chronoscope','firehose','pachinko']),true);document.querySelector('.controls')!.append(nav);
     expect([...nav.querySelectorAll(':scope > a')].map(a=>a.textContent)).toEqual(['Map','Netgraph','Terminal']);

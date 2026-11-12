@@ -168,7 +168,7 @@ func (s *Server) frontend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if r.URL.Path == "/terminal" || r.URL.Path == "/chronoscope" || r.URL.Path == "/firehose" || r.URL.Path == "/pachinko" {
+	if r.URL.Path == "/terminal" || r.URL.Path == "/fly-3d" || r.URL.Path == "/chronoscope" || r.URL.Path == "/firehose" || r.URL.Path == "/pachinko" {
 		target := r.URL.Path + "/"
 		if r.URL.RawQuery != "" {
 			target += "?" + r.URL.RawQuery

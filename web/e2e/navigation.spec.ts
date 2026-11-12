@@ -6,7 +6,7 @@ test('grouped icon navigation keeps direct views, keyboard access and node conte
   await visualFixture(page);await page.goto('/');await expect(page.locator('html')).toHaveAttribute('data-fixture-stream','ready');
   await page.locator('#find-button').click();await page.locator('#node-search').fill('Visual Alpha');await page.locator('.node-search-result').first().click();
   await openViewMenu(page);await expect(page.locator('.dock-views > a')).toHaveCount(3);
-  await expect(page.locator('#experimental-options a')).toHaveCount(3);
+  await expect(page.locator('#experimental-options a')).toHaveCount(4);
   expect(await page.locator('.dock-views > a svg[aria-hidden="true"]').count()).toBe(3);
   await page.getByRole('link',{name:'Open CartoLite Pachinko',exact:true}).click();await expect(page.locator('#pachinko-stage')).toHaveAttribute('data-render-state','ready',{timeout:20000});
   await expect.poll(()=>new URL(page.url()).searchParams.get('node')).toBe('visual-a');await expect(page.locator('#node-inspector-sheet')).toContainText('Visual Alpha');

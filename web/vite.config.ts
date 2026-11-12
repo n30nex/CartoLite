@@ -22,6 +22,7 @@ export default defineConfig({
           { name: 'arcade', test: /[\\/]src[\\/](?:firehose|pachinko)[\\/]/, priority: 20, includeDependenciesRecursively: false },
           { name: 'scene3d', test: /[\\/]src[\\/](?:sceneMaterials|sceneFraming)\.ts$/, priority: 25, includeDependenciesRecursively: false },
           { name: 'terminal', test: /[\\/]src[\\/]terminal(?:Grid|Graphics)?\.ts$/, priority: 20, includeDependenciesRecursively: false },
+          { name: 'flight', test: /[\\/]src[\\/](?:mapFlight|terminalFlightMath)\.ts$/, priority: 25, includeDependenciesRecursively: false },
           { name: 'chronoscope', test: /[\\/]src[\\/]chronoscope[\\/]/, priority: 20, includeDependenciesRecursively: false },
           { name: 'shared', test: /[\\/]src[\\/]/, minShareCount: 2, priority: 10 },
         ] },
@@ -29,6 +30,7 @@ export default defineConfig({
       input: {
         main: inputPath('index.html'),
         terminal: inputPath('src/terminal.ts'),
+        fly3d: inputPath('src/fly3d.ts'),
         labs: inputPath('labs/index.html'),
         netgraph: inputPath('netgraph/index.html'),
         chronoscope: inputPath('chronoscope/index.html'),

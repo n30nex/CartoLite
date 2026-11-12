@@ -109,7 +109,7 @@ document.querySelector('.labs-controls')!.append(displayButton);app.append(displ
 mountDisplayControls(displayDialog,'labs');
 displayButton.addEventListener('click',()=>displayDialog.showModal());
 displayDialog.querySelector('button')!.addEventListener('click',()=>{displayDialog.close();displayButton.focus();});
-const navigation = createViewNavigation('Labs', new Set(['terminal', 'chronoscope', 'firehose', 'pachinko']), true);
+const navigation = createViewNavigation('Labs', new Set(['terminal', 'fly-3d', 'chronoscope', 'firehose', 'pachinko']), true);
 labControls.prepend(navigation);
 mountMobileDock(labControls, navigation, 'Labs');
 trackPanelHistory(labControls, ['labs-display', 'info-dialog', 'experimental-options', 'labs-options', 'view-panel']);

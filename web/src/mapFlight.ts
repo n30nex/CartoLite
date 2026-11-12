@@ -1,31 +1,43 @@
-import { LngLat, type GeoJSONSource } from 'maplibre-gl';
+import { LngLat, type GeoJSONSource, type ExpressionSpecification } from 'maplibre-gl';
 import type { LiveMap } from './map';
 import type { PacketAnimator } from './packetAnimator';
-import { DISPLAY_EVENT } from './displayPreferences';
+import { DISPLAY_EVENT, displayColor } from './displayPreferences';
+import { browserStorage } from './browserStorage';
+import './flight.css';
 import { FLIGHT_CLEARANCE, flightBeacons, flightDepth, flightDirection, moveFlight, offsetPosition, type FlightPose } from './terminalFlightMath';
 
 const SOURCE = 'terminal-flight-nodes', LAYER = SOURCE;
 const MOVE_KEYS = new Set(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight']);
 const CONTROLLED = '#terrain-button,#terrain-shortcut,#hillshade-button,#buildings-button,#clusters-button,#camera-pitch,#terrain-height,#north-button,#reset-layers,#reset-appearance,.layer-combinations button';
+const DETAIL_KEY = 'cartolite:flight-detail:v1';
 
-export function terminalFlight(view: LiveMap, animator: PacketAnimator, callbacks: { changed(): void; refreshControls?(): void; pauseFollow?(): void }) {
+export function mapFlight(view: LiveMap, animator: PacketAnimator, callbacks: { changed(): void; refreshControls?(): void; pauseFollow?(): void }, presentation: 'terminal' | 'map' = 'terminal') {
   const map = view.map, canvas = map.getCanvas(), root = document.documentElement;
+  const terminal = presentation === 'terminal';
+  let autoStart = !terminal;
   const button = document.createElement('button'); button.id = 'terminal-flight-button'; button.type = 'button';
   button.className = 'control-button terminal-flight-toggle'; button.innerHTML = '<span aria-hidden="true">◇</span><span>Fly 3D</span>';
-  button.setAttribute('aria-label','Toggle Terminal 3D flight'); button.setAttribute('aria-pressed','false'); button.setAttribute('aria-controls','terminal-flight-hud');
-  button.title = 'Fly around the ASCII map in 3D'; button.disabled = true;
+  button.setAttribute('aria-label',terminal?'Toggle Terminal 3D flight':'Toggle map flight'); button.setAttribute('aria-pressed','false'); button.setAttribute('aria-controls','terminal-flight-hud');
+  button.title = terminal?'Fly around the ASCII map in 3D':'Fly around the map in 3D'; button.disabled = true;
   document.querySelector('#terrain-shortcut')!.before(button);
-  const hud = document.createElement('section'); hud.id = 'terminal-flight-hud'; hud.className = 'terminal-flight-hud glass'; hud.hidden = true; hud.setAttribute('aria-label','Terminal flight controls');
+  const hud = document.createElement('section'); hud.id = 'terminal-flight-hud'; hud.className = 'terminal-flight-hud glass'; hud.hidden = true; hud.setAttribute('aria-label',terminal?'Terminal flight controls':'Map flight controls');
   hud.innerHTML = '<header><strong>FLY 3D</strong><button type="button" data-look aria-label="Look toward the ground">Look down</button><button type="button" data-exit aria-label="Exit Terminal flight">Exit ×</button></header>'
     + '<p class="flight-state" role="status">Loading terrain…</p>'
     + '<div class="flight-pad">'+[['KeyA','←','Strafe left'],['KeyW','↑','Fly forward'],['KeyS','↓','Fly backward'],['KeyD','→','Strafe right'],['KeyQ','−','Fly down'],['KeyE','+','Fly up']].map(([key,icon,label])=>`<button type="button" data-move="${key}" aria-label="${label}" title="${label}">${icon}</button>`).join('')+'</div>'
     + '<details class="flight-settings"><summary>Speed &amp; controls</summary><output class="flight-position" aria-live="off"></output><label class="flight-speed">Speed <output>60 m/s</output><input type="range" min="10" max="300" step="10" value="60" aria-label="Flight speed"></label>'
+    + '<label class="flight-detail">Flight detail <select aria-label="Flight detail"><option value="auto">Auto</option><option value="full">Full</option></select></label><p class="flight-note">Auto adjusts map detail while moving and restores full sharpness when you stop. Routes and live packets are retained.</p>'
     + '<p class="flight-help">Drag to look · WASD / arrows move · Q/E down/up · Shift boosts · Esc exits.</p>'
     + '<p class="flight-note">Terrain and buildings are enabled for flight. Node beacons mark locations, not antenna heights. Exit restores your map settings.</p></details>'
     + '<button type="button" data-retry hidden>Retry terrain</button>';
   map.getContainer().after(hud);
+  hud.querySelector('[data-exit]')!.setAttribute('aria-label',terminal?'Exit Terminal flight':'Exit map flight');
   const stateText = hud.querySelector<HTMLElement>('.flight-state')!, position = hud.querySelector<HTMLOutputElement>('.flight-position')!;
   const speedInput = hud.querySelector<HTMLInputElement>('input')!, speedOutput = hud.querySelector<HTMLOutputElement>('.flight-speed output')!;
+  const detailInput = hud.querySelector<HTMLSelectElement>('[aria-label="Flight detail"]')!;
+  let fullDetail = false;
+  try { fullDetail = browserStorage().getItem(DETAIL_KEY) === 'full'; } catch { /* A session choice still works. */ }
+  detailInput.value = fullDetail ? 'full' : 'auto';
+  let ratioChange = false, detailTimer = 0, motionMS = 0, motionFrames = 0;
   const keys = new Set<string>(), touches = new Map<number,string>();
   let active = false, loading = false, flat = false, recovering = false, disposed = false;
   let terrainWaitExpired = false, readyPending = false, restoreCamera = false;
@@ -36,12 +48,34 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   let controlled: { element: HTMLButtonElement|HTMLInputElement; disabled: boolean; pressed: string|null }[] = [];
   const handlers = [map.dragPan,map.dragRotate,map.scrollZoom,map.boxZoom,map.doubleClickZoom,map.touchZoomRotate,map.touchPitch,map.keyboard];
   let enabled: boolean[] = [];
-  let saved: { center: [number,number]; zoom:number; pitch:number; bearing:number; roll:number; elevation:number; clamped:boolean; maxPitch:number; maxZoom:number; bounds:ReturnType<typeof map.getMaxBounds> } | undefined;
+  let saved: { center: [number,number]; zoom:number; pitch:number; bearing:number; roll:number; elevation:number; clamped:boolean; maxPitch:number; maxZoom:number; pixelRatio:number; bounds:ReturnType<typeof map.getMaxBounds> } | undefined;
 
   const blocked = () => Boolean(document.querySelector('dialog[open],#layers-panel:not([hidden]),#sound-panel:not([hidden]),#find-panel:not([hidden]),#view-panel:not([hidden])'));
   const eligible = (target: EventTarget|null) => target === canvas || (target instanceof Element && Boolean(target.closest('.flight-pad')));
-  function clearInput() { keys.clear(); touches.clear(); pendingLook=[0,0]; dragging=undefined; last=0; if(frame)cancelAnimationFrame(frame);frame=0; }
+  function clearInput() { keys.clear(); touches.clear(); pendingLook=[0,0]; dragging=undefined; last=0; motionMS=motionFrames=0;if(frame)cancelAnimationFrame(frame);frame=0;settleDetail(); }
   function request() { if(active&&!disposed&&!frame&&!document.hidden&&!recovering)frame=requestAnimationFrame(tick); }
+  function pixelRatio(value:number) {
+    if(Math.abs(map.getPixelRatio()-value)<.01)return;
+    ratioChange=true;
+    try { map.setPixelRatio(value); } finally { ratioChange=false; }
+    map.getContainer().dataset.flightPixelRatio=value.toFixed(2);
+  }
+  function settleDetail() {
+    clearTimeout(detailTimer);detailTimer=0;
+    if(!active||document.hidden)return;
+    detailTimer=window.setTimeout(()=>{
+      detailTimer=0;
+      if(active&&saved&&!document.hidden&&!recovering&&!dragging&&!touches.size&&![...keys].some(k=>!k.startsWith('Shift')))pixelRatio(saved.pixelRatio);
+    },500);
+  }
+  function adaptDetail(elapsedMS:number) {
+    clearTimeout(detailTimer);detailTimer=0;
+    if(fullDetail||!saved)return;
+    motionMS+=Math.min(2000,elapsedMS);motionFrames++;
+    if(motionMS<1200)return;
+    if(motionMS/motionFrames>40)pixelRatio(Math.max(Math.min(.6,saved.pixelRatio),map.getPixelRatio()*.8));
+    motionMS=motionFrames=0;
+  }
   function refreshTerrain() {
     const terrain=map.getTerrain();
     terrainReady=Boolean(terrain&&!terrainFailed&&map.getSource(terrain.source)&&map.isSourceLoaded(terrain.source));
@@ -73,15 +107,16 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     document.querySelector('#terrain-summary')!.textContent='Fly 3D';
     document.querySelector('#camera-status')!.textContent='Flight controls are active. Exit Fly 3D to restore the map camera.';
   }
+  const beaconColors = (): ExpressionSpecification => ['case',['boolean',['feature-state','selected'],false],terminal?'#ff0060':displayColor('#f2bd55'),['match',['get','role'],'repeater',terminal?'#00ff80':displayColor('#45c27f'),'companion',terminal?'#0080ff':displayColor('#53a7e8'),'room_server',terminal?'#ff00ff':displayColor('#ab76dc'),terminal?'#ff0000':displayColor('#a2ad57')]];
   function nodeLayer(now=performance.now()) {
-    if(!active||recovering||!map.getSource('nodes')||!map.getLayer('terminal-graphics'))return;
+    if(!active||recovering||!map.getSource('nodes')||(terminal&&!map.getLayer('terminal-graphics')))return;
     if(!map.getSource(SOURCE)) {
       map.addSource(SOURCE,{type:'geojson',data:{type:'FeatureCollection',features:[]},maxzoom:18});nodeRevision=-1;selected=null;
     }
     if(!map.getLayer(LAYER))map.addLayer({id:LAYER,source:SOURCE,type:'fill-extrusion',paint:{
-      'fill-extrusion-color':['case',['boolean',['feature-state','selected'],false],'#ff0060',['match',['get','role'],'repeater','#00ff80','companion','#0080ff','room_server','#ff00ff','#ff0000']],
+      'fill-extrusion-color':beaconColors(),
       'fill-extrusion-height':36,'fill-extrusion-base':0,'fill-extrusion-opacity':1,'fill-extrusion-vertical-gradient':true,
-    }},'terminal-graphics');
+    }},terminal?'terminal-graphics':map.getLayersOrder().find(id=>id.startsWith('activity-heat-')));
     if(nodeRevision!==view.getTerminalNodeRevision()&&now-nodeAt>250) {
       const data=flightBeacons(view.getTerminalNodeFeatures());nodeRevision=view.getTerminalNodeRevision();nodeAt=now;
       (map.getSource(SOURCE) as GeoJSONSource).setData(data);map.getContainer().dataset.flightBeacons=String(data.features.length);
@@ -96,8 +131,8 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   function ready(useFlat=false) {
     if(!active||!loading||recovering||document.hidden)return;
     refreshTerrain();
-    const elevation=useFlat?0:ground(anchor);if(elevation===undefined)return;
-    flat=useFlat;loading=false;clearTimeout(loadingTimer);loadingTimer=0;
+    const measured=ground(anchor), elevation=measured??(useFlat?0:undefined);if(elevation===undefined)return;
+    flat=measured===undefined;loading=false;clearTimeout(loadingTimer);loadingTimer=0;
     view.setTerminalFlight(flat?'flat':'terrain',focusNode);
     const behind=offsetPosition(anchor[0],anchor[1],-Math.sin(pose.bearing*Math.PI/180)*240*Math.sqrt(3),-Math.cos(pose.bearing*Math.PI/180)*240*Math.sqrt(3));
     const eyeGround=ground(behind);
@@ -125,8 +160,9 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   function focusNode(node: {lng:number;lat:number}) { if(active)load([node.lng,node.lat]); }
   function enter() {
     if(active||disposed||button.disabled)return;
+    autoStart=false;
     callbacks.pauseFollow?.();document.querySelector<HTMLButtonElement>('#follow-close')?.click();map.stop();
-    saved={center:map.getCenter().toArray(),zoom:map.getZoom(),pitch:map.getPitch(),bearing:map.getBearing(),roll:map.getRoll(),elevation:map.getCenterElevation(),clamped:map.getCenterClampedToGround(),maxPitch:map.getMaxPitch(),maxZoom:map.getMaxZoom(),bounds:map.getMaxBounds()};
+    saved={center:map.getCenter().toArray(),zoom:map.getZoom(),pitch:map.getPitch(),bearing:map.getBearing(),roll:map.getRoll(),elevation:map.getCenterElevation(),clamped:map.getCenterClampedToGround(),maxPitch:map.getMaxPitch(),maxZoom:map.getMaxZoom(),pixelRatio:map.getPixelRatio(),bounds:map.getMaxBounds()};
     enabled=handlers.map(h=>h.isEnabled());handlers.forEach(h=>h.disable());
     controlled=[...document.querySelectorAll<HTMLButtonElement|HTMLInputElement>(CONTROLLED)].map(element=>({element,disabled:element.disabled,pressed:element.getAttribute('aria-pressed')}));
     active=true;ignoreClick=false;restoreCamera=false;root.dataset.terminalFlight='true';button.setAttribute('aria-pressed','true');hud.hidden=false;
@@ -137,13 +173,14 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     load(target?[target[0]!,target[1]!]:saved.center);chrome();
   }
   function stop(removing=false) {
-    if(!active)return;active=false;loading=false;ignoreClick=false;restoreCamera=false;clearInput();clearTimeout(loadingTimer);loadingTimer=0;
+    if(!active)return;active=false;loading=false;ignoreClick=false;restoreCamera=false;clearInput();clearTimeout(loadingTimer);clearTimeout(detailTimer);loadingTimer=detailTimer=0;
     animator.projection.setCameraClip();button.setAttribute('aria-pressed','false');hud.hidden=true;
     for(const {element,disabled,pressed} of controlled){element.disabled=disabled;if(pressed!==null)element.setAttribute('aria-pressed',pressed);}controlled=[];
     if(!removing&&saved){
       if(map.getLayer(LAYER))map.removeLayer(LAYER);if(map.getSource(SOURCE))map.removeSource(SOURCE);
       handlers.forEach((h,i)=>enabled[i]?h.enable():h.disable());
       view.setTerminalFlight(null);map.stop();map.setCenterClampedToGround(saved.clamped);map.setMaxPitch(saved.maxPitch);map.setMaxZoom(saved.maxZoom);map.setMaxBounds(saved.bounds??null);
+      pixelRatio(saved.pixelRatio);
       map.jumpTo(saved,{terminalFlight:true});
     }
     delete root.dataset.terminalFlight;
@@ -161,6 +198,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     const held=(code:string)=>keys.has(code)||[...touches.values()].includes(code);
     const input={forward:Number(held('KeyW')||held('ArrowUp'))-Number(held('KeyS')||held('ArrowDown')),right:Number(held('KeyD')||held('ArrowRight'))-Number(held('KeyA')||held('ArrowLeft')),up:Number(held('KeyE'))-Number(held('KeyQ'))};
     const moving=Boolean(input.forward||input.right||input.up), boost=keys.has('ShiftLeft')||keys.has('ShiftRight')?3:1;
+    if(looked||moving)adaptDetail(delta*1000);
     let blockedTerrain=false;
     if(moving){
       const next=moveFlight(pose,input,delta,speed*boost), floor=ground([next.lng,next.lat]);
@@ -168,7 +206,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     }
     if(restoreCamera||looked||moving&&!blockedTerrain){restoreCamera=false;camera();}
     if(now-uiAt>250){uiAt=now;const floor=ground([pose.lng,pose.lat]);position.value=`${pose.lat.toFixed(4)}, ${pose.lng.toFixed(4)} · ${Math.round(pose.altitude)} m MSL${floor===undefined?'':` · ${Math.round(pose.altitude-floor)} m clearance`}`;const message=blockedTerrain?'Terrain loading here. Look toward the ground to continue.':flat?'Flat flight · terrain unavailable':'Drag to look · WASD move · Q/E height';if(stateText.textContent!==message)stateText.textContent=message;}
-    nodeLayer(now);if(moving)request();else last=0;
+    nodeLayer(now);if(moving)request();else if(!dragging){last=0;settleDetail();}
   }
   const toggle=()=>active?stop():enter();button.addEventListener('click',toggle);
   const keydown=(event:KeyboardEvent)=>{
@@ -177,10 +215,10 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     if(loading||recovering||blocked()||event.ctrlKey||event.altKey||event.metaKey||!eligible(event.target)||!MOVE_KEYS.has(event.code))return;
     event.preventDefault();event.stopImmediatePropagation();keys.add(event.code);request();
   };
-  const keyup=(event:KeyboardEvent)=>{keys.delete(event.code);if(active&&MOVE_KEYS.has(event.code)&&eligible(event.target))event.preventDefault();};
+  const keyup=(event:KeyboardEvent)=>{keys.delete(event.code);if(active&&MOVE_KEYS.has(event.code)&&eligible(event.target)){event.preventDefault();settleDetail();}};
   const down=(event:PointerEvent)=>{if(!active||loading||recovering||blocked()||event.button!==0||dragging)return;canvas.focus({preventScroll:true});dragging={id:event.pointerId,x:event.clientX,y:event.clientY,distance:0};canvas.setPointerCapture(event.pointerId);event.preventDefault();};
   const move=(event:PointerEvent)=>{if(!active||dragging?.id!==event.pointerId)return;const x=event.clientX-dragging.x,y=event.clientY-dragging.y;dragging.distance+=Math.hypot(x,y);dragging.x=event.clientX;dragging.y=event.clientY;pendingLook[0]!+=x;pendingLook[1]!+=y;event.preventDefault();request();};
-  const up=(event:PointerEvent)=>{if(dragging?.id===event.pointerId){ignoreClick=dragging.distance>4;dragging=undefined;}};
+  const up=(event:PointerEvent)=>{if(dragging?.id===event.pointerId){ignoreClick=dragging.distance>4;dragging=undefined;last=0;settleDetail();}};
   const click=(event:MouseEvent)=>{if(active&&ignoreClick){event.preventDefault();event.stopImmediatePropagation();ignoreClick=false;}};
   const wheel=(event:WheelEvent)=>{if(!active||blocked()||event.ctrlKey||event.metaKey)return;event.preventDefault();speed=Math.max(10,Math.min(300,Math.round(speed*(event.deltaY<0?1.2:.8)/10)*10));speedInput.value=String(speed);speedOutput.value=`${speed} m/s`;};
   const speedChanged=()=>{speed=Number(speedInput.value);speedOutput.value=`${speed} m/s`;};speedInput.addEventListener('input',speedChanged);
@@ -188,19 +226,22 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
   const visibility=()=>{clearInput();if(!document.hidden&&active){if(loading)ready(terrainWaitExpired);else request();}};
   const lost=()=>{recovering=true;clearInput();if(active)stateText.textContent='Graphics paused. Waiting for recovery…';};
   const terrainError=(event:unknown)=>{const e=event as {sourceId?:string;error?:{message?:string;url?:string}};if((typeof e.sourceId==='string'&&e.sourceId===map.getTerrain()?.source)||/mapterhorn/i.test(`${e.error?.message??''} ${e.error?.url??''}`)){terrainFailed=true;if(active&&!loading&&!flat){clearInput();stateText.textContent='Terrain unavailable here. Retry terrain or exit flight.';hud.querySelector<HTMLButtonElement>('[data-retry]')!.hidden=false;}}};
-  const render=()=>{if(disposed)return;button.disabled=!root.hasAttribute('data-terminal')||!map.getLayer('nodes');if(!active)return;refreshTerrain();if(recovering&&map.getContainer().dataset.graphicsRecovering==='false'){recovering=false;nodeRevision=-1;selected=null;restoreCamera=true;request();}if(loading&&!readyPending){readyPending=true;queueMicrotask(()=>{readyPending=false;ready(terrainWaitExpired);});}nodeLayer();};
+  const render=()=>{if(disposed)return;button.disabled=(terminal&&!root.hasAttribute('data-terminal'))||!map.getLayer('nodes');if(autoStart&&!button.disabled&&map.getContainer().dataset.viewSource&&!map.isMoving()){autoStart=false;queueMicrotask(enter);}if(!active)return;refreshTerrain();if(recovering&&map.getContainer().dataset.graphicsRecovering==='false'){recovering=false;nodeRevision=-1;selected=null;restoreCamera=true;request();}if(loading&&!readyPending){readyPending=true;queueMicrotask(()=>{readyPending=false;ready(terrainWaitExpired);});}nodeLayer();};
   const idle=()=>{render();if(active&&loading)ready();};
   // MapLibre's camera distance depends on viewport height. Recalculate from
   // the owned eye pose so rotation/keyboard insets do not move the flyer.
-  const resize=()=>{if(active&&!loading&&!recovering){clearInput();camera();request();}};
-  const appearance=()=>{queueMicrotask(chrome);};
+  const resize=()=>{if(!ratioChange&&active&&!loading&&!recovering){clearInput();camera();request();}};
+  const appearance=()=>{queueMicrotask(()=>{chrome();if(!terminal&&map.getLayer(LAYER))map.setPaintProperty(LAYER,'fill-extrusion-color',beaconColors());});};
   const leaveForCamera=()=>{if(active)stop();};
   const close=()=>stop();hud.querySelector('[data-exit]')!.addEventListener('click',close);
   hud.querySelector('[data-look]')!.addEventListener('click',()=>{if(active&&!loading&&!recovering){clearInput();pose.pitch=60;restoreCamera=false;camera();request();canvas.focus({preventScroll:true});}});
   const retry=()=>load([pose.lng,pose.lat]);hud.querySelector('[data-retry]')!.addEventListener('click',retry);
   const pads=[...hud.querySelectorAll<HTMLButtonElement>('[data-move]')];
   const padDown=(event:PointerEvent)=>{if(!active||loading||recovering||blocked())return;const target=event.currentTarget as HTMLButtonElement;event.preventDefault();target.setPointerCapture(event.pointerId);touches.set(event.pointerId,target.dataset.move!);request();};
-  const padUp=(event:PointerEvent)=>touches.delete(event.pointerId);
+  const padUp=(event:PointerEvent)=>{touches.delete(event.pointerId);settleDetail();};
+  const detailChanged=()=>{fullDetail=detailInput.value==='full';motionMS=motionFrames=0;if(fullDetail&&active&&saved)pixelRatio(saved.pixelRatio);try{browserStorage().setItem(DETAIL_KEY,fullDetail?'full':'auto');}catch{/* Session-only in restricted storage. */}};
+  const detailStorage=(event:StorageEvent)=>{if(event.key!==DETAIL_KEY&&event.key!==null)return;fullDetail=event.newValue==='full';detailInput.value=fullDetail?'full':'auto';if(fullDetail&&active&&saved)pixelRatio(saved.pixelRatio);};
+  detailInput.addEventListener('change',detailChanged);window.addEventListener('storage',detailStorage);
   for(const pad of pads){pad.addEventListener('pointerdown',padDown);pad.addEventListener('lostpointercapture',padUp);pad.addEventListener('pointercancel',padUp);}
   canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerup',up);canvas.addEventListener('lostpointercapture',up);canvas.addEventListener('pointercancel',up);canvas.addEventListener('click',click,true);canvas.addEventListener('wheel',wheel,{passive:false});
   document.addEventListener('keydown',keydown,true);document.addEventListener('keyup',keyup,true);document.addEventListener('focusin',focusChanged);document.addEventListener('visibilitychange',visibility);window.addEventListener('blur',clearInput);window.addEventListener(DISPLAY_EVENT,appearance);
@@ -212,6 +253,7 @@ export function terminalFlight(view: LiveMap, animator: PacketAnimator, callback
     if(disposed)return;stop(true);disposed=true;clearInput();clearTimeout(loadingTimer);observer.disconnect();
     map.off('render',render);map.off('idle',idle);map.off('resize',resize);map.off('webglcontextlost',lost);map.off('error',terrainError);
     document.removeEventListener('keydown',keydown,true);document.removeEventListener('keyup',keyup,true);document.removeEventListener('focusin',focusChanged);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('blur',clearInput);window.removeEventListener(DISPLAY_EVENT,appearance);
+    window.removeEventListener('storage',detailStorage);
     for(const id of ['reset-button','follow-button'])document.getElementById(id)?.removeEventListener('click',leaveForCamera,true);
     canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',move);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('lostpointercapture',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('click',click,true);canvas.removeEventListener('wheel',wheel);
     button.remove();hud.remove();

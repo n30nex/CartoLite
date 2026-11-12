@@ -10,11 +10,12 @@ export function mountCinematicDock(): void {
   document.documentElement.dataset.cinematic = 'true';
   const graph = location.pathname.startsWith('/netgraph');
   const terminal = location.pathname.startsWith('/terminal');
+  const flight = location.pathname.startsWith('/fly-3d');
   const chrono = location.pathname.startsWith('/chronoscope');
   const firehose = location.pathname.startsWith('/firehose');
   const pachinko = location.pathname.startsWith('/pachinko');
-  const view = pachinko ? 'Pachinko' : firehose ? 'Firehose' : chrono ? 'Chronoscope' : graph ? 'Netgraph' : terminal ? 'Terminal' : 'Map';
-  const navigation = createViewNavigation(view, new Set(['terminal', 'chronoscope', 'firehose', 'pachinko']), true);
+  const view = pachinko ? 'Pachinko' : firehose ? 'Firehose' : chrono ? 'Chronoscope' : graph ? 'Netgraph' : terminal ? 'Terminal' : flight ? 'Fly 3D' : 'Map';
+  const navigation = createViewNavigation(view, new Set(['terminal', 'fly-3d', 'chronoscope', 'firehose', 'pachinko']), true);
   controls.prepend(navigation);
   const zoomControls = document.querySelector<HTMLElement>('.zoom-controls');
   if (zoomControls) controls.append(zoomControls);

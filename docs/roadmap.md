@@ -1,5 +1,9 @@
 # CartoLite delivery roadmap
 
+## Flight performance and regular-map flight (Canada 0.24.0)
+
+[Plan and measurement notes](fly3d-performance-2026-11-12.md): share the geographic flight controller, add `/fly-3d/`, avoid unchanged route-window refreshes, and adapt map raster detail during slow movement while retaining every route/node and restoring sharpness at rest. The owner authorized Pi 5 builds on 12 November because Actions minutes were exhausted. Qualification and exact-image deployment evidence belong to the release record.
+
 ## Terminal flight (Canada 0.23.0)
 
 [Flight implementation and acceptance](terminal-flight-2026-11-06.md): an opt-in glowing control, geographic first-person camera, GPU ASCII face shading, building extrusions and polygon node beacons. Keyboard/touch input, near-plane packet clipping, missing-terrain fallback and camera/settings restoration are covered by focused Actions checks alongside the existing gates. Exact image and deployment qualification are recorded with the release. Worldwide is outside this patch.

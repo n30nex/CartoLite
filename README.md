@@ -17,6 +17,7 @@ CartoLite turns the Canada MQTT feed into a compact live map, an interactive top
 | **Map** | Watch confirmed hops on a geographic map; explore terrain, buildings, heatmaps and optional 3D. |
 | **Netgraph** | Follow the topology with recognizable geographic groups, optional 3D, region filters and draggable region layouts. |
 | **Terminal** | Explore a live BBS map with Braille, ASCII, pixel and cel-shaded modes. **Fly 3D** adds free flight, shaded buildings and polygon node beacons; your colours and fonts carry over. |
+| **Fly 3D** | Fly through the regular Night, Daylight or Streets map with terrain, buildings, node beacons and live traffic. Find it under Experimental or in the map's Terrain controls. |
 | **Chronoscope** | Orbit a growing, session-only sculpture of observed packets and routes. |
 | **Firehose** | Watch linked packet beads tumble into a 3D box; tilt it to pour them out. |
 | **Pachinko** | Watch individual packets bounce into colour-coded buckets and overflow into a drain. |
