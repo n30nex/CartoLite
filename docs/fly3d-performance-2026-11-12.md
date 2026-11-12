@@ -28,6 +28,13 @@ its existing clock. Full sharpness returns at rest
 or on exit. A saved Full detail choice disables adaptation. No route or node is
 discarded to improve a measurement.
 
+Terminal also polls shader preparation without blocking the page when
+`KHR_parallel_shader_compile` is available. Controls and the feed remain usable
+while the graphics prepare; the loading state avoids exposing encoded map colors.
+Compile/link validation, the ordinary fallback, context-loss cleanup and the
+existing shader output are retained. Browsers without the extension use the
+same synchronous compatibility path.
+
 Validation covers before/after measurements, every regular map theme, Terminal
 presets, camera restoration/rotation, input release, graphics recovery, shared
 preferences, retained route counts, navigation and privacy. Existing applicable
