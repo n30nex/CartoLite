@@ -163,6 +163,30 @@ test('Terminal stays compact and keeps selection when switching views', async ({
   await expect(page.locator('#terminal-map')).toHaveCount(0);
 });
 
+test('Terminal stays interactive while its graphics programs prepare', async ({page},info) => {
+  test.skip(info.project.name!=='desktop');
+  await visualFixture(page);
+  await page.addInitScript(()=>{
+    (window as any).holdTerminalPrograms=true;
+    const original=WebGL2RenderingContext.prototype.getProgramParameter;
+    WebGL2RenderingContext.prototype.getProgramParameter=function(program,pname){
+      if(pname===0x91b1&&(window as any).holdTerminalPrograms&&(this.getAttachedShaders(program)??[]).some(shader=>this.getShaderSource(shader)?.includes('terminal_scene')))return false;
+      return original.call(this,program,pname);
+    };
+  });
+  await page.goto('/terminal/');
+  await expect(page.locator('#map')).toHaveAttribute('data-terminal-renderer','preparing');
+  await expect(page.locator('html')).toHaveAttribute('data-fixture-streams-active','1');
+  await page.locator('#find-button').click();await page.locator('#node-search').fill('Visual');
+  await expect(page.locator('.node-search-result')).toHaveCount(3);
+  await expect(page.locator('#terminal-flight-button')).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await page.evaluate(()=>(window as any).holdTerminalPrograms=false);
+  await expect(page.locator('#map')).toHaveAttribute('data-terminal-renderer','webgl2');
+  await expect(page.locator('#terminal-flight-button')).toBeEnabled();
+  await expect(page.locator('html')).toHaveAttribute('data-fixture-streams-active','1');
+});
+
 test('unavailable Terminal graphics falls back without stopping the feed', async ({page}) => {
   test.setTimeout(60_000);
   await visualFixture(page);
