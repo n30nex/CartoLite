@@ -51,12 +51,16 @@ def archive(files):
     return gzip.compress(output.getvalue(), mtime=0)
 
 control = ('Package: {id}\nVersion: {version}\nSection: misc\nPriority: optional\n'
-           'Architecture: all\nMaintainer: Canadaverse\nDescription: CartoLite live map for webOS TV\n').format(**info).encode()
-data = archive([('./usr/palm/applications/' + info['id'] + '/' + p.relative_to(DIST).as_posix(), p.read_bytes()) for p in DIST.rglob('*') if p.is_file()])
+           'Architecture: all\nMaintainer: Canadaverse\nDescription: CartoLite live map for webOS TV\n'
+           'webOS-Package-Format-Version: 2\nwebOS-Packager-Version: 1.0.0\n').format(**info).encode()
+files = [('./usr/palm/applications/' + info['id'] + '/' + p.relative_to(DIST).as_posix(), p.read_bytes()) for p in DIST.rglob('*') if p.is_file()]
+package_info = json.dumps({'id': info['id'], 'version': info['version'], 'app': info['id']}).encode()
+files.append(('./usr/palm/packages/' + info['id'] + '/packageinfo.json', package_info))
+data = archive(files)
 members = [('debian-binary', b'2.0\n'), ('control.tar.gz', archive([('./control', control)])), ('data.tar.gz', data)]
 result = bytearray(b'!<arch>\n')
 for name, payload in members:
-    result.extend(f'{name + "/":<16}{0:<12}{0:<6}{0:<6}{"100644":<8}{len(payload):<10}`\n'.encode('ascii'))
+    result.extend(f'{name:<16}{0:<12}{0:<6}{0:<6}{"100644":<8}{len(payload):<10}`\n'.encode('ascii'))
     result.extend(payload)
     if len(payload) % 2: result.extend(b'\n')
 output = ROOT / 'artifacts'
@@ -66,3 +70,4 @@ ipk.write_bytes(result)
 (output / 'SHA256SUMS').write_text(hashlib.sha256(result).hexdigest() + '  ' + ipk.name + '\n')
 (output / 'build-info.json').write_bytes((DIST / 'build-info.json').read_bytes())
 print(f'{ipk.name}: {len(result):,} bytes; source {os.environ["CARTOLITE_COMMIT"]}')
+
