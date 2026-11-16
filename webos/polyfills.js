@@ -50,6 +50,13 @@
         var original = object.postMessage;
         object.postMessage = function (data, options) {
           if (options && typeof options === 'object' && !Array.isArray(options) && !options[Symbol.iterator]) options = options.transfer || [];
+          // MapLibre registers Error in its serializer, but modern versions
+          // otherwise rely on native Error/DOMException structured cloning.
+          if (data && data.type === '<response>' && data.error &&
+              (data.error instanceof Error || (root.DOMException && data.error instanceof DOMException))) {
+            data = Object.assign({}, data, { error: { $name: 'Error', name: data.error.name,
+              message: data.error.message, stack: data.error.stack || '' } });
+          }
           return original.call(this, data, options);
         };
       }
@@ -68,4 +75,3 @@
     define(prototype, 'removeEventListener', function (type, listener) { if (type === 'change') this.removeListener(listener); });
   }
 })(typeof self !== 'undefined' ? self : this);
-
