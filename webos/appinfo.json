@@ -8,6 +8,6 @@
   "icon": "icon.png",
   "largeIcon": "icon.png",
   "uiRevision": 2,
-  "resolution": "1920x1080",
+  "resolution": "1280x720",
   "disableBackHistoryAPI": true
 }
