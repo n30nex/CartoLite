@@ -9,7 +9,7 @@ The public HTTPS snapshot and event stream supply sanitized traffic only.
 
 - OK on **Enable live sound** unlocks audio using a real remote gesture.
 - **Move map**: arrows pan; OK returns to the dock.
-- Channel up/down zoom. Canada resets the view. Live Follow tracks packets.
+- Channel up/down zoom. YKF area returns to Cambridge–Kitchener–Guelph. Live Follow tracks packets.
 - Red toggles sound, green toggles Follow, yellow resets, blue opens settings.
 - Back leaves controls for the map; Back again closes the app.
 - Sound settings retain the default map's voices, preview and volume controls.
@@ -32,3 +32,9 @@ hide/resume recovery. CI alone does not establish physical audio audibility.
 
 Rollback: uninstall this app. It does not modify firmware, system settings,
 Developer Mode, the public website, or other installed apps.
+
+## TV layout and performance
+
+The app starts in the YKF area on every launch. Its 1280×720 UI is scaled by the TV, with 1× drawing buffers and a 30 fps effect budget. Route timing and live sound remain shared with the default map; only lingering decoration is bounded more tightly.
+
+Options opens a fixed, scrollable panel inside the screen. Map/display, sound and Find share that panel. Focus stays in the open panel; Back closes it and returns focus to Options. Up/down moves between controls; left/right adjusts selects and sliders. The floating website toolbar is hidden in this package.

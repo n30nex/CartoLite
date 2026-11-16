@@ -600,7 +600,7 @@ jobs:
           node --test webos/polyfills.test.mjs
           cd web
           npx tsc --noEmit
-          npx vitest run src/api.test.ts src/audio.test.ts src/packetAnimator.test.ts
+          npx vitest run src/api.test.ts src/audio.test.ts src/packetAnimator.test.ts src/webosRemote.test.ts
       - name: Build installed default map
         working-directory: web
         env:
