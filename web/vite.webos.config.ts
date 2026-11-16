@@ -21,6 +21,12 @@ export default defineConfig({
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: 'tv-polyfills.js', source: compatibility });
     },
+  }, {
+    name: 'webos-classic-script',
+    transformIndexHtml: {
+      order: 'post',
+      handler: html => html.replace(/type="module"/g, 'defer').replace(/ crossorigin/g, ''),
+    },
   }],
   css: { transformer: 'lightningcss', lightningcss: { targets: { chrome: 68 << 16 } } },
   worker: { format: 'iife', rolldownOptions: { output: { banner: compatibility } } },
@@ -28,6 +34,9 @@ export default defineConfig({
     outDir: '../webos/dist', emptyOutDir: true,
     target: 'chrome68', cssTarget: 'chrome68', cssMinify: 'lightningcss',
     modulePreload: false, assetsInlineLimit: 0,
-    rolldownOptions: { input: new URL('./index.html', import.meta.url).pathname },
+    rolldownOptions: {
+      input: new URL('./index.html', import.meta.url).pathname,
+      output: { format: 'iife', codeSplitting: false },
+    },
   },
 });
