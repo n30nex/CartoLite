@@ -1,0 +1,20 @@
+/* TV-specific presentation; the map, packet renderer and sonifier stay shared. */
+html, body, #app { width: 100%; height: 100%; overflow: hidden; }
+#map, #packet-canvas, #map-grade { top: 0; right: 0; bottom: 0; left: 0; }
+#labs-link, #netgraph-link { display: none; }
+.toolbar { top: 28px; left: 32px; right: 32px; }
+.glass { background: rgba(10, 25, 33, .94); }
+.controls > *, .topbar > * { margin-right: 8px; }
+button, select, summary, input { font-size: 18px; }
+button:focus, select:focus, input:focus, summary:focus, a:focus {
+  outline: 3px solid #79f4dc !important; outline-offset: 3px;
+}
+#tv-dock { position: absolute; z-index: 100; bottom: 32px; left: 50%; transform: translateX(-50%); text-align: center; white-space: nowrap; padding: 12px 18px; border: 1px solid #375565; border-radius: 16px; background: rgba(6, 18, 25, .95); color: #e6f6f5; font: 18px system-ui, sans-serif; }
+#tv-hint { display: block; margin-bottom: 12px; color: #b2d8da; }
+#tv-dock button { padding: 12px 16px; margin: 0 5px; background: #163544; color: #e9fffa; border: 1px solid #476776; border-radius: 8px; }
+#tv-dock[data-mode="map"] { opacity: .6; padding: 10px 18px; pointer-events: none; }
+#tv-dock[data-mode="map"] div { display: none; }
+#tv-dock[data-mode="map"] #tv-hint { margin: 0; }
+.sound-panel, #layers-panel, .node-inspector-sheet { max-height: calc(100vh - 230px); }
+.about-dialog { max-height: 75vh; }
+@media (max-width: 1400px) { #tv-dock { font-size: 16px; } #tv-dock button { font-size: 16px; padding: 10px 12px; } }
