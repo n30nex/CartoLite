@@ -7,7 +7,10 @@ const compatibility = readFileSync(new URL('../webos/polyfills.js', import.meta.
 // HTML and application. No iframe, website redirect, or desktop streaming.
 export default defineConfig({
   base: './',
-  define: { 'import.meta.env.VITE_API_ORIGIN': JSON.stringify('https://carto.canadaverse.org') },
+  define: {
+    'import.meta.env.VITE_API_ORIGIN': JSON.stringify('https://carto.canadaverse.org'),
+    'import.meta.env.VITE_WEBOS_TV': JSON.stringify('true'),
+  },
   plugins: [{
     name: 'cartolite-webos',
     transformIndexHtml: {
@@ -51,3 +54,4 @@ export default defineConfig({
     },
   },
 });
+
