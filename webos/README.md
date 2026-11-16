@@ -22,7 +22,7 @@ app. No root permission, shell service or browser-server bridge is required.
 
 Use the existing GitHub Actions CI webOS job. It installs locked web dependencies,
 runs compatibility tests/type checking, builds Chromium 68 page/worker bundles,
-and creates a deterministic IPK plus SHA256SUMS and exact-commit build metadata.
+and uses the official webOS CLI 3.2.6 to create an IPK plus SHA256SUMS and exact-commit build metadata.
 Do not build on the workstation. The website's normal build is unchanged.
 
 Install the IPK with the webOS SDK or a rooted TV's package installer, then launch
