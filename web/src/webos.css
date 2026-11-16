@@ -17,4 +17,17 @@ button:focus, select:focus, input:focus, summary:focus, a:focus {
 #tv-dock[data-mode="map"] #tv-hint { margin: 0; }
 .sound-panel, #layers-panel, .node-inspector-sheet { max-height: calc(100vh - 230px); }
 .about-dialog { max-height: 75vh; }
+/* Old webOS paints native button faces despite modern appearance defaults. */
+html[data-webos] button, html[data-webos] select, html[data-webos] summary {
+  -webkit-appearance: none; appearance: none; background: #15333f;
+  color: #e6f5f3; border: 1px solid #446774; border-radius: 8px;
+}
+html:root[data-webos] .topbar { position: fixed; top: 28px; left: 32px; right: auto; padding: 8px 14px; display: flex; align-items: center; }
+html:root[data-webos] .topbar .brand { font-size: 22px; padding: 6px 10px; }
+html:root[data-webos] .status { font-size: 16px; }
+html:root[data-webos] .controls { position: fixed; top: 28px; right: 32px; bottom: auto; left: auto; transform: none; padding: 8px; display: flex; align-items: center; }
+html[data-webos] .controls > nav { display: none !important; }
+html[data-webos] .control-button { min-height: 44px; padding: 8px 12px; }
+html[data-webos] .sound-panel, html[data-webos] #layers-panel, html[data-webos] .find-panel { top: 70px; bottom: auto; right: 0; }
 @media (max-width: 1400px) { #tv-dock { font-size: 16px; } #tv-dock button { font-size: 16px; padding: 10px 12px; } }
+
