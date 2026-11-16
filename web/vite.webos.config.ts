@@ -23,6 +23,17 @@ export default defineConfig({
     },
   }, {
     name: 'webos-classic-script',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      for (const asset of Object.values(bundle)) {
+        if (asset.type === 'asset' && asset.fileName.endsWith('.css')) {
+          // Chromium 68 supports the legacy selector-list spelling. This is
+          // confined to the TV bundle; the website retains :where specificity.
+          asset.source = String(asset.source).replace(/:(?:where|is)\(/g, ':-webkit-any(')
+            .replace(/:focus-visible/g, ':focus');
+        }
+      }
+    },
     transformIndexHtml: {
       order: 'post',
       handler: html => html.replace(/type="module"/g, 'defer').replace(/ crossorigin/g, ''),
