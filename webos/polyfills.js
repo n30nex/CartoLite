@@ -13,6 +13,14 @@
     return output;
   });
   define(Object, 'hasOwn', function (object, key) { return Object.prototype.hasOwnProperty.call(object, key); });
+  define(String.prototype, 'replaceAll', function (search, replacement) {
+    if (search instanceof RegExp) {
+      if (!search.global) throw new TypeError('replaceAll requires a global RegExp');
+      return String(this).replace(search, replacement);
+    }
+    var escaped = String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return String(this).replace(new RegExp(escaped, 'g'), replacement);
+  });
   define(Array.prototype, 'flat', function (depth) {
     var output = [];
     function append(array, level) { Array.prototype.forEach.call(array, function (value) { if (Array.isArray(value) && level > 0) append(value, level - 1); else output.push(value); }); }
@@ -40,3 +48,4 @@
     define(prototype, 'removeEventListener', function (type, listener) { if (type === 'change') this.removeListener(listener); });
   }
 })(typeof self !== 'undefined' ? self : this);
+
