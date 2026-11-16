@@ -1,12 +1,10 @@
-"""Build a deterministic webOS IPK from the CI-produced default map bundle."""
-import gzip
+"""Package the CI-produced default map with the official webOS CLI."""
 import hashlib
-import io
 import json
 import os
 from pathlib import Path
 import struct
-import tarfile
+import subprocess
 import zlib
 
 ROOT = Path(__file__).resolve().parent
@@ -41,33 +39,14 @@ for y in range(size):
         pixels.extend(color)
 (DIST / 'icon.png').write_bytes(b'\x89PNG\r\n\x1a\n' + png_chunk(b'IHDR', struct.pack('!2I5B', size, size, 8, 2, 0, 0, 0)) + png_chunk(b'IDAT', zlib.compress(pixels, 9)) + png_chunk(b'IEND', b''))
 
-def archive(files):
-    output = io.BytesIO()
-    with tarfile.open(fileobj=output, mode='w', format=tarfile.GNU_FORMAT) as tar:
-        for name, data in sorted(files):
-            item = tarfile.TarInfo(name)
-            item.size, item.mode, item.mtime = len(data), 0o644, 0
-            tar.addfile(item, io.BytesIO(data))
-    return gzip.compress(output.getvalue(), mtime=0)
-
-control = ('Package: {id}\nVersion: {version}\nSection: misc\nPriority: optional\n'
-           'Architecture: all\nMaintainer: Canadaverse\nDescription: CartoLite live map for webOS TV\n'
-           'webOS-Package-Format-Version: 2\nwebOS-Packager-Version: 1.0.0\n').format(**info).encode()
-files = [('./usr/palm/applications/' + info['id'] + '/' + p.relative_to(DIST).as_posix(), p.read_bytes()) for p in DIST.rglob('*') if p.is_file()]
-package_info = json.dumps({'id': info['id'], 'version': info['version'], 'app': info['id']}).encode()
-files.append(('./usr/palm/packages/' + info['id'] + '/packageinfo.json', package_info))
-data = archive(files)
-members = [('debian-binary', b'2.0\n'), ('control.tar.gz', archive([('./control', control)])), ('data.tar.gz', data)]
-result = bytearray(b'!<arch>\n')
-for name, payload in members:
-    result.extend(f'{name:<16}{0:<12}{0:<6}{0:<6}{"100644":<8}{len(payload):<10}`\n'.encode('ascii'))
-    result.extend(payload)
-    if len(payload) % 2: result.extend(b'\n')
 output = ROOT / 'artifacts'
 output.mkdir(exist_ok=True)
+# Use the vendor's package schema/archives, including packageinfo and installed
+# size metadata required by older TV installers. Frontend compilation is done.
+subprocess.run(['npm', 'exec', '--yes', '--package=@webos-tools/cli@3.2.6', '--',
+                'ares-package', str(DIST), '--no-minify', '--outdir', str(output)], check=True)
 ipk = output / (info['id'] + '_' + info['version'] + '_all.ipk')
-ipk.write_bytes(result)
+result = ipk.read_bytes()
 (output / 'SHA256SUMS').write_text(hashlib.sha256(result).hexdigest() + '  ' + ipk.name + '\n')
 (output / 'build-info.json').write_bytes((DIST / 'build-info.json').read_bytes())
 print(f'{ipk.name}: {len(result):,} bytes; source {os.environ["CARTOLITE_COMMIT"]}')
-
