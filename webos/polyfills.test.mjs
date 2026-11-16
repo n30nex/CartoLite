@@ -21,4 +21,22 @@ test('modern runtime implementations are preserved', () => {
   vm.runInContext(source, context);
   assert.equal(vm.runInContext('Object.fromEntries === original', context), true);
 });
+test('legacy worker messages preserve the original transferable list', () => {
+  const context = vm.createContext({});
+  vm.runInContext(`
+    var received;
+    function MessagePort() {}
+    MessagePort.prototype.close = function () {};
+    MessagePort.prototype.postMessage = function(data, transfer) {
+      if (transfer && !Array.isArray(transfer)) throw new TypeError('legacy signature');
+      received = transfer;
+    };
+    function MessageChannel() { this.port1 = new MessagePort(); this.port2 = new MessagePort(); }
+    function Worker() {}
+    Worker.prototype.postMessage = MessagePort.prototype.postMessage;
+  `, context);
+  vm.runInContext(source, context);
+  assert.equal(vm.runInContext('var list = [new ArrayBuffer(8)]; new Worker().postMessage({}, {transfer:list}); received === list', context), true);
+  assert.equal(vm.runInContext('new Worker().postMessage({}, list); received === list', context), true);
+});
 
