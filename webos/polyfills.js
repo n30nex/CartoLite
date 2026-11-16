@@ -38,6 +38,26 @@
     define(AbortSignal, 'timeout', function (delay) { var c = new AbortController(); setTimeout(function () { c.abort(); }, delay); return c.signal; });
     define(AbortSignal.prototype, 'throwIfAborted', function () { if (this.aborted) throw this.reason || new DOMException('Aborted', 'AbortError'); });
   }
+  // Modern MapLibre uses postMessage(message, {transfer}). Chromium 68 expects
+  // the transfer list as argument two, in both page and worker directions.
+  if (root.MessageChannel) {
+    var probe = new MessageChannel(), legacyTransfer = false;
+    try { probe.port1.postMessage(null, { transfer: [] }); } catch (error) { legacyTransfer = true; }
+    probe.port1.close(); probe.port2.close();
+    if (legacyTransfer) {
+      function adaptPostMessage(object) {
+        if (!object || !object.postMessage) return;
+        var original = object.postMessage;
+        object.postMessage = function (data, options) {
+          if (options && typeof options === 'object' && !Array.isArray(options) && !options[Symbol.iterator]) options = options.transfer || [];
+          return original.call(this, data, options);
+        };
+      }
+      if (root.Worker) adaptPostMessage(Worker.prototype);
+      if (root.MessagePort) adaptPostMessage(MessagePort.prototype);
+      if (!root.document) adaptPostMessage(root);
+    }
+  }
   if (root.Element) {
     define(Element.prototype, 'replaceChildren', function () { while (this.firstChild) this.removeChild(this.firstChild); this.append.apply(this, arguments); });
     define(Element.prototype, 'toggleAttribute', function (name, force) { var add = force === undefined ? !this.hasAttribute(name) : Boolean(force); if (add) this.setAttribute(name, ''); else this.removeAttribute(name); return add; });
