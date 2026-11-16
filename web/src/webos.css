@@ -58,3 +58,7 @@ html[data-webos] .about-dialog { position:fixed; top:90px; bottom:150px; left:20
 #tv-drawer #layers-panel .control-button span { font-size:16px !important; line-height:1.3 !important; }
 #tv-drawer #layers-panel .control-button::after { font-size:13px !important; margin-left:6px !important; }
 #tv-drawer #sound-panel button { font-size:17px !important; }
+
+/* This installed package contains the default map only. */
+#tv-drawer #fly-map-link { display:none !important; }
+#tv-dock button[aria-pressed="true"] { background:#235b61; border-color:#7cd9c7; }

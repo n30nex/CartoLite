@@ -78,6 +78,16 @@ window.addEventListener('cartolite-map-ready', event => {
   const detail = (event as CustomEvent<{ view: LiveMap; pauseFollow: () => void }>).detail;
   view = detail.view; pauseFollow = detail.pauseFollow;
 });
+const followState = document.getElementById('follow-button');
+if (followState) {
+  const syncFollow = (): void => {
+    const enabled = followState.getAttribute('aria-pressed') === 'true';
+    button('tv-follow').setAttribute('aria-pressed', String(enabled));
+    button('tv-follow').textContent = enabled ? 'Stop follow' : 'Follow';
+  };
+  syncFollow();
+  new MutationObserver(syncFollow).observe(followState, { attributes: true, attributeFilter: ['aria-pressed'] });
+}
 const soundState = document.getElementById('sound-state');
 if (soundState) new MutationObserver(() => {
   button('tv-sound').textContent = /on/i.test(soundState.textContent ?? '') ? 'Mute sound' : 'Enable sound';
@@ -99,7 +109,14 @@ function focusNext(dx: number, dy: number): void {
   const scored = elements.filter(el => el !== active).map(el => {
     const r = el.getBoundingClientRect(), ox = r.left + r.width / 2 - x, oy = r.top + r.height / 2 - y;
     const forward = dx ? ox * dx : oy * dy;
-    return { el, score: forward > 2 ? Math.abs(dx ? oy : ox) * 3 + forward : Infinity };
+    // Score the space between edges, so a wide control below this row is
+    // reached before a distant button whose centre happens to align.
+    const ahead = dx > 0 ? r.left - origin.right : dx < 0 ? origin.left - r.right
+      : dy > 0 ? r.top - origin.bottom : origin.top - r.bottom;
+    const across = dx
+      ? Math.max(0, r.top - origin.bottom, origin.top - r.bottom)
+      : Math.max(0, r.left - origin.right, origin.left - r.right);
+    return { el, score: forward > 2 ? Math.max(0, ahead) + across * 4 + Math.abs(dx ? oy : ox) * 0.05 : Infinity };
   }).sort((a, b) => a.score - b.score);
   if (scored[0] && Number.isFinite(scored[0].score)) {
     scored[0].el.focus();
