@@ -9,7 +9,7 @@ dock.id = 'tv-dock';
 dock.setAttribute('aria-label', 'TV remote controls');
 dock.innerHTML = '<span id="tv-hint">OK: live sound · Arrows: select · Back: map</span><div>' +
   '<button id="tv-sound">Enable live sound</button><button id="tv-follow">Live Follow</button>' +
-  '<button id="tv-home">Canada</button><button id="tv-out">Zoom −</button>' +
+  '<button id="tv-home">YKF area</button><button id="tv-out">Zoom −</button>' +
   '<button id="tv-in">Zoom +</button><button id="tv-settings">Settings</button>' +
   '<button id="tv-map">Move map</button></div>';
 document.body.appendChild(dock);
