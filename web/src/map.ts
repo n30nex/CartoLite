@@ -680,8 +680,8 @@ export class LiveMap {
   home(nodes: readonly NodeV2[], animate = true): void {
     this.#lastFollowMoveAt = 0;
     if (import.meta.env.VITE_WEBOS_TV === 'true') {
-      this.map.fitBounds([[-80.65, 43.26], [-80.16, 43.64]], {
-        padding: { top: 110, bottom: 170, left: 90, right: 90 },
+      this.map.fitBounds([[-80.59, 43.32], [-80.20, 43.60]], {
+        padding: { top: 80, bottom: 120, left: 50, right: 50 },
         duration: animate ? 240 : 0, bearing: 0, pitch: 0,
       });
       return;
