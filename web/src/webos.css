@@ -62,3 +62,5 @@ html[data-webos] .about-dialog { position:fixed; top:90px; bottom:150px; left:20
 /* This installed package contains the default map only. */
 #tv-drawer #fly-map-link { display:none !important; }
 #tv-dock button[aria-pressed="true"] { background:#235b61; border-color:#7cd9c7; }
+
+#tv-drawer .route-window { display:block !important; }
