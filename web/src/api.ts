@@ -9,6 +9,9 @@ import type {
   StatusEventV2
 } from './types';
 
+// Installed webOS apps have a file origin. The website keeps same-origin URLs.
+const apiOrigin = (import.meta.env.VITE_API_ORIGIN ?? '').replace(/\/$/, '');
+
 export async function fetchState(signal?: AbortSignal): Promise<StateV2> {
   const requested = performance.now();
   const controller = new AbortController();
@@ -17,9 +20,9 @@ export async function fetchState(signal?: AbortSignal): Promise<StateV2> {
   else signal?.addEventListener('abort', cancel, { once: true });
   const timeout = window.setTimeout(() => controller.abort(new Error('Live data request timed out')), 15_000);
   try {
-    const response = await fetch('/api/state', {
+    const response = await fetch(`${apiOrigin}/api/state`, {
       cache: 'no-store',
-      credentials: 'same-origin',
+      credentials: apiOrigin ? 'omit' : 'same-origin',
       headers: { Accept: 'application/json' },
       signal: controller.signal
     });
@@ -97,7 +100,7 @@ export class LiveFeed {
     if (this.#source || this.#stopped || document.hidden) return;
     this.#replayThrough = this.#seq;
     const cursor = new URLSearchParams({ bootId: this.#bootId, after: String(this.#seq) });
-    const source = new EventSource(`/api/events?${cursor.toString()}`, { withCredentials: true });
+    const source = new EventSource(`${apiOrigin}/api/events?${cursor.toString()}`, { withCredentials: !apiOrigin });
     this.#source = source;
     const current = (): boolean => this.#source === source && !this.#recovering && !this.#stopped && !document.hidden;
     source.onopen = () => {
@@ -235,3 +238,4 @@ function parseEvent<T>(event: Event): T {
   }
   return JSON.parse(event.data) as T;
 }
+

@@ -70,6 +70,7 @@ export const LIVE_FOLLOW_MIN_INTERVAL_MS = FOLLOW_DWELL_MS;
 export const ACTIVE_NODE_WINDOW_MS = 24 * 60 * 60_000;
 
 export function mapPixelRatio(devicePixelRatio: number, lowPower: boolean): number {
+  if (import.meta.env.VITE_WEBOS_TV === 'true') return 1;
   const ratio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
   return Math.max(1, Math.min(lowPower ? 1.5 : 2, ratio));
 }
@@ -295,8 +296,8 @@ export class LiveMap {
     this.map = new maplibregl.Map({
       container: this.container,
       style: cartoVectorStyle(undefined, this.#appearance.basemap),
-      center: DEFAULT_CENTER,
-      zoom: DEFAULT_ZOOM,
+      center: import.meta.env.VITE_WEBOS_TV === 'true' ? [-80.42, 43.46] : DEFAULT_CENTER,
+      zoom: import.meta.env.VITE_WEBOS_TV === 'true' ? 10.7 : DEFAULT_ZOOM,
       minZoom: 3,
       maxZoom: 18,
       attributionControl: false,
@@ -678,6 +679,13 @@ export class LiveMap {
 
   home(nodes: readonly NodeV2[], animate = true): void {
     this.#lastFollowMoveAt = 0;
+    if (import.meta.env.VITE_WEBOS_TV === 'true') {
+      this.map.fitBounds([[-80.59, 43.32], [-80.20, 43.60]], {
+        padding: { top: 80, bottom: 120, left: 50, right: 50 },
+        duration: animate ? 240 : 0, bearing: 0, pitch: 0,
+      });
+      return;
+    }
     const now = trafficNow();
     const active = nodes.filter((node) => validEndpoint(node) && Math.max(0, now - node.lastSeen) <= ACTIVE_NODE_WINDOW_MS);
     const visible = active.length > 0 ? active : nodes.filter(validEndpoint);
@@ -3229,3 +3237,4 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
   const progress = clamp((value - edge0) / (edge1 - edge0), 0, 1);
   return progress * progress * (3 - 2 * progress);
 }
+

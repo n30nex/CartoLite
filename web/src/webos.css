@@ -1,0 +1,66 @@
+/* Full-screen map with one predictable TV control bar and options drawer. */
+html, body, #app { width:100%; height:100%; overflow:hidden; }
+#map, #packet-canvas, #map-grade { top:0; right:0; bottom:0; left:0; }
+html[data-webos] .controls, #labs-link, #netgraph-link, .follow-card { display:none !important; }
+html[data-webos] button, html[data-webos] select, html[data-webos] summary {
+  -webkit-appearance:none; appearance:none; background:#15333f; color:#e9f8f5;
+  border:1px solid #4a6d79; border-radius:8px; font:18px system-ui,sans-serif;
+  min-height:44px; padding:9px 12px; cursor:pointer;
+}
+html[data-webos] button:focus, html[data-webos] input:focus,
+html[data-webos] select:focus, html[data-webos] summary:focus {
+  outline:3px solid #82f6d8 !important; outline-offset:3px;
+  background-color:#244d5a !important;
+}
+html:root[data-webos] .topbar { position:fixed; top:24px; left:28px; right:auto; padding:6px 12px; display:flex; align-items:center; background:#091c26; }
+html:root[data-webos] .topbar .brand { font-size:21px; margin-right:12px; }
+html:root[data-webos] .status { font-size:16px; }
+html[data-webos] .glass { background:#0c222d; }
+#tv-dock { position:fixed; z-index:100; bottom:24px; left:50%; transform:translateX(-50%); text-align:center; white-space:nowrap; padding:12px 18px; border:1px solid #3f6471; border-radius:15px; background:#091d28; color:#e6f6f5; font:17px system-ui,sans-serif; }
+#tv-hint { display:block; margin-bottom:12px; color:#b5d5da; }
+#tv-dock button { margin:0 5px; min-width:90px; }
+#tv-dock[data-mode="map"] { padding:10px 18px; opacity:.7; pointer-events:none; }
+#tv-dock[data-mode="map"] div { display:none; }
+#tv-dock[data-mode="map"] #tv-hint { margin:0; }
+#tv-drawer { position:fixed; z-index:120; top:24px; bottom:146px; right:28px; width:430px; box-sizing:border-box; border:1px solid #537581; border-radius:15px; background:#0b202b; color:#e8f7f5; box-shadow:0 10px 40px #0009; padding:18px; display:flex; flex-direction:column; font:18px system-ui,sans-serif; }
+#tv-drawer[hidden], #tv-panel-content > [hidden] { display:none !important; }
+#tv-drawer > header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex:none; }
+#tv-drawer > header strong { font-size:25px; }
+#tv-tabs { display:flex; flex:none; }
+#tv-tabs button { flex:1; margin-right:7px; padding:8px; font-size:16px; }
+#tv-tabs button:last-child { margin-right:0; }
+#tv-tabs button[aria-pressed="true"] { background:#235b61; border-color:#7cd9c7; }
+.tv-panel-help { margin:12px 0; font-size:13px; line-height:1.4; color:#b7d1d8; flex:none; }
+#tv-panel-content { flex:1; min-height:0; overflow:auto; padding:6px 7px 14px; }
+html:root[data-webos] #tv-drawer #layers-panel,
+html:root[data-webos] #tv-drawer #sound-panel,
+html:root[data-webos] #tv-drawer #find-panel {
+  position:static !important; top:auto !important; bottom:auto !important; left:auto !important; right:auto !important;
+  transform:none !important; width:100% !important; max-width:none !important; min-width:0 !important;
+  height:auto !important; max-height:none !important; margin:0 !important; padding:0 !important;
+  border:0 !important; box-shadow:none !important; overflow:visible !important; background:transparent !important;
+}
+#tv-drawer .map-options-header, #tv-drawer #sound-panel > header, #tv-drawer #find-panel > header { display:none !important; }
+#tv-drawer label, #tv-drawer summary, #tv-drawer .control-button { font-size:17px; }
+#tv-drawer p, #tv-drawer .layer-hint { font-size:14px; line-height:1.5; color:#bbd2d8; }
+#tv-drawer input[type="range"] { width:100%; min-height:38px; }
+#tv-drawer select, #tv-drawer input[type="search"] { width:100%; max-width:100%; font-size:18px; min-height:44px; box-sizing:border-box; }
+#tv-drawer select { margin:6px 0 12px; }
+#tv-drawer .layer-toggles { display:grid; grid-template-columns:1fr 1fr; grid-gap:10px; }
+#tv-drawer .layer-toggles button { min-width:0; }
+#tv-drawer details { margin:12px 0; }
+#tv-drawer summary { padding:12px; }
+#tv-drawer [aria-pressed="true"] { border-color:#7cd9c7; }
+html[data-webos] .about-dialog { position:fixed; top:90px; bottom:150px; left:20%; right:20%; max-height:none; width:auto; }
+
+/* Keep compact website button rules from shrinking text at sofa distance. */
+#tv-drawer #layers-panel .control-button,
+#tv-drawer #layers-panel .control-button span { font-size:16px !important; line-height:1.3 !important; }
+#tv-drawer #layers-panel .control-button::after { font-size:13px !important; margin-left:6px !important; }
+#tv-drawer #sound-panel button { font-size:17px !important; }
+
+/* This installed package contains the default map only. */
+#tv-drawer #fly-map-link { display:none !important; }
+#tv-dock button[aria-pressed="true"] { background:#235b61; border-color:#7cd9c7; }
+
+#tv-drawer .route-window { display:block !important; }

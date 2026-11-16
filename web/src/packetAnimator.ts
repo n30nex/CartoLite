@@ -295,6 +295,8 @@ export class PacketAnimator {
   private residue: Residue[] = [];
   #nodeWakes: NodeWake[] = [];
   #frameId = 0;
+  #tvLastDraw = Number.NEGATIVE_INFINITY;
+  #tvFrameCount = 0;
   #residueTimer?: number;
   #paused = false;
   #reducedMotion: boolean;
@@ -322,7 +324,7 @@ export class PacketAnimator {
     this.#reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     this.#lowPowerQuery = window.matchMedia('(max-width: 620px), (pointer: coarse)');
     this.#reducedMotion = prefersReducedMotion();
-    this.#lowPower = this.#lowPowerQuery.matches;
+    this.#lowPower = import.meta.env.VITE_WEBOS_TV === 'true' || this.#lowPowerQuery.matches;
     if (this.#reducedMotion) this.#reducedModeStartedAt = performance.now();
     this.#updateMotionMode();
     this.draw = this.draw.bind(this);
@@ -435,7 +437,7 @@ export class PacketAnimator {
 
   private resize(): void {
     const rect = this.canvas.getBoundingClientRect();
-    const dpr = Math.min(this.#qualityMode() === 'low' ? 1.25 : 1.5, window.devicePixelRatio || 1);
+    const dpr = import.meta.env.VITE_WEBOS_TV === 'true' ? 1 : Math.min(this.#qualityMode() === 'low' ? 1.25 : 1.5, window.devicePixelRatio || 1);
     const width = Math.max(1, Math.floor(rect.width * dpr));
     const height = Math.max(1, Math.floor(rect.height * dpr));
     this.canvas.dataset.pixelRatio = String(dpr);
@@ -474,6 +476,7 @@ export class PacketAnimator {
   };
 
   #handleLowPowerChange = (event: MediaQueryListEvent): void => {
+    if (import.meta.env.VITE_WEBOS_TV === 'true') return;
     if (this.#lowPower === event.matches) return;
     this.#lowPower = event.matches;
     this.#trimDecorations();
@@ -537,6 +540,13 @@ export class PacketAnimator {
   private draw(now: number): void {
     this.#frameId = 0;
     if (this.#paused) return;
+    if (import.meta.env.VITE_WEBOS_TV === 'true') {
+      // Bound drawing work, not packet timing: positions still use real time.
+      if (now - this.#tvLastDraw < 31) { this.#requestFrame(); return; }
+      this.#tvLastDraw = now;
+      this.canvas.dataset.tvFrameCount = String(++this.#tvFrameCount);
+      this.canvas.dataset.tvFrameLimit = '30';
+    }
     this.#clearCanvas();
     this.#gpu.prepare();
     this.#gpu.batch.begin(this.canvas.width / this.#dpr, this.canvas.height / this.#dpr);
@@ -1027,10 +1037,12 @@ export class PacketAnimator {
   }
 
   #residueLimit(): number {
+    if (import.meta.env.VITE_WEBOS_TV === 'true') return 80;
     return this.#qualityMode() === 'low' ? LOW_POWER_MAX_RESIDUE : MAX_RESIDUE;
   }
 
   #nodeWakeLimit(): number {
+    if (import.meta.env.VITE_WEBOS_TV === 'true') return 24;
     return this.#qualityMode() === 'low' ? LOW_POWER_MAX_NODE_WAKES : MAX_NODE_WAKES;
   }
 
@@ -1151,3 +1163,4 @@ context: CanvasRenderingContext2D,
   }
   context.restore();
 }
+

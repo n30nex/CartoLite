@@ -546,7 +546,7 @@ async function start(): Promise<void> {
       if (changes?.reset || changes?.nodes?.length) refreshSearch();
       updateStatus();
     });
-    const savedView = loadSavedView(browserStorage(), activeViewClass);
+    const savedView = import.meta.env.VITE_WEBOS_TV === 'true' ? null : loadSavedView(browserStorage(), activeViewClass);
     if (savedView) {
       mapElement.dataset.viewSource = liveMap.restore(savedView.center, savedView.zoom, initial.nodes)
         ? 'saved'
@@ -835,3 +835,4 @@ function renderRouteLegend(container: HTMLElement): void {
     container.append(entry);
   }
 }
+

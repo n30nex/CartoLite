@@ -1,0 +1,13 @@
+{
+  "id": "org.canadaverse.cartolite",
+  "version": "0.24.1",
+  "vendor": "Canadaverse",
+  "type": "web",
+  "main": "index.html",
+  "title": "CartoLite",
+  "icon": "icon.png",
+  "largeIcon": "icon.png",
+  "uiRevision": 2,
+  "resolution": "1280x720",
+  "disableBackHistoryAPI": true
+}
